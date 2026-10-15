@@ -6,7 +6,7 @@ import { ensureActiveBu } from "./helpers/bu";
 import { uid } from "./helpers/test-data";
 
 /**
- * Chart of Account Mapping (ACMAP) — List / Search / Tab-switching tests.
+ * Chart of Accounts Mapping (ACMAP) — List / Search / Tab-switching tests.
  *
  * Note: as of the catalog date (2026-09-20) this page reads from mock data
  * (`coam-mock.ts`, 12 rows — AP 8 / GL 4) and the toolbar buttons (Import /
@@ -18,7 +18,7 @@ import { uid } from "./helpers/test-data";
 const test = createAuthTest("carmensoftware.dev+admin@gmail.com");
 const PATH = "/config/chart-of-account-mapping";
 
-test.describe("Chart of Account Mapping — List / Search / Tabs", () => {
+test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
   test.beforeEach(async ({ page }) => {
     await ensureActiveBu(page, BU_CODE);
   });
@@ -27,12 +27,12 @@ test.describe("Chart of Account Mapping — List / Search / Tabs", () => {
   // TC-ACMAP-010001 — Smoke
   // ------------------------------------------------------------------
   test(
-    "TC-ACMAP-010001 แสดงหน้า Chart of Account Mapping พร้อมตารางของแท็บ AP",
+    "TC-ACMAP-010001 แสดงหน้า Chart of Accounts Mapping พร้อมตารางของแท็บ AP",
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; ข้อมูลหน้านี้มาจาก mock coam-mock.ts (12 แถว — AP 8 / GL 4)" },
         { type: "steps", description: "1. ไปที่ /config/chart-of-account-mapping\n2. รอให้ DataGrid โหลดเสร็จ" },
-        { type: "expected", description: "เห็นหัวข้อ Chart of Account Mapping พร้อมแถบแท็บ Posting to AP / Posting to GL โดยแท็บ Posting to AP ถูกเลือกอยู่ และตารางแสดงแถวของ mapping type AP" },
+        { type: "expected", description: "เห็นหัวข้อ Chart of Accounts Mapping พร้อมแถบแท็บ Posting to AP / Posting to GL โดยแท็บ Posting to AP ถูกเลือกอยู่ และตารางแสดงแถวของ mapping type AP" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -41,8 +41,8 @@ test.describe("Chart of Account Mapping — List / Search / Tabs", () => {
       await page.goto(PATH);
       await page.waitForLoadState("networkidle");
       await expect(page).toHaveURL(new RegExp(PATH));
-      // Heading contains "Chart of Account Mapping"
-      await expect(page.getByRole("heading", { name: /Chart of Account Mapping/i }).first()).toBeVisible({ timeout: 10_000 });
+      // Heading contains "Chart of Accounts Mapping" (FE #294 เติม s — regex รับทั้งชื่อเก่า/ใหม่)
+      await expect(page.getByRole("heading", { name: /Chart of Accounts? Mapping/i }).first()).toBeVisible({ timeout: 10_000 });
       // Both tabs present
       await expect(page.getByRole("tab", { name: /Posting to AP/i }).first()).toBeVisible({ timeout: 10_000 });
       await expect(page.getByRole("tab", { name: /Posting to GL/i }).first()).toBeVisible({ timeout: 10_000 });
