@@ -1,24 +1,77 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
+import { authFile } from "./fixtures/auth.paths";
 import { ConfigListPage } from "./pages/config-list.page";
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu } from "./helpers/bu";
 import { uid } from "./helpers/test-data";
 
 /**
- * Chart of Accounts Mapping (ACMAP) — List / Search / Tab-switching tests.
+ * Chart of Accounts Mapping (ACMAP) — List / Search / Tabs / Status filter.
  *
- * Note: as of the catalog date (2026-09-20) this page reads from mock data
- * (`coam-mock.ts`, 12 rows — AP 8 / GL 4) and the toolbar buttons (Import /
- * Export / Scan / Bulk Map / Edit) and row pencil buttons have no wired
- * handlers. CRUD test cases are therefore omitted; they must be revisited once
- * the real `/api/config/{bu_code}/account-mappings` endpoint is live.
+ * หน้านี้อ่าน API จริงแล้ว (`/api/:bu_code/account-mapping`) — แท็บ Post to AP /
+ * Post to GL, status chips (Incomplete / Unreviewed / Overridden / Default),
+ * ตารางแบ่งหน้า, เลือกหลายแถวเพื่อ Edit / Mark as reviewed และปุ่ม Generate
+ * mapping rows. ไม่มีปุ่ม Import หรือดินสอรายแถวแล้ว (แก้รายแถวด้วยการคลิก Location)
+ *
+ * ตัวเคสอ่านอย่างเดียว — ไม่กด Save / Mark as reviewed เพราะเขียนลง DB ที่ใช้ร่วมกัน
+ * ข้อยกเว้นเดียวคือ beforeAll: ถ้า BU ทดสอบยังไม่มีแถว mapping เลย จะกด Generate
+ * mapping rows (โหมด Everything in advance, แท็บ AP) หนึ่งครั้งเพื่อสร้างแถว default
+ * — idempotent: รอบถัดไปตารางไม่ว่างแล้วจึงไม่กดซ้ำ
  */
 
-const test = createAuthTest("carmensoftware.dev+admin@gmail.com");
+const ADMIN = "carmensoftware.dev+admin@gmail.com";
+const test = createAuthTest(ADMIN);
 const PATH = "/config/chart-of-account-mapping";
 
+// context ที่ไม่มี session จริง ๆ — browser.newContext() ใน test ที่ใช้
+// createAuthTest สืบทอด storageState ของ admin มาด้วย ต้องล้างทิ้งเอง
+const NO_SESSION = { storageState: { cookies: [], origins: [] } };
+
+// แถวข้อมูลจริงมี checkbox — แถว "No data found" ของตารางว่างไม่มี
+const dataRows = (page: Page) =>
+  page.locator("table tbody tr").filter({ has: page.getByRole("checkbox") });
+
+const NO_DATA_REASON =
+  "BU ทดสอบไม่มีแถว account mapping และ Generate (Everything in advance) สร้างไม่ได้ — BU ไม่มี location/item group";
+
+// ตั้งใน beforeAll — เคสที่ต้องมีข้อมูลจะ skip พร้อมเหตุผลแทนการแดงแบบอ่านไม่ออก
+let hasData = false;
+
+async function gotoLoaded(page: Page) {
+  await page.goto(PATH);
+  await page.waitForLoadState("networkidle");
+  await expect(
+    dataRows(page).first().or(page.getByText(/no data found/i).first()),
+  ).toBeVisible({ timeout: 15_000 });
+}
+
+/** จำนวนรวมจากแถบ pagination ("Showing 1–10 of 686") */
+async function paginationTotal(page: Page): Promise<number> {
+  const text = await page.locator("p", { hasText: /^Showing\b/ }).first().innerText();
+  const m = text.match(/of\s+([\d,]+)/);
+  if (!m) throw new Error(`pagination text not recognised: ${text}`);
+  return Number(m[1].replace(/,/g, ""));
+}
+
 test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
+  test.beforeAll(async ({ browser }) => {
+    const ctx = await browser.newContext({ storageState: authFile(ADMIN) });
+    const page = await ctx.newPage();
+    await ensureActiveBu(page, BU_CODE);
+    await gotoLoaded(page);
+    if ((await dataRows(page).count()) === 0) {
+      await page.getByRole("button", { name: /^Generate mapping rows$/i }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByRole("radio", { name: /Everything in advance/i }).click();
+      await dialog.getByRole("button", { name: /^Generate mapping rows$/i }).click();
+      await expect(page.getByText(/Created \d+ rows/i).first()).toBeVisible({ timeout: 30_000 });
+      await gotoLoaded(page);
+    }
+    hasData = (await dataRows(page).count()) > 0;
+    await ctx.close();
+  });
+
   test.beforeEach(async ({ page }) => {
     await ensureActiveBu(page, BU_CODE);
   });
@@ -30,22 +83,24 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
     "TC-ACMAP-010001 แสดงหน้า Chart of Accounts Mapping พร้อมตารางของแท็บ AP",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; ข้อมูลหน้านี้มาจาก mock coam-mock.ts (12 แถว — AP 8 / GL 4)" },
-        { type: "steps", description: "1. ไปที่ /config/chart-of-account-mapping\n2. รอให้ DataGrid โหลดเสร็จ" },
-        { type: "expected", description: "เห็นหัวข้อ Chart of Accounts Mapping พร้อมแถบแท็บ Posting to AP / Posting to GL โดยแท็บ Posting to AP ถูกเลือกอยู่ และตารางแสดงแถวของ mapping type AP" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = GR2VYNKQ; BU มีแถว account mapping อย่างน้อย 1 แถว" },
+        { type: "steps", description: "1. ไปที่ /config/chart-of-account-mapping\n2. รอให้ตารางโหลดเสร็จ" },
+        { type: "expected", description: "เห็นหัวข้อ Chart of Accounts Mapping พร้อมแท็บ Post to AP / Post to GL โดยแท็บ Post to AP ถูกเลือกอยู่ และตารางมีข้อมูลอย่างน้อย 1 แถว" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
+      test.skip(!hasData, NO_DATA_REASON);
+      await gotoLoaded(page);
       await expect(page).toHaveURL(new RegExp(PATH));
-      // Heading contains "Chart of Accounts Mapping" (FE #294 เติม s — regex รับทั้งชื่อเก่า/ใหม่)
-      await expect(page.getByRole("heading", { name: /Chart of Accounts? Mapping/i }).first()).toBeVisible({ timeout: 10_000 });
-      // Both tabs present
-      await expect(page.getByRole("tab", { name: /Posting to AP/i }).first()).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByRole("tab", { name: /Posting to GL/i }).first()).toBeVisible({ timeout: 10_000 });
+      // FE #294 เติม s — regex รับทั้งชื่อเก่า/ใหม่
+      await expect(page.getByRole("heading", { name: /Chart of Accounts? Mapping/i }).first()).toBeVisible();
+      const apTab = page.getByRole("tab", { name: /Post to AP/i }).first();
+      await expect(apTab).toBeVisible();
+      await expect(page.getByRole("tab", { name: /Post to GL/i }).first()).toBeVisible();
+      await expect(apTab).toHaveAttribute("aria-selected", "true");
+      await expect(dataRows(page).first()).toBeVisible();
     },
   );
 
@@ -56,47 +111,53 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
     "TC-ACMAP-010002 ตารางแสดงคอลัมน์ครบตามที่กำหนด",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping และตารางโหลดข้อมูลแล้ว" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping แท็บ Post to AP และตารางโหลดข้อมูลแล้ว" },
         { type: "steps", description: "1. ดูแถวหัวตาราง" },
-        { type: "expected", description: "หัวตารางมีคอลัมน์ Location, Category, Account Code, Mapped และคอลัมน์ action ท้ายสุด" },
+        { type: "expected", description: "หัวตารางมีคอลัมน์ Location, Location type, Category, Item Group, Movement, Cost center, Account และ Status" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
+      test.skip(!hasData, NO_DATA_REASON);
+      await gotoLoaded(page);
       const header = page.locator("table thead").first();
-      await expect(header).toBeVisible({ timeout: 10_000 });
-      await expect(header.getByText(/Location/i).first()).toBeVisible();
-      await expect(header.getByText(/Account Code/i).first()).toBeVisible();
-      await expect(header.getByText(/Mapped/i).first()).toBeVisible();
+      for (const name of [/^Location$/i, /Location type/i, /^Category$/i, /Item Group/i, /Movement/i, /Cost center/i, /^Account$/i, /^Status$/i]) {
+        await expect(header.getByText(name).first(), `column ${name}`).toBeVisible();
+      }
     },
   );
 
   // ------------------------------------------------------------------
-  // TC-ACMAP-010003 — Search by account code
+  // TC-ACMAP-010003 — Search by location
   // ------------------------------------------------------------------
   test(
-    "TC-ACMAP-010003 ค้นหาด้วยรหัสบัญชี (Account Code)",
+    "TC-ACMAP-010003 ค้นหาด้วยชื่อ Location",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping; แท็บ Posting to AP ถูกเลือกอยู่" },
-        { type: "steps", description: "1. คลิกช่อง Search\n2. พิมพ์รหัสบัญชีที่มีอยู่ เช่น '1106002'\n3. กด Enter" },
-        { type: "expected", description: "ตารางแสดงเฉพาะแถวที่มีรหัสบัญชีนั้น" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping แท็บ Post to AP และตารางมีข้อมูล" },
+        { type: "steps", description: "1. อ่านชื่อ Location ของแถวแรก\n2. พิมพ์ชื่อนั้นในช่อง Search\n3. กด Enter" },
+        { type: "expected", description: "จำนวนรวมในแถบ pagination ไม่เพิ่มขึ้น และทุกแถวในหน้าแรกเป็นของ Location นั้น" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
+      test.skip(!hasData, NO_DATA_REASON);
+      await gotoLoaded(page);
+      const totalBefore = await paginationTotal(page);
+      const location = (await dataRows(page).first().getByRole("button").first().innerText()).trim();
+      expect(location.length).toBeGreaterThan(0);
+
       const list = new ConfigListPage(page, PATH);
-      await list.goto();
-      // AP tab is the default; search and confirm table filters
-      const rowsBefore = await page.getByRole("row").count();
-      await list.search("1106002");
-      const rowsAfter = await page.getByRole("row").count();
-      // After searching, either fewer rows or the table/empty-state is visible
-      expect(rowsAfter).toBeLessThanOrEqual(rowsBefore);
+      await list.search(location);
+      await expect(dataRows(page).first()).toBeVisible({ timeout: 10_000 });
+
+      expect(await paginationTotal(page)).toBeLessThanOrEqual(totalBefore);
+      const rows = await dataRows(page).all();
+      for (const row of rows) {
+        await expect(row).toContainText(location);
+      }
     },
   );
 
@@ -109,7 +170,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping" },
         { type: "steps", description: `1. พิมพ์คำค้นที่ไม่ตรงกับข้อมูลใดเลย เช่น '__NOPE__${uid}'\n2. กด Enter` },
-        { type: "expected", description: "ตารางของทั้งสองแท็บไม่มีแถวข้อมูล แสดง empty state แทน และตัวเลขบนหัวแท็บทั้ง AP และ GL เป็น 0" },
+        { type: "expected", description: "ตารางไม่มีแถวข้อมูล แสดง empty state แทน" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
@@ -137,23 +198,23 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
+      test.skip(!hasData, NO_DATA_REASON);
       const list = new ConfigListPage(page, PATH);
       await list.goto();
       await list.search(`__NOPE__${uid}`);
       await expect(list.emptyState().first()).toBeVisible({ timeout: 10_000 });
 
-      // Clear the search — look for the clear button (×, ✕, X, Clear)
       const clearBtn = page.getByRole("button", { name: /clear|×|✕/i }).first();
       if (await clearBtn.isVisible()) {
         await clearBtn.click();
       } else {
-        // Fallback: clear via input
         const input = list.searchInput();
         await input.fill("");
         await input.press("Enter");
       }
       await page.waitForLoadState("networkidle");
       await expect(list.searchInput()).toHaveValue("");
+      await expect(dataRows(page).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -164,7 +225,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
     "TC-ACMAP-100001 ผู้ใช้ที่ยังไม่ล็อกอินเปิด URL ตรงๆ",
     {
       annotation: [
-        { type: "preconditions", description: "ไม่มี session (browser context ที่ยังไม่ได้ล็อกอิน)" },
+        { type: "preconditions", description: "ไม่มี session (browser context ใหม่ที่ล้าง storageState ทิ้ง)" },
         { type: "steps", description: "1. เปิด URL /config/chart-of-account-mapping ตรงๆ โดยไม่มี session" },
         { type: "expected", description: "ถูก redirect ไปหน้า /login และไม่เห็นข้อมูลผังการผูกบัญชี" },
         { type: "priority", description: "High" },
@@ -172,31 +233,32 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ browser }) => {
-      const ctx = await browser.newContext(); // fresh context, no storageState
+      const ctx = await browser.newContext(NO_SESSION);
       const page = await ctx.newPage();
       await page.goto(PATH);
       await page.waitForLoadState("networkidle");
       await expect(page).toHaveURL(/\/login/, { timeout: 15_000 });
+      await expect(page.locator("table tbody tr")).toHaveCount(0);
       await ctx.close();
     },
   );
 
   // ------------------------------------------------------------------
-  // TC-ACMAP-100002 — Authorization: low-privilege user can access
+  // TC-ACMAP-100002 — Authorization: non-admin user
   // ------------------------------------------------------------------
   test(
-    "TC-ACMAP-100002 ผู้ใช้ที่ล็อกอินแล้วทุก role เข้าหน้านี้ได้ (ยังไม่ผูก permission/license)",
+    "TC-ACMAP-100002 ผู้ใช้ที่ไม่มีสิทธิ์ configuration.chart_of_account_mapping เห็น Permission Denied",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็นผู้ใช้ที่ไม่ใช่ admin เช่น carmensoftware.dev+requestor@gmail.com; leaf ของหน้านี้ใน constant/module-list.ts ยังไม่ประกาศ permission" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่ง role ไม่มีสิทธิ์ configuration.chart_of_account_mapping" },
         { type: "steps", description: "1. Login เป็น carmensoftware.dev+requestor@gmail.com\n2. ไปที่ /config/chart-of-account-mapping" },
-        { type: "expected", description: "หน้าแสดงได้ตามปกติ ไม่มีกล่อง Access Denied และไม่ถูก redirect (RouteGuard ปล่อยผ่าน leaf ที่ไม่ประกาศ permission)" },
+        { type: "expected", description: "ยังอยู่ที่ URL /config/chart-of-account-mapping (ไม่ถูก redirect ไป /login) แต่หน้าขึ้น Permission Denied และไม่มีตารางผังการผูกบัญชี" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ browser }) => {
-      const ctx = await browser.newContext();
+      const ctx = await browser.newContext(NO_SESSION);
       const page = await ctx.newPage();
       const { LoginPage } = await import("./pages/login.page");
       const { TEST_PASSWORD } = await import("./test-users");
@@ -206,9 +268,9 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       await page.waitForURL(/dashboard/, { timeout: 15_000 });
       await page.goto(PATH);
       await page.waitForLoadState("networkidle");
-      // Should NOT show Access Denied and NOT redirect to /login
-      await expect(page.getByText(/access denied|permission denied/i)).toHaveCount(0);
       expect(page.url()).toContain(PATH);
+      await expect(page.getByText(/access denied|permission denied/i).first()).toBeVisible({ timeout: 10_000 });
+      await expect(dataRows(page)).toHaveCount(0);
       await ctx.close();
     },
   );
@@ -217,28 +279,25 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
   // TC-ACMAP-400001 — Tab switching AP ↔ GL
   // ------------------------------------------------------------------
   test(
-    "TC-ACMAP-400001 สลับแท็บ Posting to AP ↔ Posting to GL",
+    "TC-ACMAP-400001 สลับแท็บ Post to AP ↔ Post to GL",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping และแท็บ Posting to AP ถูกเลือกอยู่" },
-        { type: "steps", description: "1. คลิกแท็บ Posting to GL\n2. ดูข้อมูลในตาราง\n3. คลิกแท็บ Posting to AP กลับ" },
-        { type: "expected", description: "เนื้อหาตารางเปลี่ยนเป็นชุดของแท็บที่เลือกทุกครั้ง โดยไม่มีการเปลี่ยน URL" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping และแท็บ Post to AP ถูกเลือกอยู่" },
+        { type: "steps", description: "1. คลิกแท็บ Post to GL\n2. ดูสถานะแท็บ\n3. คลิกแท็บ Post to AP กลับ" },
+        { type: "expected", description: "แท็บที่คลิกถูกเลือก (aria-selected) ทุกครั้ง และยังอยู่ที่หน้า /config/chart-of-account-mapping" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
-      const glTab = page.getByRole("tab", { name: /Posting to GL/i }).first();
+      await gotoLoaded(page);
+      const glTab = page.getByRole("tab", { name: /Post to GL/i }).first();
       await glTab.click();
       await page.waitForLoadState("networkidle");
-      // URL should not have changed to a different page
       expect(page.url()).toContain(PATH);
-      // GL tab is now selected
       await expect(glTab).toHaveAttribute("aria-selected", "true");
 
-      const apTab = page.getByRole("tab", { name: /Posting to AP/i }).first();
+      const apTab = page.getByRole("tab", { name: /Post to AP/i }).first();
       await apTab.click();
       await page.waitForLoadState("networkidle");
       await expect(apTab).toHaveAttribute("aria-selected", "true");
@@ -246,97 +305,121 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
   );
 
   // ------------------------------------------------------------------
-  // TC-ACMAP-400002 — Tab badge equals row count
+  // TC-ACMAP-400002 — Heading count equals pagination total
   // ------------------------------------------------------------------
   test(
-    "TC-ACMAP-400002 ตัวเลขบนหัวแท็บตรงกับจำนวนแถวในตารางของแท็บนั้น",
+    "TC-ACMAP-400002 ตัวเลขข้างหัวข้อตรงกับจำนวนรวมในแถบ pagination",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping โดยยังไม่ได้ค้นหา" },
-        { type: "steps", description: "1. อ่านตัวเลขที่ต่อท้ายชื่อแท็บ Posting to AP แล้วนับจำนวนแถวในตาราง\n2. คลิกแท็บ Posting to GL แล้วทำแบบเดียวกัน" },
-        { type: "expected", description: "ตัวเลขบนหัวแท็บแต่ละอันเท่ากับจำนวนแถวในตารางของแท็บนั้น" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping โดยยังไม่ได้ค้นหาหรือกรอง" },
+        { type: "steps", description: "1. อ่านตัวเลขที่อยู่ข้างหัวข้อหน้า\n2. อ่านจำนวนรวม (of N) ในแถบ pagination ใต้ตาราง" },
+        { type: "expected", description: "ตัวเลขทั้งสองเท่ากัน" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
-      // At minimum, the table should have data rows (mock has 8 AP rows)
-      const rows = await page.getByRole("row").count();
-      expect(rows).toBeGreaterThan(1); // header + at least 1 data row
+      test.skip(!hasData, NO_DATA_REASON);
+      await gotoLoaded(page);
+      const heading = page.getByRole("heading", { name: /Chart of Accounts? Mapping/i }).first();
+      const countText = await heading.locator("xpath=..").innerText();
+      const m = countText.match(/([\d,]+)\s*$/);
+      expect(m, `heading count not found in: ${countText}`).not.toBeNull();
+      expect(Number(m![1].replace(/,/g, ""))).toBe(await paginationTotal(page));
     },
   );
 
   // ------------------------------------------------------------------
-  // TC-ACMAP-400004 — Mapped column shows ✓ / ✗ icons
+  // TC-ACMAP-400004 — Status chip filters rows
   // ------------------------------------------------------------------
   test(
-    "TC-ACMAP-400004 คอลัมน์ Mapped แสดงเครื่องหมายถูก/กากบาทตามสถานะ",
+    "TC-ACMAP-400004 กด chip สถานะ Incomplete แล้วตารางเหลือเฉพาะแถว Incomplete",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping; ข้อมูลมีทั้งแถวที่ผูกแล้วและยังไม่ผูก" },
-        { type: "steps", description: "1. ดูคอลัมน์ Mapped ของแถวต่างๆ" },
-        { type: "expected", description: "แถวที่ผูกแล้วแสดงไอคอนเครื่องหมายถูก (Mapped) ส่วนแถวที่ยังไม่ผูกแสดงไอคอนกากบาท (Not mapped)" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping แท็บ Post to AP; ยังไม่ได้เลือก chip สถานะใด" },
+        { type: "steps", description: "1. คลิก chip Incomplete ในกลุ่ม Filter by status\n2. ดูคอลัมน์ Status ของทุกแถวในหน้าแรก\n3. คลิก chip Incomplete อีกครั้ง" },
+        { type: "expected", description: "chip Incomplete อยู่ในสถานะกด (aria-pressed=true) และทุกแถวที่เห็นมีป้าย Incomplete (หรือแสดง empty state ถ้าไม่มีแถว Incomplete); กดซ้ำแล้ว chip กลับเป็นไม่กด" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
+      test.skip(!hasData, NO_DATA_REASON);
+      await gotoLoaded(page);
+      const chip = page
+        .getByRole("group", { name: /Filter by status/i })
+        .getByRole("button", { name: /Incomplete/i });
+      await expect(chip).toHaveAttribute("aria-pressed", "false");
+      await chip.click();
       await page.waitForLoadState("networkidle");
-      // The Mapped column should contain either aria-label="Mapped" or "Not mapped" icons
-      const mappedIcons = page.locator("[aria-label='Mapped'], [aria-label='Not mapped']");
-      await expect(mappedIcons.first()).toBeVisible({ timeout: 10_000 });
+      await expect(chip).toHaveAttribute("aria-pressed", "true");
+
+      const list = new ConfigListPage(page, PATH);
+      if (await list.emptyState().first().isVisible()) return;
+      for (const row of await dataRows(page).all()) {
+        await expect(row).toContainText(/Incomplete/);
+      }
+
+      await chip.click();
+      await page.waitForLoadState("networkidle");
+      await expect(chip).toHaveAttribute("aria-pressed", "false");
     },
   );
 
   // ------------------------------------------------------------------
-  // TC-ACMAP-400006 — Toolbar shows 5 buttons
+  // TC-ACMAP-400006 — Toolbar actions
   // ------------------------------------------------------------------
   test(
-    "TC-ACMAP-400006 แถบเครื่องมือแสดงปุ่มครบทั้ง 5 ปุ่ม",
-    {
-      annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping" },
-        { type: "steps", description: "1. ดูปุ่มด้านขวาของแถบเครื่องมือ" },
-        { type: "expected", description: "เห็นปุ่มครบทั้ง 5 ปุ่มและกดได้: Import, Export, Scan for New Code, Bulk Map, Edit" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Functional" },
-      ],
-    },
-    async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
-      await expect(page.getByRole("button", { name: /Import/i }).first()).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByRole("button", { name: /Export/i }).first()).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByRole("button", { name: /Scan|Edit|Bulk/i }).first()).toBeVisible({ timeout: 10_000 });
-    },
-  );
-
-  // ------------------------------------------------------------------
-  // TC-ACMAP-400007 — Each row has pencil button only
-  // ------------------------------------------------------------------
-  test(
-    "TC-ACMAP-400007 แต่ละแถวมีเฉพาะปุ่มดินสอในคอลัมน์ท้ายสุด",
+    "TC-ACMAP-400006 ปุ่ม Generate แสดงเสมอ ส่วน Edit / Mark as reviewed แสดงเมื่อเลือกแถว",
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping และตารางมีข้อมูลอย่างน้อย 1 แถว" },
-        { type: "steps", description: "1. ดูคอลัมน์ท้ายสุดของแถวแรก" },
-        { type: "expected", description: "แถวมีปุ่มดินสอ (aria-label Edit) ในคอลัมน์ท้ายสุด" },
+        { type: "steps", description: "1. ดูปุ่มด้านขวาของหัวหน้า\n2. ติ๊ก checkbox ของแถวแรก\n3. ดูปุ่มด้านขวาอีกครั้ง\n4. เอาติ๊กออก" },
+        { type: "expected", description: "ก่อนเลือกเห็นปุ่ม Generate mapping rows แต่ไม่เห็นปุ่ม Edit / Mark as reviewed; หลังเลือก 1 แถวเห็นปุ่ม Edit (1) และ Mark as reviewed (1); เอาติ๊กออกแล้วสองปุ่มนั้นหายไป" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
-      // Look for the edit button in the first data row
-      const firstDataRow = page.getByRole("row").nth(1);
-      await expect(firstDataRow).toBeVisible({ timeout: 10_000 });
-      // Edit button should exist in the row (aria-label or title "Edit")
-      const editBtn = firstDataRow.getByRole("button", { name: /Edit/i }).first();
-      await expect(editBtn).toBeVisible();
+      test.skip(!hasData, NO_DATA_REASON);
+      await gotoLoaded(page);
+      await expect(page.getByRole("button", { name: /Generate mapping rows/i })).toBeVisible();
+      const editSelected = page.getByRole("button", { name: /^Edit\s*\(1\)$/i });
+      const markReviewed = page.getByRole("button", { name: /Mark as reviewed\s*\(1\)/i });
+      await expect(markReviewed).toHaveCount(0);
+
+      const rowCheckbox = dataRows(page).first().getByRole("checkbox");
+      await rowCheckbox.click();
+      await expect(editSelected).toBeVisible();
+      await expect(markReviewed).toBeVisible();
+
+      await rowCheckbox.click();
+      await expect(markReviewed).toHaveCount(0);
+    },
+  );
+
+  // ------------------------------------------------------------------
+  // TC-ACMAP-400007 — Clicking Location opens the edit sheet
+  // ------------------------------------------------------------------
+  test(
+    "TC-ACMAP-400007 คลิกชื่อ Location ในแถวแล้วเปิดหน้าต่าง Edit mapping",
+    {
+      annotation: [
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping และตารางมีข้อมูลอย่างน้อย 1 แถว" },
+        { type: "steps", description: "1. คลิกชื่อ Location ของแถวแรก\n2. ดูหน้าต่างที่เปิดขึ้น\n3. กด Escape" },
+        { type: "expected", description: "เปิด sheet หัวข้อ Edit mapping และปิดได้ด้วย Escape โดยไม่บันทึกอะไร" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Functional" },
+      ],
+    },
+    async ({ page }) => {
+      test.skip(!hasData, NO_DATA_REASON);
+      await gotoLoaded(page);
+      await dataRows(page).first().getByRole("button").first().click();
+      const sheet = page.getByRole("dialog");
+      await expect(sheet.getByText(/Edit mapping/i).first()).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press("Escape");
+      await expect(sheet).toHaveCount(0);
     },
   );
 
@@ -349,26 +432,25 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-account-mapping; ช่อง Search ว่างอยู่" },
         { type: "steps", description: "1. พิมพ์คำค้นลงในช่อง Search โดยยังไม่กด Enter\n2. คลิกพื้นที่ว่างนอกช่อง Search" },
-        { type: "expected", description: "จำนวนแถวในตารางและตัวเลขบนหัวแท็บยังเท่าเดิม (การค้นหาทำงานเมื่อกด Enter เท่านั้น)" },
+        { type: "expected", description: "จำนวนแถวในตารางและจำนวนรวมในแถบ pagination ยังเท่าเดิม (การค้นหาทำงานเมื่อกด Enter เท่านั้น)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
-      const rowsBefore = await page.getByRole("row").count();
+      test.skip(!hasData, NO_DATA_REASON);
+      await gotoLoaded(page);
+      const rowsBefore = await dataRows(page).count();
+      const totalBefore = await paginationTotal(page);
 
-      // Type without pressing Enter
       const searchInput = page.getByPlaceholder(/Search/i).first();
       await searchInput.click();
       await searchInput.pressSequentially("zzzno_match", { delay: 20 });
-      // Click away
       await page.locator("body").click({ position: { x: 10, y: 10 } });
       await page.waitForTimeout(500);
 
-      const rowsAfter = await page.getByRole("row").count();
-      expect(rowsAfter).toBe(rowsBefore);
+      expect(await dataRows(page).count()).toBe(rowsBefore);
+      expect(await paginationTotal(page)).toBe(totalBefore);
     },
   );
 });

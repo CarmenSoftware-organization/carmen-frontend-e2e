@@ -16,8 +16,8 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | Running cases asserting only through a page-object helper | 38 |
 | **Running cases asserting nothing at all** | **285** |
 | Running cases whose assertions are all trivial | 25 |
-| Running cases behind an in-body skip guard | 239 |
-| Assertions in running cases | 1522 |
+| Running cases behind an in-body skip guard | 248 |
+| Assertions in running cases | 1534 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -78,7 +78,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `042-tax-profile.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 34 | 0 |
 | `044-eco.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 28 | 1 |
 | `080-location.spec.ts` | 17 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 37 | 0 |
-| `081-chart-of-account-mapping.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 26 | 0 |
+| `081-chart-of-account-mapping.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | **9** | 38 | 0 |
 | `082-chart-of-accounts.spec.ts` | 16 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 37 | 1 |
 | `110-op-category.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 28 | 4 |
 | `121-recipe-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
