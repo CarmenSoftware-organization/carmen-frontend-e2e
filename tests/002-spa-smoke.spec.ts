@@ -154,7 +154,7 @@ test.describe("SPA Smoke — procurement", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น admin ผ่าน auth fixture" },
-        { type: "steps", description: "1. /procurement/purchase-request คลิกปุ่มแถวแรกใน tbody 2. /procurement 3. /procurement/approval" },
+        { type: "steps", description: "1. /procurement/purchase-request คลิกปุ่มแถวแรกใน tbody 2. /procurement 3. /procurement/my-approval" },
         { type: "expected", description: "คลิกแล้ว URL เป็น /purchase-request/<id> (ข้ามถ้า list ว่าง); landing + approval ไม่เป็น 404" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Smoke" },
@@ -173,7 +173,7 @@ test.describe("SPA Smoke — procurement", () => {
         });
       }
 
-      for (const path of ["/procurement", "/procurement/approval"]) {
+      for (const path of ["/procurement", "/procurement/my-approval"]) {
         await page.goto(path);
         await expect(page.getByText(/404|not found/i)).toHaveCount(0);
       }
