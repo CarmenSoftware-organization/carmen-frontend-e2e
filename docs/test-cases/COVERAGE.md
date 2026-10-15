@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **175 routes** across **100 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **187 routes** across **112 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
@@ -10,7 +10,7 @@ Parsed from the frontend router (`routes/router.tsx`): **175 routes** across **1
 | --- | --- | --- |
 | ✅ spec | an automated Playwright spec drives this module | 46 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
-| ❌ none | neither — this is the coverage gap | 14 |
+| ❌ none | neither — this is the coverage gap | 26 |
 
 ## *
 
@@ -23,7 +23,9 @@ Parsed from the frontend router (`routes/router.tsx`): **175 routes** across **1
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
 | `/accounting` | 14 | — | — | ❌ none |
-| `/accounting/accounts-payable` | 5 | — | — | ❌ none |
+| `/accounting/accounts-payable` | 1 | — | — | ❌ none |
+| `/accounting/accounts-payable/invoice` | 2 | — | — | ❌ none |
+| `/accounting/accounts-payable/payment` | 2 | — | — | ❌ none |
 | `/accounting/accounts-payable/payment-approvals` | 1 _(redirect → `/accounting/accounts-payable/payment?lifecycle=submitted`)_ | — | — | ❌ none |
 | `/accounting/accounts-receivable/invoice` | 2 | — | — | ❌ none |
 | `/accounting/journal-voucher` | 2 | — | — | ❌ none |
@@ -36,21 +38,31 @@ Parsed from the frontend router (`routes/router.tsx`): **175 routes** across **1
 | `/config/account-grouping` | 1 | — | — | ❌ none |
 | `/config/account-mapping` | 1 _(redirect → `/config/chart-of-account-mapping`)_ | `081-chart-of-account-mapping.spec.ts` | — | ✅ spec |
 | `/config/adjustment-type` | 1 | `031-adjustment-type.spec.ts` | — | ✅ spec |
+| `/config/asset-category` | 1 | — | — | ❌ none |
+| `/config/bank-account` | 1 | — | — | ❌ none |
 | `/config/business-type` | 1 | `029-business-type.spec.ts` | — | ✅ spec |
 | `/config/chart-of-account-mapping` | 1 | `081-chart-of-account-mapping.spec.ts` | — | ✅ spec |
-| `/config/chart-of-accounts` | 1 | `082-chart-of-accounts.spec.ts` | — | ✅ spec |
+| `/config/chart-of-accounts` | 3 | `082-chart-of-accounts.spec.ts` | — | ✅ spec |
+| `/config/cost-center` | 1 | — | — | ❌ none |
+| `/config/cost-center-group` | 1 | — | — | ❌ none |
 | `/config/credit-note-reason` | 1 | `602-cn-reason.spec.ts` | — | ✅ spec |
 | `/config/credit-term` | 1 | `032-credit-term.spec.ts` | — | ✅ spec |
 | `/config/currency` | 1 | `040-currency.spec.ts` | — | ✅ spec |
 | `/config/delivery-point` | 1 | `079-delivery-point.spec.ts` | — | ✅ spec |
 | `/config/department` | 3 | `002-spa-smoke.spec.ts`<br>`010-department.spec.ts` | — | ✅ spec |
+| `/config/dimension` | 1 | — | — | ❌ none |
 | `/config/exchange-rate` | 1 | `041-exchange-rate.spec.ts` | — | ✅ spec |
 | `/config/extra-cost` | 1 | `030-extra-cost.spec.ts` | — | ✅ spec |
+| `/config/gl-period` | 1 | — | — | ❌ none |
+| `/config/jv-prefix` | 1 | — | — | ❌ none |
 | `/config/location` | 3 | `080-location.spec.ts` | — | ✅ spec |
+| `/config/payment-type` | 1 | — | — | ❌ none |
 | `/config/shelf` | 1 | `083-shelf.spec.ts` | — | ✅ spec |
 | `/config/tax-profile` | 1 | `042-tax-profile.spec.ts` | — | ✅ spec |
 | `/config/title-master` | 1 | — | — | ❌ none |
 | `/config/unit` | 1 | `002-spa-smoke.spec.ts`<br>`020-unit.spec.ts` | — | ✅ spec |
+| `/config/wht-form` | 1 | — | — | ❌ none |
+| `/config/wht-service-type` | 1 | — | — | ❌ none |
 
 ## Dashboard
 

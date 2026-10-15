@@ -11,7 +11,7 @@ _Generated from `tests/081-chart-of-account-mapping.spec.ts` annotations. Edit a
 
 | TC | Title | Priority | Test Type |
 | --- | --- | --- | --- |
-| TC-ACMAP-010001 | แสดงหน้า Chart of Account Mapping พร้อมตารางของแท็บ AP | High | Smoke |
+| TC-ACMAP-010001 | แสดงหน้า Chart of Accounts Mapping พร้อมตารางของแท็บ AP | High | Smoke |
 | TC-ACMAP-010002 | ตารางแสดงคอลัมน์ครบตามที่กำหนด | High | Functional |
 | TC-ACMAP-010003 | ค้นหาด้วยรหัสบัญชี (Account Code) | High | Functional |
 | TC-ACMAP-010007 | ค้นหาแล้วไม่พบข้อมูล แสดง empty state | Medium | Negative |
@@ -27,7 +27,7 @@ _Generated from `tests/081-chart-of-account-mapping.spec.ts` annotations. Edit a
 
 ---
 
-## TC-ACMAP-010001 — แสดงหน้า Chart of Account Mapping พร้อมตารางของแท็บ AP
+## TC-ACMAP-010001 — แสดงหน้า Chart of Accounts Mapping พร้อมตารางของแท็บ AP
 
 > **As a** Admin user, **I want** core Chart Of Account Mapping interactions to work, **so that** day-to-day usage stays smooth.
 
@@ -44,7 +44,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; ข้
 
 **Expected**
 
-เห็นหัวข้อ Chart of Account Mapping พร้อมแถบแท็บ Posting to AP / Posting to GL โดยแท็บ Posting to AP ถูกเลือกอยู่ และตารางแสดงแถวของ mapping type AP
+เห็นหัวข้อ Chart of Accounts Mapping พร้อมแถบแท็บ Posting to AP / Posting to GL โดยแท็บ Posting to AP ถูกเลือกอยู่ และตารางแสดงแถวของ mapping type AP
 
 ---
 
@@ -300,4 +300,4 @@ Login เป็นผู้ใช้ที่ไม่ใช่ admin เช่�
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git d2b35a1</sub>
+<sub>Last regenerated: 2026-10-15 · git 3cc3d88</sub>
