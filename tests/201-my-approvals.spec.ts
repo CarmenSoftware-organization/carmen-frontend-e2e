@@ -71,7 +71,7 @@ hodTest.describe("My Approvals — Queue", () => {
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/approval\n2. ตรวจสอบว่า document count badges แสดงผลถูกต้อง\n3. ตรวจสอบว่า total pending count แสดงเด่นชัด\n4. ตรวจสอบว่าเอกสารเรียงตามวันที่ส่ง (เก่าสุดก่อน)\n5. ตรวจสอบว่า visual urgency indicators แสดงผลถูกต้อง",
+            "1. ไปที่ /procurement/my-approval\n2. ตรวจสอบว่า document count badges แสดงผลถูกต้อง\n3. ตรวจสอบว่า total pending count แสดงเด่นชัด\n4. ตรวจสอบว่าเอกสารเรียงตามวันที่ส่ง (เก่าสุดก่อน)\n5. ตรวจสอบว่า visual urgency indicators แสดงผลถูกต้อง",
         },
         { type: "expected", description: "ผู้ใช้เห็น unified approval queue ที่มีเอกสาร pending ทั้งหมด เรียงลำดับและกรองถูกต้อง พร้อม urgency indicators" },
         { type: "priority", description: "High" },
@@ -93,7 +93,7 @@ hodTest.describe("My Approvals — Queue", () => {
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/approval\n2. ตรวจสอบว่า queue ว่างเปล่าพร้อมข้อความแจ้งว่าไม่มี pending approvals",
+            "1. ไปที่ /procurement/my-approval\n2. ตรวจสอบว่า queue ว่างเปล่าพร้อมข้อความแจ้งว่าไม่มี pending approvals",
         },
         { type: "expected", description: "ผู้ใช้เห็น queue ว่างเปล่าพร้อมข้อความแจ้งว่าไม่มี pending approvals" },
         { type: "priority", description: "Medium" },
@@ -115,7 +115,7 @@ hodTest.describe("My Approvals — Queue", () => {
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/approval\n2. รอให้ queue โหลด\n3. ตรวจสอบว่า queue โหลดเสร็จภายใน 2 วินาที",
+            "1. ไปที่ /procurement/my-approval\n2. รอให้ queue โหลด\n3. ตรวจสอบว่า queue โหลดเสร็จภายใน 2 วินาที",
         },
         { type: "expected", description: "Queue โหลดเสร็จภายใน 2 วินาทีพร้อมเอกสาร pending ทั้งหมด" },
         { type: "priority", description: "High" },
@@ -136,7 +136,7 @@ requestorTest.describe("My Approvals — Queue — Permission denial", () => {
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/approval\n2. ตรวจสอบว่าระบบแสดงข้อความ error หรือ redirect ไปยังหน้า permission denied",
+            "1. ไปที่ /procurement/my-approval\n2. ตรวจสอบว่าระบบแสดงข้อความ error หรือ redirect ไปยังหน้า permission denied",
         },
         { type: "expected", description: "ผู้ใช้เห็นข้อความ error หรือถูก redirect ไปยังหน้า permission denied" },
         { type: "priority", description: "High" },

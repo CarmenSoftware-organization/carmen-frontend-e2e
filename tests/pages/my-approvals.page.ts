@@ -1,7 +1,7 @@
 import type { Page, Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
 
-export const LIST_PATH = "/procurement/approval";
+export const LIST_PATH = "/procurement/my-approval";
 export const PR_LIST_PATH = "/procurement/purchase-request";
 
 export class MyApprovalsPage extends BasePage {
