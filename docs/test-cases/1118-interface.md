@@ -65,23 +65,23 @@ Login เป็น admin@blueledgers.com; active BU = BLAVG; license ของ B
 ## TC-INTF-010002 — จัดกลุ่มตาม category พร้อมไอคอนและหัวข้อ
 **Priority:** High · **Test Type:** Functional
 **Preconditions**
-อยู่ที่หน้า `/system-admin/interface`; license ของ BU ให้สิทธิ์ครบทั้งสาม category (accounting / pos / pms)
+อยู่ที่หน้า `/system-admin/interface`; license ของ BU ให้สิทธิ์ครบทั้งสี่ category (accounting / pos / pms / export)
 **Steps**
 1. รอให้รายการโหลดเสร็จ
 2. อ่านหัวข้อของแต่ละกลุ่มบนหน้า
 **Expected**
-มีสามกลุ่มเรียงตาม registry คือ "Accounting Interface", "POS Interface" และ "PMS Interface" แต่ละกลุ่มมีไอคอนนำหน้าหัวข้อ
+มีสี่กลุ่มเรียงตาม registry คือ "Accounting Interface", "POS Interface", "PMS Interface" และ "Export tools" แต่ละกลุ่มมีไอคอนนำหน้าหัวข้อ
 
 ---
 ## TC-INTF-010003 — แสดงการ์ด brand ครบตาม registry
 **Priority:** Medium · **Test Type:** Functional
 **Preconditions**
-อยู่ที่หน้า `/system-admin/interface`; license ของ BU ให้สิทธิ์ทุก brand ในทั้งสาม category
+อยู่ที่หน้า `/system-admin/interface`; license ของ BU ให้สิทธิ์ทุก brand ในทั้งสี่ category
 **Steps**
 1. รอให้รายการโหลดเสร็จ
 2. ไล่อ่านชื่อการ์ดในแต่ละกลุ่ม
 **Expected**
-กลุ่ม Accounting มี "Carmen GL", "BlueLedgers", "External system"; กลุ่ม POS มี "Oracle Micros", "Infrasys", "Square"; กลุ่ม PMS มี "Oracle Opera", "Protel" รวม 8 การ์ด
+กลุ่ม Accounting มี "Carmen GL", "BlueLedgers"; กลุ่ม POS มี "Oracle Micros", "Infrasys", "Square"; กลุ่ม PMS มี "Oracle Opera", "Protel"; กลุ่ม Export tools มี "External system" รวม 8 การ์ดใน 4 กลุ่ม
 
 ---
 ## TC-INTF-010004 — badge สถานะ Enabled / Disabled ของแต่ละ brand

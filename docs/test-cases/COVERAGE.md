@@ -2,15 +2,15 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **187 routes** across **112 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **190 routes** across **114 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
 | Status | Meaning | Modules |
 | --- | --- | --- |
-| ✅ spec | an automated Playwright spec drives this module | 46 |
+| ✅ spec | an automated Playwright spec drives this module | 47 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
-| ❌ none | neither — this is the coverage gap | 26 |
+| ❌ none | neither — this is the coverage gap | 27 |
 
 ## *
 
@@ -121,7 +121,7 @@ Parsed from the frontend router (`routes/router.tsx`): **187 routes** across **1
 | `/operation-plan/cuisine` | 3 | `111-cuisine.spec.ts` | — | ✅ spec |
 | `/operation-plan/equipment` | 3 | — | `130-equipment.md` | 📄 catalog |
 | `/operation-plan/equipment-category` | 1 | `131-equipment-category.spec.ts` | — | ✅ spec |
-| `/operation-plan/recipe` | 3 | — | `120-recipe.md` | 📄 catalog |
+| `/operation-plan/recipe` | 4 | — | `120-recipe.md` | 📄 catalog |
 | `/operation-plan/recipe-equipment-category` | 1 | `121-recipe-equipment-category.spec.ts` | — | ✅ spec |
 
 ## pl
@@ -141,10 +141,11 @@ Parsed from the frontend router (`routes/router.tsx`): **187 routes** across **1
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
 | `/procurement` | 1 | `002-spa-smoke.spec.ts` | `1204-section-landing.md` | ✅ spec |
-| `/procurement/approval` | 1 | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`303-pr-approver-journey.spec.ts` | — | ✅ spec |
+| `/procurement/approval` | 1 _(redirect → `/procurement/my-approval`)_ | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`303-pr-approver-journey.spec.ts` | — | ✅ spec |
 | `/procurement/credit-note` | 3 | `002-spa-smoke.spec.ts`<br>`601-cn.spec.ts`<br>`603-cn-doc-flow.spec.ts` | — | ✅ spec |
 | `/procurement/goods-receive-note` | 3 | `002-spa-smoke.spec.ts`<br>`501-grn.spec.ts`<br>`710-wastage-reporting.spec.ts` | — | ✅ spec |
 | `/procurement/goods-receive-note/from-po` | 1 | — | — | ❌ none |
+| `/procurement/my-approval` | 1 | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`303-pr-approver-journey.spec.ts` | — | ✅ spec |
 | `/procurement/purchase-order` | 3 | `002-spa-smoke.spec.ts`<br>`401-po.spec.ts`<br>`402-po-purchaser-journey.spec.ts`<br>`403-po-approver-journey.spec.ts`<br>_+3 more_ | — | ✅ spec |
 | `/procurement/purchase-order/from-pr` | 1 | — | — | ❌ none |
 | `/procurement/purchase-order/from-price-list` | 1 | — | — | ❌ none |
@@ -213,6 +214,7 @@ Parsed from the frontend router (`routes/router.tsx`): **187 routes** across **1
 | `/system-admin/email-profile` | 1 | — | `1116-email-profile.md` | 📄 catalog |
 | `/system-admin/email-template` | 1 | — | `1117-email-template.md` | 📄 catalog |
 | `/system-admin/interface` | 2 | — | `1118-interface.md` | 📄 catalog |
+| `/system-admin/interface/accounting/external` | 1 _(redirect → `/system-admin/interface/export/external`)_ | — | — | ❌ none |
 | `/system-admin/inventory-period` | 1 | — | `1105-system-period.md` | 📄 catalog |
 | `/system-admin/notification-template` | 3 | — | `1104-notification-template.md` | 📄 catalog |
 | `/system-admin/period` | 1 _(redirect → `/system-admin/inventory-period`)_ | — | `1105-system-period.md` | 📄 catalog |
