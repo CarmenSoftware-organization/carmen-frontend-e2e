@@ -1,7 +1,7 @@
 ---
 title: Operation Plan — Culinary & Equipment Setup
 persona: Operation Planner
-system: Carmen Inventory — Operation Plan
+system: Carmen Blue — Operation Plan
 status: Draft
 created: 2026-06-17
 last_updated: 2026-06-17
@@ -12,7 +12,7 @@ changelog:
 
 # Operation Plan — Culinary & Equipment Setup
 
-The **Operation Planner** persona covers the culinary/operations staff who set up and maintain the master data behind menu engineering: the cuisines and categories recipes are classified by, the recipes themselves (with ingredients, yield, costing and compliance), and the kitchen equipment plus its categories. In Carmen this work happens under the **Operation Plan** module, scoped to the active business unit (default `admin@blueledgers.com`, BU = `BLAVG`).
+The **Operation Planner** persona covers the culinary/operations staff who set up and maintain the master data behind menu engineering: the cuisines and categories recipes are classified by, the recipes themselves (with ingredients, yield, costing and compliance), and the kitchen equipment plus its categories. In Carmen Blue this work happens under the **Operation Plan** module, scoped to the active business unit (default `admin@blueledgers.com`, BU = `BLAVG`).
 
 The planner's central artifact is the **Recipe** — a rich, multi-section document that pulls together classification (cuisine + category), composition (ingredients), timing & yield, a live costing console, and safety/compliance data. Everything else in the module exists to feed or support the recipe: cuisines and recipe categories classify it; recipe-equipment categories and equipment describe what the kitchen needs to produce it.
 

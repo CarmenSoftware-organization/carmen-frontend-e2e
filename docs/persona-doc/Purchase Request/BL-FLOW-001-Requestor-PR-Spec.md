@@ -1,4 +1,4 @@
-**CARMEN INVENTORY**
+**CARMEN BLUE**
 Procurement Module
 
 **Persona 1 — Requestor**
@@ -11,7 +11,7 @@ Technical Specification Document
 Date: 2026-04-03
 Status: Draft
 Version: 2.0 (Refactored)
-System: Carmen Inventory — Procurement Module
+System: Carmen Blue — Procurement Module
 Test User: requestor@zebra.com / 12345678
 URL: http://carmen-inventory.vercel.app
 
@@ -28,7 +28,7 @@ URL: http://carmen-inventory.vercel.app
 | Created | 2026-04-03 |
 | Last Updated | 2026-04-08 |
 | Author | Peak Malakul (AI-assisted) |
-| System | Carmen Inventory — Procurement Module |
+| System | Carmen Blue — Procurement Module |
 | Test User | requestor@zebra.com / 12345678 (Requestor role) |
 
 ## **Document Inventory**

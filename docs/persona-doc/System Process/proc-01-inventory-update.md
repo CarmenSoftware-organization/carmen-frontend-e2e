@@ -13,7 +13,7 @@ changelog:
 
 ## P1 Overview (Business Layer)
 
-When a transaction is confirmed, the system immediately updates the quantity recorded at the relevant storage location. The update is always location-specific — Carmen tracks QOH per product per location, not as a single warehouse-wide figure.
+When a transaction is confirmed, the system immediately updates the quantity recorded at the relevant storage location. The update is always location-specific — Carmen Blue tracks QOH per product per location, not as a single warehouse-wide figure.
 
 **Simple example — GRN arriving 50 units of Product A at Location WH-01:**
 

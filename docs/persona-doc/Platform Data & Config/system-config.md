@@ -109,7 +109,7 @@ All five live under `/system-admin/*` and are guarded — an unauthenticated req
 | | Enabled | Switch toggling `smtp_enabled`. |
 | Recipients | To | Comma-separated; parsed to an array. |
 | | CC | Comma-separated; parsed to an array. |
-| | Subject Prefix | Default `[Carmen]`. |
+| | Subject Prefix | Default `[Carmen Blue]`. |
 
 **Actions**
 

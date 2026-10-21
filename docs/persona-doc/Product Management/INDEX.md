@@ -1,7 +1,7 @@
 ---
 title: Product Management — Product Master Maintenance
 persona: Product Manager
-system: Carmen Inventory — Product Management
+system: Carmen Blue — Product Management
 status: Draft
 created: 2026-06-17
 last_updated: 2026-06-17
@@ -12,7 +12,7 @@ changelog:
 
 # Product Management — Product Master Maintenance
 
-The **Product Manager** persona owns the product master — the catalog of items that every other module (procurement, inventory, recipes) draws from. In Carmen this role maps to staff responsible for defining what a product is, how it is measured, where it is stocked, and what it costs. A well-maintained product master is the precondition for purchasing, receiving, counting, and costing, so the accuracy of this catalog is upstream of nearly everything else in the system.
+The **Product Manager** persona owns the product master — the catalog of items that every other module (procurement, inventory, recipes) draws from. In Carmen Blue this role maps to staff responsible for defining what a product is, how it is measured, where it is stocked, and what it costs. A well-maintained product master is the precondition for purchasing, receiving, counting, and costing, so the accuracy of this catalog is upstream of nearly everything else in the system.
 
 This persona works almost entirely inside **Product Management → Product**: browsing/searching the catalog, registering new products with their identification, units, locations, pricing and attributes, then keeping them current (edits, status changes, eco-label certifications) or retiring them.
 

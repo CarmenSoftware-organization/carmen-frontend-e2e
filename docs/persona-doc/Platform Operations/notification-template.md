@@ -10,7 +10,7 @@ last_updated: 2026-06-17
 
 # Notification Template — Platform Administrator Journey
 
-> The CRUD surface for the messages Carmen sends across its delivery channels. The Platform Administrator authors, edits and retires templates here.
+> The CRUD surface for the messages Carmen Blue sends across its delivery channels. The Platform Administrator authors, edits and retires templates here.
 
 ---
 

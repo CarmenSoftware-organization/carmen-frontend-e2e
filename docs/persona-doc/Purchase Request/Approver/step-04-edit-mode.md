@@ -36,7 +36,7 @@ graph TD
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐
-│ CARMEN  Procurement › Purchase Request        [Cancel]  [Save]  [💬]  [Asset]  │
+│ CARMEN BLUE  Procurement › Purchase Request   [Cancel]  [Save]  [💬]  [Asset]  │
 ├──────────────────────────────────────────────────────────────────────────────────┤
 │  ◄ PR20260400002  [IN PROGRESS]                                                  │
 │  Date: 2026-04-03    Objective: dffn (HOD) วัลภา    Department: Guest Service   │

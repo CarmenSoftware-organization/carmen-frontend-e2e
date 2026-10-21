@@ -728,7 +728,7 @@ success toast ('deleted/success/สำเร็จ') ปรากฏภายใ
 
 **Preconditions**
 
-Login เข้า Carmen Inventory พร้อมสิทธิ์ดู template
+Login เข้า Carmen Blue พร้อมสิทธิ์ดู template
 
 **Steps**
 
@@ -753,7 +753,7 @@ Login เข้า Carmen Inventory พร้อมสิทธิ์ดู temp
 
 **Preconditions**
 
-Login เข้า Carmen Inventory พร้อมสิทธิ์ดู template
+Login เข้า Carmen Blue พร้อมสิทธิ์ดู template
 
 **Steps**
 
@@ -776,7 +776,7 @@ Login เข้า Carmen Inventory พร้อมสิทธิ์ดู temp
 
 **Preconditions**
 
-Login เข้า Carmen Inventory แต่ไม่มีสิทธิ์ดู template
+Login เข้า Carmen Blue แต่ไม่มีสิทธิ์ดู template
 
 **Steps**
 
@@ -797,7 +797,7 @@ Login เข้า Carmen Inventory แต่ไม่มีสิทธิ์�
 
 **Preconditions**
 
-Login เข้า Carmen Inventory พร้อมสิทธิ์ดู template
+Login เข้า Carmen Blue พร้อมสิทธิ์ดู template
 
 **Steps**
 
@@ -823,7 +823,7 @@ Login เข้า Carmen Inventory พร้อมสิทธิ์ดู temp
 
 **Preconditions**
 
-Login เข้า Carmen Inventory พร้อมสิทธิ์ดู template
+Login เข้า Carmen Blue พร้อมสิทธิ์ดู template
 
 **Steps**
 

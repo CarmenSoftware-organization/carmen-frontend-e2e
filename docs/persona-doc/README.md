@@ -1,6 +1,6 @@
 # Persona Docs
 
-Persona- and journey-oriented source documentation for the Carmen Inventory app. Each area folder describes how a persona moves through a module: screens, key fields/columns, actions, validation, and the test cases that cover each step.
+Persona- and journey-oriented source documentation for the Carmen Blue app. Each area folder describes how a persona moves through a module: screens, key fields/columns, actions, validation, and the test cases that cover each step.
 
 These complement two other layers:
 - **`../test-cases/`** — per-module test-case catalogs (TC-ID, preconditions, steps, expected).

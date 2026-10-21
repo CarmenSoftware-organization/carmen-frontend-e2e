@@ -1,7 +1,7 @@
 ---
 title: Store Operation — Store Manager Workflows
 persona: Store Manager
-system: Carmen Inventory — Store Operation
+system: Carmen Blue — Store Operation
 status: Draft
 created: 2026-06-17
 last_updated: 2026-06-17

@@ -8,7 +8,7 @@ changelog:
   - 1.3.0 | 2026-04-27 | Renamed tx-05 row to Sales Consumption (SC); added tx-11 Wastage Report (WR) row to matrix, swim lane, document index, and persona cross-links; added WR note clarifying WR ≠ ADJ
 ---
 
-# System Processes — Carmen Inventory
+# System Processes — Carmen Blue
 
 This folder documents **what the system does** underneath each transaction, across three cross-cutting processes. It complements the persona workflow docs (01–05) which describe *what users do*.
 

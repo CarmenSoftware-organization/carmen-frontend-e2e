@@ -108,7 +108,7 @@ URL ยังเป็น `/privacy`; แสดง eyebrow `Legal`, หัวข
 **Steps**
 1. คลิกลิงก์ `CARMEN BLUE` ที่มุมขวาบนของ header
 2. กลับมาที่ `/terms` อีกครั้ง
-3. คลิกโลโก้ Carmen (รูปที่มี alt ว่า `Carmen`) ที่มุมซ้ายบนของ header
+3. คลิกโลโก้ Carmen Blue (รูปที่มี alt ว่า `Carmen Blue`) ที่มุมซ้ายบนของ header
 **Expected**
 ทั้งขั้นที่ 1 และขั้นที่ 3 นำทางไปที่ `/login` และแสดงฟอร์มเข้าสู่ระบบ
 

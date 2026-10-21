@@ -1,7 +1,7 @@
 ---
 title: Creator — Purchase Request Workflow
 persona: Creator (Requestor)
-system: Carmen Inventory — Procurement Module
+system: Carmen Blue — Procurement Module
 status: Draft
 created: 2026-04-10
 test_user: requestor@zebra.com / 12345678
@@ -14,7 +14,7 @@ changelog:
 
 # Creator — Purchase Request Workflow
 
-The **Creator** persona covers staff who originate purchase requests. In Carmen, this role maps to the user type _Requestor_ (Staff, Chef, Housekeeping Manager, Engineers, Counter Staff, etc.).
+The **Creator** persona covers staff who originate purchase requests. In Carmen Blue, this role maps to the user type _Requestor_ (Staff, Chef, Housekeeping Manager, Engineers, Counter Staff, etc.).
 
 ---
 

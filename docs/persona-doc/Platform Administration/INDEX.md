@@ -1,7 +1,7 @@
 ---
 title: Platform Administration — Identity & Access
 persona: Platform Administrator
-system: Carmen Inventory — System Admin
+system: Carmen Blue — System Admin
 status: Draft
 created: 2026-06-17
 version: 1.0.0
@@ -12,7 +12,7 @@ changelog:
 
 # Platform Administration — Identity & Access
 
-The **Platform Administrator** is the system-owner persona for Carmen Inventory. They operate inside the **System Admin** area (`/system-admin/*`) and are responsible for *who can do what, where*. Three modules make up their Identity & Access toolkit:
+The **Platform Administrator** is the system-owner persona for Carmen Blue. They operate inside the **System Admin** area (`/system-admin/*`) and are responsible for *who can do what, where*. Three modules make up their Identity & Access toolkit:
 
 - **Role & Permissions** — define reusable permission bundles (a role is a name plus a set of granted `resource.action` permissions across categories like Configuration, Procurement, Inventory).
 - **User Management** — assign those roles to existing people, review their department membership, and grant the locations they can operate at. (There is no "create user" screen — users already exist; the admin *assigns* access.)
