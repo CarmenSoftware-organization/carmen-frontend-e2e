@@ -1,7 +1,7 @@
 ---
 title: Recipe — Operation Planner Journey
 persona: Operation Planner
-system: Carmen Inventory — Operation Plan
+system: Carmen Blue — Operation Plan
 module: Recipe
 route: routes/operation-plan/recipe
 url: /operation-plan/recipe

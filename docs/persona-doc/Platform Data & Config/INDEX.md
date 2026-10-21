@@ -1,7 +1,7 @@
 ---
 title: Platform Data & Config — Documents, Datasets & System Config
 persona: Platform Administrator
-system: Carmen Inventory — System Admin
+system: Carmen Blue — System Admin
 status: Draft
 created: 2026-06-17
 last_updated: 2026-06-17
@@ -12,7 +12,7 @@ changelog:
 
 # Platform Data & Config — Documents, Datasets & System Config
 
-The **Platform Administrator** persona covers the tenant-level operator who keeps the Carmen Inventory platform running: maintaining shared files, authoring reporting datasets, defining document numbering, configuring outbound email, and shaping the signature blocks that appear on printed documents. These screens all live under **System Admin** (`/system-admin/*`) and are not part of any day-to-day procurement flow — they are the infrastructure the procurement modules depend on.
+The **Platform Administrator** persona covers the tenant-level operator who keeps the Carmen Blue platform running: maintaining shared files, authoring reporting datasets, defining document numbering, configuring outbound email, and shaping the signature blocks that appear on printed documents. These screens all live under **System Admin** (`/system-admin/*`) and are not part of any day-to-day procurement flow — they are the infrastructure the procurement modules depend on.
 
 This folder groups six modules in the **Data & Config** area:
 

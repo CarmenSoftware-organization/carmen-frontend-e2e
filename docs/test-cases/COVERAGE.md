@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **190 routes** across **114 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **193 routes** across **116 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
@@ -10,7 +10,7 @@ Parsed from the frontend router (`routes/router.tsx`): **190 routes** across **1
 | --- | --- | --- |
 | ✅ spec | an automated Playwright spec drives this module | 47 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
-| ❌ none | neither — this is the coverage gap | 27 |
+| ❌ none | neither — this is the coverage gap | 29 |
 
 ## *
 
@@ -29,6 +29,7 @@ Parsed from the frontend router (`routes/router.tsx`): **190 routes** across **1
 | `/accounting/accounts-payable/payment-approvals` | 1 _(redirect → `/accounting/accounts-payable/payment?lifecycle=submitted`)_ | — | — | ❌ none |
 | `/accounting/accounts-receivable/invoice` | 2 | — | — | ❌ none |
 | `/accounting/journal-voucher` | 2 | — | — | ❌ none |
+| `/accounting/settings` | 1 | — | — | ❌ none |
 
 ## Config (master data)
 
@@ -76,6 +77,12 @@ Parsed from the frontend router (`routes/router.tsx`): **190 routes** across **1
 | --- | --- | --- | --- | --- |
 | `/design-system` | 1 | — | — | ❌ none |
 
+## developers
+
+| Module | Routes | Spec | Catalog | Status |
+| --- | --- | --- | --- | --- |
+| `/developers/api` | 1 | — | — | ❌ none |
+
 ## forgot-password
 
 | Module | Routes | Spec | Catalog | Status |
@@ -90,7 +97,7 @@ Parsed from the frontend router (`routes/router.tsx`): **190 routes** across **1
 | `/inventory-management/inventory-adjustment` | 3 | — | — | ❌ none |
 | `/inventory-management/period-end` | 2 | `900-period-end.spec.ts`<br>`914-period-close-out-of-period-docs.spec.ts`<br>`918-period-close-start.spec.ts`<br>`920-period-close-close-gate.spec.ts`<br>_+2 more_ | — | ✅ spec |
 | `/inventory-management/physical-count` | 5 | — | `750-physical-count.md` | 📄 catalog |
-| `/inventory-management/spot-check` | 4 | — | `760-spot-check.md` | 📄 catalog |
+| `/inventory-management/spot-check` | 5 | — | `760-spot-check.md` | 📄 catalog |
 | `/inventory-management/transaction` | 1 | — | `740-stock-transaction.md` | 📄 catalog |
 
 ## invitations

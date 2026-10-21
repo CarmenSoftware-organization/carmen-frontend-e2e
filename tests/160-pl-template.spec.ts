@@ -671,7 +671,7 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
     "TC-PT-060001 Search and View Templates - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "Login เข้า Carmen Inventory พร้อมสิทธิ์ดู template" },
+        { type: "preconditions", description: "Login เข้า Carmen Blue พร้อมสิทธิ์ดู template" },
         {
           type: "steps",
           description:
@@ -696,7 +696,7 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
     "TC-PT-060002 Search and View Templates - Negative - Invalid Search Term",
     {
       annotation: [
-        { type: "preconditions", description: "Login เข้า Carmen Inventory พร้อมสิทธิ์ดู template" },
+        { type: "preconditions", description: "Login เข้า Carmen Blue พร้อมสิทธิ์ดู template" },
         {
           type: "steps",
           description:
@@ -724,7 +724,7 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
     "TC-PT-060004 Search and View Templates - Edge Case - Filter by Product Count",
     {
       annotation: [
-        { type: "preconditions", description: "Login เข้า Carmen Inventory พร้อมสิทธิ์ดู template" },
+        { type: "preconditions", description: "Login เข้า Carmen Blue พร้อมสิทธิ์ดู template" },
         {
           type: "steps",
           description:
@@ -756,7 +756,7 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
     "TC-PT-060005 Search and View Templates - Edge Case - Sort by Name (Z-A)",
     {
       annotation: [
-        { type: "preconditions", description: "Login เข้า Carmen Inventory พร้อมสิทธิ์ดู template" },
+        { type: "preconditions", description: "Login เข้า Carmen Blue พร้อมสิทธิ์ดู template" },
         {
           type: "steps",
           description:
@@ -802,7 +802,7 @@ procurementStaffTest.describe("Pricelist Template — Search and View — Permis
     "TC-PT-060003 Search and View Templates - Negative - Insufficient Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เข้า Carmen Inventory แต่ไม่มีสิทธิ์ดู template" },
+        { type: "preconditions", description: "Login เข้า Carmen Blue แต่ไม่มีสิทธิ์ดู template" },
         { type: "steps", description: "1. ไปที่ /vendor-management/price-list-template" },
         { type: "expected", description: "ระบบ redirect ผู้ใช้ไปยังหน้าไม่มีสิทธิ์เข้าถึงหรือแสดงข้อความปฏิเสธสิทธิ์" },
         { type: "priority", description: "High" },

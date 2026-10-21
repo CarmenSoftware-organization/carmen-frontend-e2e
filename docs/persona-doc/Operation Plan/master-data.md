@@ -1,7 +1,7 @@
 ---
 title: Operation Plan Master Data — Operation Planner Journey
 persona: Operation Planner
-system: Carmen Inventory — Operation Plan
+system: Carmen Blue — Operation Plan
 modules: [Recipe Category, Cuisine Type, Equipment, Equipment Category, Recipe Equipment Category]
 status: Draft
 created: 2026-06-17

@@ -49,12 +49,12 @@ QOH at the mapped inventory location decreases by the ingredient quantity consum
 **Step 2 — Lot Management:**  
 The oldest lot at the source inventory location is consumed first. If the consumed qty spans multiple lots, each is reduced in chronological order until the ingredient qty is satisfied. Lot closed if fully consumed.
 
-> ⚠️ **Discrepancy:** BRD (BR-SC-COST-001) specifies FIFO or Periodic Average as valuation method but does not explicitly state an oldest-first lot selection rule. The oldest-first assumption here is inherited from `proc-02-lot-management.md`. Verify whether FIFO valuation always implies oldest-lot selection in the Carmen implementation.
+> ⚠️ **Discrepancy:** BRD (BR-SC-COST-001) specifies FIFO or Periodic Average as valuation method but does not explicitly state an oldest-first lot selection rule. The oldest-first assumption here is inherited from `proc-02-lot-management.md`. Verify whether FIFO valuation always implies oldest-lot selection in the Carmen Blue implementation.
 
 **Step 3 — Cost Calculation:**  
 - **AVCO / Periodic Average:** COGS = ingredient qty × current average unit cost at the location. Cost captured at **time of SC posting**, not time of POS sale (BR-SC-COST-002).
 - **FIFO:** COGS = oldest lot qty × oldest unit cost, rolling across layers if ingredient qty spans multiple lots.
-- Revenue from the POS sale (totalRevenue) is stored on the SC header for analytics **but does not post to any revenue ledger** (BR-SC-COST-003). Revenue posting is the responsibility of the POS / Finance module, not Carmen inventory.
+- Revenue from the POS sale (totalRevenue) is stored on the SC header for analytics **but does not post to any revenue ledger** (BR-SC-COST-003). Revenue posting is the responsibility of the POS / Finance module, not Carmen Blue inventory.
 
 ---
 
@@ -140,7 +140,7 @@ sequenceDiagram
 | BR-09 | Supplemental SC (suffix -SUP1, -SUP2, …) links to parent SC; posted immediately on resolution | BR-SC-SUP-001..005 |
 | BR-10 | Manager void requires a reason (≥10 chars); reverses all inventory transactions; cascades to Supplemental SCs | BR-SC-VOID-001..005 |
 | BR-11 | Unit cost captured at time of SC posting, not time of POS sale | BR-SC-COST-002 |
-| BR-12 | POS sale revenue is informational only — does not post to the Carmen revenue ledger | BR-SC-COST-003 |
+| BR-12 | POS sale revenue is informational only — does not post to the Carmen Blue revenue ledger | BR-SC-COST-003 |
 
 ---
 
@@ -165,7 +165,7 @@ sequenceDiagram
 | POS void arrives after SC posted | `VOID_AFTER_POST` — system auto-generates reversing line in next open SC |
 | Refund from prior shift or day | `REFUND_PARTIAL` — manager confirms; reversing line linked to original SC |
 | Sale timestamp >7 days old | `STALE_TRANSACTION` — manager decides: post or discard |
-| POS currency ≠ Carmen location currency | SC blocked (`CURRENCY_MISMATCH`) until FX rate added |
+| POS currency ≠ Carmen Blue location currency | SC blocked (`CURRENCY_MISMATCH`) until FX rate added |
 | Manager voids entire SC | All posted inventory transactions reversed; Supplemental SCs also voided (BR-SC-VOID-005) |
 | Ingredient has no stock (zero QOH) | TBC — whether SC posts to negative QOH or routes to exception |
 | Expired lot reached during FIFO consumption | TBC — whether expiry is enforced or oldest lot consumed regardless |

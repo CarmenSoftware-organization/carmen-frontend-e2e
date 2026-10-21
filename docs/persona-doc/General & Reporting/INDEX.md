@@ -1,7 +1,7 @@
 ---
 title: General & Reporting — Everyday User Experience
 persona: Any Authenticated User
-system: Carmen Inventory — Cross-cutting
+system: Carmen Blue — Cross-cutting
 status: Draft
 created: 2026-06-17
 last_updated: 2026-06-17

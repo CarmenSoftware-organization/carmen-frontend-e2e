@@ -1,7 +1,7 @@
 ---
 title: Platform Operations — Notifications, Periods & Audit
 persona: Platform Administrator
-system: Carmen Inventory — System Admin
+system: Carmen Blue — System Admin
 status: Draft
 created: 2026-06-17
 last_updated: 2026-06-17
@@ -12,7 +12,7 @@ changelog:
 
 # Platform Operations — Notifications, Periods & Audit
 
-The **Platform Administrator** persona covers the back-office operator who keeps the Carmen Inventory platform configured and observable. Within the **System Admin** area this persona owns three responsibilities:
+The **Platform Administrator** persona covers the back-office operator who keeps the Carmen Blue platform configured and observable. Within the **System Admin** area this persona owns three responsibilities:
 
 1. **Configure notification templates** — author the messages the platform sends across App, Email, LINE and SMS channels.
 2. **Manage accounting periods** — open, close and lock the fiscal periods that transactions post into, and generate periods ahead of time.

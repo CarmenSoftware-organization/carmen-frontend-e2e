@@ -1,7 +1,7 @@
 ---
 title: External Vendor — Price List Submission
 persona: External Vendor (supplier, no login)
-system: Carmen Inventory — External Vendor Portal
+system: Carmen Blue — External Vendor Portal
 status: Draft
 created: 2026-06-23
 last_updated: 2026-06-23
@@ -13,8 +13,8 @@ changelog:
 # External Vendor — Price List Submission
 
 The **External Vendor** persona is a supplier **outside** the company. They never sign in to
-Carmen. Instead, as part of a Request-for-Pricing / Campaign (see `docs/test-cases/1001-campaign.md`),
-Carmen e-mails them a **tokenized link** of the shape `/external/pl/:url_token`. Opening that link
+Carmen Blue. Instead, as part of a Request-for-Pricing / Campaign (see `docs/test-cases/1001-campaign.md`),
+Carmen Blue e-mails them a **tokenized link** of the shape `/external/pl/:url_token`. Opening that link
 loads exactly one price list, scoped entirely by the token — the vendor sees their own pricing and
 nothing else.
 

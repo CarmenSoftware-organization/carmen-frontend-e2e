@@ -12,7 +12,7 @@ changelog:
 
 # Query Dataset — SQL Workbench
 
-> The SQL Workbench is where the Platform Administrator explores the tenant database, runs read-only queries, and saves reusable database objects (views, stored procedures, functions) that downstream dashboards and reports draw from. It is the only authoring surface for these objects in Carmen Inventory.
+> The SQL Workbench is where the Platform Administrator explores the tenant database, runs read-only queries, and saves reusable database objects (views, stored procedures, functions) that downstream dashboards and reports draw from. It is the only authoring surface for these objects in Carmen Blue.
 
 ---
 

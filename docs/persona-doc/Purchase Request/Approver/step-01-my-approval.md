@@ -35,7 +35,7 @@ graph TD
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│ CARMEN  ≡  Procurement › My Approval                   [user ▾] │
+│ CARMEN BLUE  ≡  Procurement › My Approval              [user ▾] │
 ├──────────────┬──────────────────────────────────────────────────┤
 │ My Approval  │  My Approval                                     │
 │ Purchase Req │  Review and approve pending procurement requests  │

@@ -59,7 +59,7 @@ Login เป็น admin@blueledgers.com; active BU = BLAVG; license ของ B
 1. ไปที่ `/system-admin/interface`
 2. รอให้หน้าโหลดเสร็จ (skeleton หายไป)
 **Expected**
-หน้าแสดงหัวข้อ "Interfaces" และคำอธิบาย "Connections between Carmen and your accounting, POS and property systems." โดยไม่มี error state
+หน้าแสดงหัวข้อ "Interfaces" และคำอธิบาย "Connections between Carmen Blue and your accounting, POS and property systems." โดยไม่มี error state
 
 ---
 ## TC-INTF-010002 — จัดกลุ่มตาม category พร้อมไอคอนและหัวข้อ

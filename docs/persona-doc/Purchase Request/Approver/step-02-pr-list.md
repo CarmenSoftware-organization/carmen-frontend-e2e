@@ -35,7 +35,7 @@ graph TD
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────┐
-│ CARMEN  ≡  Procurement › Purchase Request                            [user ▾]  │
+│ CARMEN BLUE  ≡  Procurement › Purchase Request                       [user ▾]  │
 ├──────────────┬──────────────────────────────────────────────────────────────────┤
 │ My Approval  │  Purchase Request  [38]                                          │
 │ Purchase Req │  Manage purchase requests for your business.                     │

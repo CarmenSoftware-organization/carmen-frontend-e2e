@@ -1,7 +1,7 @@
 ---
 title: Inventory Management — Stock Controller Workflows
 persona: Inventory Controller
-system: Carmen Inventory — Inventory Management
+system: Carmen Blue — Inventory Management
 status: Draft
 created: 2026-06-17
 version: 1.0.0
@@ -12,7 +12,7 @@ changelog:
 
 # Inventory Management — Stock Controller Workflows
 
-The **Inventory Controller** persona covers staff who keep recorded stock aligned with physical stock. In Carmen this maps to roles such as Inventory Controller, Store Manager, and Storekeeper. The persona is responsible for:
+The **Inventory Controller** persona covers staff who keep recorded stock aligned with physical stock. In Carmen Blue this maps to roles such as Inventory Controller, Store Manager, and Storekeeper. The persona is responsible for:
 
 - **Manual adjustments** — recording stock-in / stock-out corrections (damage, found stock, write-off, opening balances) against an inventory or consignment location.
 - **Monitoring movement** — reviewing the read-only stock transaction ledger to see how quantity on hand changed and which source document drove each movement.

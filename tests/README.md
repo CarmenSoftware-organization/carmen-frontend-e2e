@@ -1,6 +1,6 @@
 # E2E Tests
 
-Playwright e2e test suite สำหรับ Carmen Inventory Frontend
+Playwright e2e test suite สำหรับ Carmen Blue Frontend
 ทดสอบ UI flow จริงผ่าน browser พร้อม custom JSON reporter และ sync ผลลัพธ์เข้า Google Sheets
 
 ---
