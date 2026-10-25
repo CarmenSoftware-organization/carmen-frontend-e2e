@@ -32,7 +32,7 @@ curl -s -o /dev/null -w "%{http_code}\n" http://localhost:4000
 # 4. (ไม่บังคับ) ตั้งค่า Google Sheets sync ใน .env.local — ดูหัวข้อ Sync
 ```
 
-frontend (`../carmen-inventory-frontend-react`, Vite `:3000`) ไม่ต้องสั่งเอง — Playwright `webServer` จะรัน `bun dev` ให้
+frontend (`../carmen-frontend`, Vite `:3000`) ไม่ต้องสั่งเอง — Playwright `webServer` จะรัน `bun dev` ให้
 
 > ใช้ `bun run test` ไม่ใช่ `bun test` — `bun test` เรียก test runner ของ Bun เอง ไม่ใช่ script `test`
 

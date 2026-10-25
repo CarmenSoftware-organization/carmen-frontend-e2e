@@ -1,8 +1,8 @@
-# carmen-inventory-frontend-e2e
+# carmen-frontend-e2e
 
-Playwright end-to-end test suite for the [**carmen-inventory-frontend-react**](https://github.com/CarmenSoftware-organization/carmen-inventory-frontend-react) Vite SPA.
+Playwright end-to-end test suite for the [**carmen-frontend**](https://github.com/CarmenSoftware-organization/carmen-frontend) Vite SPA.
 
-The frontend lives in a sibling directory (`../carmen-inventory-frontend-react`). This repo contains only tests, page objects, fixtures, and a CSV-to-Google-Sheets reporter — no application code.
+The frontend lives in a sibling directory (`../carmen-frontend`). This repo contains only tests, page objects, fixtures, and a CSV-to-Google-Sheets reporter — no application code.
 
 ## Quickstart
 
@@ -12,7 +12,7 @@ bun run install-browsers    # one-time: installs Chromium
 bun run test                # runs the full suite (boots the frontend via Playwright webServer)
 ```
 
-`bun run test` will spawn `bun dev` in `../carmen-inventory-frontend-react` (Vite dev server, serves on `:3000`). To test against an already running frontend (e.g. staging) set:
+`bun run test` will spawn `bun dev` in `../carmen-frontend` (Vite dev server, serves on `:3000`). To test against an already running frontend (e.g. staging) set:
 
 ```bash
 export E2E_NO_WEBSERVER=1
@@ -81,7 +81,7 @@ bun run report                  # open last HTML report
 | Variable | Required | Description | Default / Example |
 |----------|----------|-------------|-------------------|
 | `E2E_BASE_URL` | No | URL of the frontend under test | `http://localhost:3000` |
-| `E2E_FRONTEND_DIR` | No | Frontend checkout for the webServer (relative to repo root) | `../carmen-inventory-frontend-react` |
+| `E2E_FRONTEND_DIR` | No | Frontend checkout for the webServer (relative to repo root) | `../carmen-frontend` |
 | `E2E_NO_WEBSERVER` | No | `1` = don't spawn the frontend; test an already running instance | `0` |
 | `CI` | No | Set by CI: `forbidOnly` + 2 retries | — |
 | `GOOGLE_SHEETS_SA_KEY_PATH` | For `e2e:sync` | Absolute path to service-account JSON key | `/abs/path/sa.json` |
@@ -91,7 +91,7 @@ bun run report                  # open last HTML report
 | `SEED_EMAIL` / `SEED_PASSWORD` | For `seed:master` | Seeder credentials | `admin@blueledgers.com` / `12345678` |
 | `SEED_BACKEND_URL` | No | Backend URL; falls back to frontend `config.json` | `http://localhost:4000` |
 | `SEED_X_APP_ID` | No | App ID header; falls back to frontend `config.json` | — |
-| `SEED_CONFIG_PATH` | No | Frontend `config.json` to read fallbacks from | `../carmen-inventory-frontend-react/dist/config.json` |
+| `SEED_CONFIG_PATH` | No | Frontend `config.json` to read fallbacks from | `../carmen-frontend/dist/config.json` |
 | `VITE_DEV_PROXY_TARGET` | No | Only if the SPA's `BACKEND_URL` is blanked — Vite `/api` proxy target | `http://localhost:4000` |
 | `WIKI_CAPTURE_EMAIL` / `WIKI_CAPTURE_PASSWORD` | No | Shoot every wiki screen as one user (matrix ignored) | `carmensoftware.dev+admin@gmail.com` / `12345678` |
 | `WIKI_CAPTURE_DETAIL_ONLY` | No | Capture only dynamic (`:id`) routes | — |
@@ -184,7 +184,7 @@ See [docs/CONTRIBUTING.md](./docs/CONTRIBUTING.md) for setup, test-writing rules
 
 ## Default target: the React SPA
 
-By default the suite drives the **React SPA** (`../carmen-inventory-frontend-react`,
+By default the suite drives the **React SPA** (`../carmen-frontend`,
 Vite, `:3000`). The SPA reads its backend from `public/config.json`, so no dev proxy
 is required; set `VITE_DEV_PROXY_TARGET=<backend-url>` only if you blank out
 `BACKEND_URL` in that file to route `/api` through Vite's proxy instead.

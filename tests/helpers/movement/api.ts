@@ -39,7 +39,7 @@ async function resolveBackend(): Promise<Backend> {
       // frontend not running (standalone script) — fall through to the checkout's file
     }
     if (!cfg.BACKEND_URL) {
-      const dir = process.env.E2E_FRONTEND_DIR ?? "../carmen-inventory-frontend-react";
+      const dir = process.env.E2E_FRONTEND_DIR ?? "../carmen-frontend";
       const file = ["public/config.local.json", "public/config.json"]
         .map((f) => resolve(dir, f))
         .find((p) => existsSync(p));

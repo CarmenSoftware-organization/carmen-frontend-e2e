@@ -1,6 +1,6 @@
 # Test-Case Catalogs
 
-Stakeholder-friendly **test-case documentation** for the carmen-inventory-frontend-react app. These are **specification documents only** — they describe what each test case verifies (preconditions / steps / expected) but are **not yet automated Playwright specs**. They were authored by reading the actual React route modules, so every case is grounded in real UI fields, columns, filters, and flows.
+Stakeholder-friendly **test-case documentation** for the carmen-frontend app. These are **specification documents only** — they describe what each test case verifies (preconditions / steps / expected) but are **not yet automated Playwright specs**. They were authored by reading the actual React route modules, so every case is grounded in real UI fields, columns, filters, and flows.
 
 Each file follows the TC-ID scheme in [`../test-id-scheme.md`](../test-id-scheme.md): `TC-<PREFIX>-<SS><NNNN>` (SS = section block, NNNN = sequence). Titles / preconditions / steps / expected are in Thai (matching the suite); Priority and Test Type are in English.
 

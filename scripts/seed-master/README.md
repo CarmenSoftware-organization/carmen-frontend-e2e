@@ -19,7 +19,7 @@ mutates a backend automatically.
    # Optional — fall back to the frontend config.json when unset:
    # SEED_BACKEND_URL=http://localhost:4000
    # SEED_X_APP_ID=...
-   # SEED_CONFIG_PATH=../carmen-inventory-frontend-react/dist/config.json
+   # SEED_CONFIG_PATH=../carmen-frontend/dist/config.json
    ```
 
    `SEED_BU_CODE`, `SEED_EMAIL`, `SEED_PASSWORD` are required (`--bu` can supply

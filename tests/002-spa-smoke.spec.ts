@@ -1,5 +1,5 @@
 /**
- * SPA cross-section smoke — ย้ายมาจาก carmen-inventory-frontend-react/e2e/
+ * SPA cross-section smoke — ย้ายมาจาก carmen-frontend/e2e/
  * (login-page / authenticated-config / authenticated-procurement /
  * authenticated-shell specs ของ repo SPA เดิม รวมเป็นไฟล์เดียวตาม convention ที่นี่)
  *
@@ -7,8 +7,8 @@
  * E2E_BASE_URL — ใช้ได้ทั้งแอป Next เดิมและ React SPA) boot + auth guard +
  * ทุก section หลัก render ได้จริง โดยไม่เจาะลึกราย module (มี spec รายโมดูลอยู่แล้ว)
  *
- * หมายเหตุ SPA (carmen-inventory-frontend-react):
- *   E2E_FRONTEND_DIR=../carmen-inventory-frontend-react \
+ * หมายเหตุ SPA (carmen-frontend):
+ *   E2E_FRONTEND_DIR=../carmen-frontend \
  *   VITE_DEV_PROXY_TARGET=<backend-url> bun e2e
  *   (Vite dev server รับ env ผ่าน webServer; ดู README "Testing the React SPA")
  */

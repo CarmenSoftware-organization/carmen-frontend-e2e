@@ -44,7 +44,7 @@ import {
 } from "./lib/screen-crawl";
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
-const FRONTEND_DIR = process.env.E2E_FRONTEND_DIR ?? "../carmen-inventory-frontend-react";
+const FRONTEND_DIR = process.env.E2E_FRONTEND_DIR ?? "../carmen-frontend";
 const START_FRONTEND = process.env.E2E_NO_WEBSERVER !== "1";
 
 const RUNS_ROOT = resolve(process.cwd(), "runs", "screens");

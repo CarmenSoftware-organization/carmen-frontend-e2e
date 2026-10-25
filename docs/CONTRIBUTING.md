@@ -9,7 +9,7 @@ architecture notes live in [`CLAUDE.md`](../CLAUDE.md); the Thai run guide is
 Prerequisites:
 
 - [Bun](https://bun.sh) (scripts, runners, unit tests)
-- A checkout of the frontend at `../carmen-inventory-frontend-react` (or set `E2E_FRONTEND_DIR`)
+- A checkout of the frontend at `../carmen-frontend` (or set `E2E_FRONTEND_DIR`)
 - The backend reachable on `:4000` for local runs (Docker). If it is down, the `setup` project hangs silently.
 
 ```bash

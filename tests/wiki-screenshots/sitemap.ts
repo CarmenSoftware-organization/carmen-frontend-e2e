@@ -259,7 +259,7 @@ function main(): void {
   // card — otherwise a new page would be invisible in the sitemap. Optional on
   // purpose: pass 3 must not throw, and the frontend checkout may simply not be
   // there (ENOENT) when someone renders the sitemap from the matrix alone.
-  const frontendDir = process.env.E2E_FRONTEND_DIR ?? "../carmen-inventory-frontend-react";
+  const frontendDir = process.env.E2E_FRONTEND_DIR ?? "../carmen-frontend";
   const known = new Set(SHOTS.map((s) => s.path));
   let extra: ShotSpec[] = [];
   try {

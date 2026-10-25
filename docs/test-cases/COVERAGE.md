@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **193 routes** across **116 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **194 routes** across **117 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
@@ -10,7 +10,7 @@ Parsed from the frontend router (`routes/router.tsx`): **193 routes** across **1
 | --- | --- | --- |
 | ✅ spec | an automated Playwright spec drives this module | 47 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
-| ❌ none | neither — this is the coverage gap | 29 |
+| ❌ none | neither — this is the coverage gap | 30 |
 
 ## *
 
@@ -222,6 +222,7 @@ Parsed from the frontend router (`routes/router.tsx`): **193 routes** across **1
 | `/system-admin/email-template` | 1 | — | `1117-email-template.md` | 📄 catalog |
 | `/system-admin/interface` | 2 | — | `1118-interface.md` | 📄 catalog |
 | `/system-admin/interface/accounting/external` | 1 _(redirect → `/system-admin/interface/export/external`)_ | — | — | ❌ none |
+| `/system-admin/interface/pos/:brand/imports` | 1 | — | — | ❌ none |
 | `/system-admin/inventory-period` | 1 | — | `1105-system-period.md` | 📄 catalog |
 | `/system-admin/notification-template` | 3 | — | `1104-notification-template.md` | 📄 catalog |
 | `/system-admin/period` | 1 _(redirect → `/system-admin/inventory-period`)_ | — | `1105-system-period.md` | 📄 catalog |

@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const FRONTEND_DIR =
-  process.env.E2E_FRONTEND_DIR ?? "../carmen-inventory-frontend-react";
+  process.env.E2E_FRONTEND_DIR ?? "../carmen-frontend";
 const START_FRONTEND = process.env.E2E_NO_WEBSERVER !== "1";
 
 // Movement suite — opt-in, because it needs the CARMEN-AVG / CARMEN-FIFO tenant,

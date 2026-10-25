@@ -3,7 +3,7 @@
   "configVersion": 0,
   "workspaces": {
     "": {
-      "name": "carmen-inventory-frontend-e2e",
+      "name": "carmen-frontend-e2e",
       "devDependencies": {
         "@faker-js/faker": "^10.5.0",
         "@playwright/test": "^1.61.0",
