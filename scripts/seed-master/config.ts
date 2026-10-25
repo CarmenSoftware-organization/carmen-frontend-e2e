@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { SeedConfig } from "./types";
 
-const DEFAULT_CONFIG_PATH = "../carmen-inventory-frontend-react/dist/config.json";
+const DEFAULT_CONFIG_PATH = "../carmen-frontend/dist/config.json";
 
 export function resolveConfig(
   env: Record<string, string | undefined> = process.env,

@@ -25,7 +25,7 @@ const REPO_ROOT = resolve(__dirname, "..");
 const TESTS_DIR = join(REPO_ROOT, "tests");
 const CATALOG_DIR = join(REPO_ROOT, "docs", "test-cases");
 const OUT_FILE = join(CATALOG_DIR, "COVERAGE.md");
-const FRONTEND_DIR = process.env.E2E_FRONTEND_DIR ?? "../carmen-inventory-frontend-react";
+const FRONTEND_DIR = process.env.E2E_FRONTEND_DIR ?? "../carmen-frontend";
 
 /** Section headings, keyed by the first URL segment. */
 const AREA_TITLES: Record<string, string> = {

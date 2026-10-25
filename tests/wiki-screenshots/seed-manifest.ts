@@ -53,7 +53,7 @@ export function generateManifestSource(routes: string[]): string {
 
 function main(): void {
   const frontendDir =
-    process.env.E2E_FRONTEND_DIR ?? "../carmen-inventory-frontend-react";
+    process.env.E2E_FRONTEND_DIR ?? "../carmen-frontend";
   const routes = discoverFrontendRoutes(frontendDir);
   const out = join(process.cwd(), "tests/wiki-screenshots/manifest.ts");
   writeFileSync(out, generateManifestSource(routes));

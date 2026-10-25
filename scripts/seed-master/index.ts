@@ -111,7 +111,7 @@ export function helpText(): string {
     "  SEED_BACKEND_URL        Backend URL (optional; falls back to config.json BACKEND_URL).",
     "  SEED_X_APP_ID           X-App-Id header (optional; falls back to config.json X_APP_ID).",
     "  SEED_CONFIG_PATH        Frontend config.json path",
-    "                          (default: ../carmen-inventory-frontend-react/dist/config.json).",
+    "                          (default: ../carmen-frontend/dist/config.json).",
     "",
     "Examples:",
     "  bun run seed:master --dry-run                     # preview, no writes",

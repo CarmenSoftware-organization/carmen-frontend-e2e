@@ -42,7 +42,7 @@ describe("sameScreen", () => {
 });
 
 /**
- * Fixtures mirror the real app's DOM (../carmen-inventory-frontend-react):
+ * Fixtures mirror the real app's DOM (../carmen-frontend):
  * - AccessDeniedBlock  — components/route-guard.tsx (h2 "Permission Denied")
  * - ErrorState         — components/ui/error-state.tsx (no heading; <p> text)
  * - ProfileError       — components/share/profile-gate.tsx (h2)

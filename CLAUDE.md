@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Purpose
 
-Standalone Playwright end-to-end test suite for the **carmen-inventory-frontend-react** Vite SPA (sibling directory: `../carmen-inventory-frontend-react`). This repo contains no application code — only tests, page objects, and fixtures that drive the frontend over HTTP. The suite is frontend-agnostic: `E2E_FRONTEND_DIR` points it at a frontend checkout under any path.
+Standalone Playwright end-to-end test suite for the **carmen-frontend** Vite SPA (sibling directory: `../carmen-frontend`). This repo contains no application code — only tests, page objects, and fixtures that drive the frontend over HTTP. The suite is frontend-agnostic: `E2E_FRONTEND_DIR` points it at a frontend checkout under any path.
 
 ## Running tests
 
@@ -24,7 +24,7 @@ bun run report                  # open last HTML report
 
 ## How the runner starts the frontend
 
-`playwright.config.ts` spawns `bun dev` in `../carmen-inventory-frontend-react` (Vite, serves on `:3000`) via Playwright's `webServer`. To test against an already running instance (e.g. staging) set `E2E_NO_WEBSERVER=1` and override `E2E_BASE_URL`. To point at a frontend checkout under a different path set `E2E_FRONTEND_DIR`; Playwright resolves the `cwd` option relative to the config file, so relative paths are evaluated from this repo root. See `.env.example`.
+`playwright.config.ts` spawns `bun dev` in `../carmen-frontend` (Vite, serves on `:3000`) via Playwright's `webServer`. To test against an already running instance (e.g. staging) set `E2E_NO_WEBSERVER=1` and override `E2E_BASE_URL`. To point at a frontend checkout under a different path set `E2E_FRONTEND_DIR`; Playwright resolves the `cwd` option relative to the config file, so relative paths are evaluated from this repo root. See `.env.example`.
 
 ## Running against a named environment (`.env.uat`, etc.)
 

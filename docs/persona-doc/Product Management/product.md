@@ -10,7 +10,7 @@ last_updated: 2026-06-17
 
 # Product — Product Master Journey
 
-> Grounded in `routes/product-management/product` of `carmen-inventory-frontend-react` (list `page.tsx` + `_components/`, create `new/page.tsx`, detail `[id]/page.tsx` + `[id]/_content.tsx`). Field labels in the source are i18n keys (`field.*`, `productManagement.product.*`); this doc gives the human-readable label they resolve to plus the underlying form field name.
+> Grounded in `routes/product-management/product` of `carmen-frontend` (list `page.tsx` + `_components/`, create `new/page.tsx`, detail `[id]/page.tsx` + `[id]/_content.tsx`). Field labels in the source are i18n keys (`field.*`, `productManagement.product.*`); this doc gives the human-readable label they resolve to plus the underlying form field name.
 
 ## Purpose / Use Case
 
