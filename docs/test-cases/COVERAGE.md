@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **194 routes** across **117 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **120 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
@@ -10,7 +10,7 @@ Parsed from the frontend router (`routes/router.tsx`): **194 routes** across **1
 | --- | --- | --- |
 | ✅ spec | an automated Playwright spec drives this module | 47 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
-| ❌ none | neither — this is the coverage gap | 30 |
+| ❌ none | neither — this is the coverage gap | 33 |
 
 ## *
 
@@ -22,7 +22,7 @@ Parsed from the frontend router (`routes/router.tsx`): **194 routes** across **1
 
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
-| `/accounting` | 14 | — | — | ❌ none |
+| `/accounting` | 6 | — | — | ❌ none |
 | `/accounting/accounts-payable` | 1 | — | — | ❌ none |
 | `/accounting/accounts-payable/invoice` | 2 | — | — | ❌ none |
 | `/accounting/accounts-payable/payment` | 2 | — | — | ❌ none |
@@ -128,8 +128,10 @@ Parsed from the frontend router (`routes/router.tsx`): **194 routes** across **1
 | `/operation-plan/cuisine` | 3 | `111-cuisine.spec.ts` | — | ✅ spec |
 | `/operation-plan/equipment` | 3 | — | `130-equipment.md` | 📄 catalog |
 | `/operation-plan/equipment-category` | 1 | `131-equipment-category.spec.ts` | — | ✅ spec |
+| `/operation-plan/import-pos` | 1 | — | — | ❌ none |
 | `/operation-plan/recipe` | 4 | — | `120-recipe.md` | 📄 catalog |
 | `/operation-plan/recipe-equipment-category` | 1 | `121-recipe-equipment-category.spec.ts` | — | ✅ spec |
+| `/operation-plan/sales-consumption` | 2 | — | — | ❌ none |
 
 ## pl
 
@@ -213,6 +215,7 @@ Parsed from the frontend router (`routes/router.tsx`): **194 routes** across **1
 | --- | --- | --- | --- | --- |
 | `/system-admin` | 1 | — | `1204-section-landing.md` | 📄 catalog |
 | `/system-admin/activity-log` | 1 | — | `1109-activity-log.md` | 📄 catalog |
+| `/system-admin/ask-ai` | 1 | — | — | ❌ none |
 | `/system-admin/business-setting` | 1 _(redirect → `/system-admin/company-profile`)_ | — | `1114-company-profile.md` | 📄 catalog |
 | `/system-admin/company-profile` | 1 | — | `1114-company-profile.md` | 📄 catalog |
 | `/system-admin/dashboard-dataset` | 1 | — | `1112-dashboard-dataset.md` | 📄 catalog |
@@ -222,15 +225,15 @@ Parsed from the frontend router (`routes/router.tsx`): **194 routes** across **1
 | `/system-admin/email-template` | 1 | — | `1117-email-template.md` | 📄 catalog |
 | `/system-admin/interface` | 2 | — | `1118-interface.md` | 📄 catalog |
 | `/system-admin/interface/accounting/external` | 1 _(redirect → `/system-admin/interface/export/external`)_ | — | — | ❌ none |
-| `/system-admin/interface/pos/:brand/imports` | 1 | — | — | ❌ none |
 | `/system-admin/inventory-period` | 1 | — | `1105-system-period.md` | 📄 catalog |
 | `/system-admin/notification-template` | 3 | — | `1104-notification-template.md` | 📄 catalog |
 | `/system-admin/period` | 1 _(redirect → `/system-admin/inventory-period`)_ | — | `1105-system-period.md` | 📄 catalog |
 | `/system-admin/role` | 3 | — | `1101-role.md` | 📄 catalog |
 | `/system-admin/running-code` | 1 | — | `1110-running-code.md` | 📄 catalog |
+| `/system-admin/storage` | 1 | — | — | ❌ none |
 | `/system-admin/user` | 2 | `910-period-close-prestep.spec.ts` | `1102-user.md` | ✅ spec |
 | `/system-admin/user-activity` | 1 | — | `1106-user-activity.md` | 📄 catalog |
-| `/system-admin/workflow` | 6 | — | `1103-workflow.md` | 📄 catalog |
+| `/system-admin/workflow` | 7 | — | `1103-workflow.md` | 📄 catalog |
 
 ## terms
 
