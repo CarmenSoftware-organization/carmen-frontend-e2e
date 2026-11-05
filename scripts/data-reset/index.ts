@@ -19,6 +19,9 @@ import type { StepResult } from "./step-result";
 import { verifyEnvironment } from "./verify-env";
 import { loadWorkflowFixture, validateFixture } from "./workflow-template";
 import { seedWorkflows } from "./workflows";
+import { seedAllDocuments } from "./docs/seed-all";
+import type { TestUserInfo } from "./verify-env";
+import type { Sessions } from "./sessions";
 
 export interface RunDeps {
   fetchFn?: typeof fetch;
@@ -26,6 +29,10 @@ export interface RunDeps {
   log?: (line: string) => void;
   /** Master data seeding; defaults to seed-master's workbook run (sample subset). */
   seedMaster?: (client: ApiClient, dryRun: boolean, cfg: ResetConfig) => Promise<SeedResult[]>;
+  /** Documents, stock and the final count (plan 3); defaults to seedAllDocuments. */
+  seedDocuments?: (
+    sessions: Sessions, cfg: ResetConfig, users: Record<string, TestUserInfo>, now: Date, log: (line: string) => void,
+  ) => Promise<StepResult[]>;
 }
 
 async function defaultSeedMaster(client: ApiClient, dryRun: boolean, cfg: ResetConfig): Promise<SeedResult[]> {
@@ -100,6 +107,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
     log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today`);
+    log("documents: would create 5 stock-ins, 1 PR template, 41 PRs, 7 POs, 4 GRNs, 2 CNs, 7 SRs, 3 price lists, 3 campaigns, then verify the counts");
     return 0;
   }
 
@@ -139,6 +147,10 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
   if (mappings.firstDepartment) {
     results.push(await seedWorkflows(sessions, cfg, fixture, env.users, mappings.firstDepartment));
     results.push(await seedPeriod(sessions, cfg, now));
+  }
+  if (results.every((r) => r.failed.length === 0) && mappings.firstDepartment) {
+    const seedDocuments = deps.seedDocuments ?? ((s, c, u, n, l) => seedAllDocuments(s, c, u, n, {}, l));
+    results.push(...(await seedDocuments(sessions, cfg, env.users, now, log)));
   }
   log(summaryTable(results));
   return results.some((r) => r.failed.length > 0) ? 1 : 0;

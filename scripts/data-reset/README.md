@@ -31,6 +31,16 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    vendor ตัวแรก (เรียงตาม code) ที่ไม่มีอีเมลจะถูกเติม `carmensoftware.dev+vendor@gmail.com` ให้ (flow ส่ง PO ให้ vendor)
 6. งวดสินค้าคงคลังของเดือนนี้ (เวลาไทย) ถ้ายังไม่มีงวดเปิดที่ครอบวันนี้
 
+7. เอกสารและสต๊อก (`docs/`) ตามตารางของ spec ทุกขั้นทำโดย role ที่ทำจริง และทุกใบขึ้นต้นคำอธิบายด้วย `STD <แถว>`:
+   - สต๊อก: ใบรับเข้าที่ commit แล้ว ได้ระดับ Critical / Warning / Low ที่ 711 (par 100, คงเหลือ 20 / 40 / 80)
+     มีคงเหลือ 2 location และ lot ที่หมดอายุแล้ว (−30 วัน) กับใกล้หมดอายุ (+7 วัน)
+   - PR 41 ใบ: draft 3, รอ HOD 18 (+1 ใบจากแผนกที่สอง), รอ Purchase 8, รอ GM 2, approved 5, ส่งกลับ 1, reject 2
+     และ completed 1 (ทำเป็น PO ผ่าน confirm-pr) — PO อื่นทั้งหมดเป็นแบบ manual เพื่อไม่ดึง PR ที่ approved ไปใช้
+   - PO draft / voided / approved / sent / partial / completed, GRN draft / saved / committed, CN draft / completed
+   - SR draft 2, รออนุมัติ 2, รอจ่าย 1, ยกเลิก 1 (ใช้ reject เพราะไม่มี endpoint ยกเลิก), completed 1
+   - price list 3 ใบที่ใช้ได้วันนี้, campaign 3 ใบ: เปิดอยู่ / ยังไม่เริ่ม / ปิดแล้ว (หน้าจอคำนวณสถานะจากวันที่)
+8. ตรวจนับทั้ง BU เทียบตาราง (`verify-dataset.ts`) — แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้ แล้วจบด้วย exit 1
+
 ## ถ้า reset ตอบ 504 / timeout
 
 **ไม่ได้แปลว่าไม่มีอะไรเกิดขึ้น** — gateway เลิกรอที่ `RPC_TIMEOUT_MS` แต่ micro-business ทำต่อจนจบ ดูใน app ว่า BU
