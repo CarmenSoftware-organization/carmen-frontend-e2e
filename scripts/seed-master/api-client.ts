@@ -16,6 +16,8 @@ export interface ApiClient {
 
 interface LoginOpts {
   maxRetries?: number;
+  /** Extra request headers, e.g. the suite's `x-rate-limit-bypass`. */
+  headers?: Record<string, string>;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -32,7 +34,7 @@ export async function login(
   for (let attempt = 0; ; attempt++) {
     const res = await fetchFn(`${cfg.backendUrl}/api/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-app-id": cfg.xAppId },
+      headers: { "Content-Type": "application/json", "x-app-id": cfg.xAppId, ...opts.headers },
       body: JSON.stringify({ email: cfg.email, password: cfg.password }),
     });
     const json = await res.json().catch(() => ({} as any));

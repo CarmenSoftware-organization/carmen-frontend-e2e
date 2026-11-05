@@ -38,6 +38,16 @@ describe("createSessions", () => {
     expect(body.password).toBe("12345678");
   });
 
+  it("sends the suite's rate-limit bypass header on login", async () => {
+    let headers: Record<string, string> = {};
+    const fakeFetch = (async (_url: string, init?: RequestInit) => {
+      headers = init!.headers as Record<string, string>;
+      return jsonResponse(200, { data: { access_token: "tok" } });
+    }) as unknown as typeof fetch;
+    await createSessions(cfg, fakeFetch).client("a@x");
+    expect(headers["x-rate-limit-bypass"]).toBe("true");
+  });
+
   it("does not cache a failed login", async () => {
     let calls = 0;
     const fakeFetch = (async () => {

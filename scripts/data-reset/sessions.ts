@@ -22,7 +22,9 @@ export function createSessions(cfg: ResetConfig, fetchFn: typeof fetch = fetch):
         email,
         password: getPasswordFor(email),
       };
-      const pending = login(seedCfg, fetchFn).then((token) => createApiClient(seedCfg, token, fetchFn));
+      // Same header the Playwright suite sends (playwright.config.ts extraHTTPHeaders): 9 logins per
+      // run sit right under the login ceiling (10/min), so a rerun inside a minute would get 429.
+      const pending = login(seedCfg, fetchFn, { headers: { "x-rate-limit-bypass": "true" } }).then((token) => createApiClient(seedCfg, token, fetchFn));
       pending.catch(() => cache.delete(email));
       cache.set(email, pending);
       return pending;
