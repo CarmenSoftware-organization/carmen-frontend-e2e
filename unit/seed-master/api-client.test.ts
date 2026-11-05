@@ -72,3 +72,24 @@ describe("createApiClient", () => {
     expect(res.body.message).toBe("validation");
   });
 });
+
+describe("createApiClient put/patch", () => {
+  for (const method of ["put", "patch"] as const) {
+    it(`${method} sends ${method.toUpperCase()} with a JSON body and auth headers`, async () => {
+      let calledUrl = "", calledInit: RequestInit | undefined;
+      const fakeFetch = (async (url: string, init?: RequestInit) => {
+        calledUrl = url; calledInit = init;
+        return jsonResponse(200, { data: { ok: true } });
+      }) as unknown as typeof fetch;
+      const client = createApiClient(cfg, "tok", fakeFetch);
+      const res = await client[method]("/x", { a: 1 });
+      expect(calledUrl).toBe("http://localhost:4000/x");
+      expect(calledInit!.method).toBe(method.toUpperCase());
+      expect(JSON.parse(calledInit!.body as string)).toEqual({ a: 1 });
+      const headers = calledInit!.headers as Record<string, string>;
+      expect(headers.Authorization).toBe("Bearer tok");
+      expect(headers["x-app-id"]).toBe("app-1");
+      expect(res.body.data.ok).toBe(true);
+    });
+  }
+});
