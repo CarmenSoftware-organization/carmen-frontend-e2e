@@ -12,7 +12,9 @@ export class ConfigListPage extends BasePage {
     super(page);
   }
 
-  readonly addButton = () => this.page.getByRole("button", { name: /Add/i }).first();
+  // Most config lists label the create button "Add"; Chart of Accounts and Exchange Rate use
+  // "New" (carmen-frontend messages config.chartOfAccounts.add / config.exchangeRate.new).
+  readonly addButton = () => this.page.getByRole("button", { name: /^\s*(add|new)\b/i }).first();
   // override: returns the full collection (no .first()) so callers can use .count() / .nth()
   readonly searchInput = () => this.page.getByPlaceholder(/Search/i);
   readonly table = () => this.page.locator("table");

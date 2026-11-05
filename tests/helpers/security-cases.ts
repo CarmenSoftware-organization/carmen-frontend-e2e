@@ -125,7 +125,9 @@ export function addDialogSecurityCases(
   }: {
     browser: import("@playwright/test").Browser;
   }) => {
-    const ctx = await browser.newContext();
+    // No session: inside createAuthTest specs, browser.newContext() inherits the role's storageState
+    // (see 081-chart-of-account-mapping.spec.ts) — clear it explicitly.
+    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const page = await ctx.newPage();
     const { LoginPage } = await import("../pages/login.page");
     const { TEST_PASSWORD } = await import("../test-users");
@@ -246,7 +248,9 @@ export function addPageFormSecurityCases(
   }: {
     browser: import("@playwright/test").Browser;
   }) => {
-    const ctx = await browser.newContext();
+    // No session: inside createAuthTest specs, browser.newContext() inherits the role's storageState
+    // (see 081-chart-of-account-mapping.spec.ts) — clear it explicitly.
+    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const page = await ctx.newPage();
     const { LoginPage } = await import("../pages/login.page");
     const { TEST_PASSWORD } = await import("../test-users");
@@ -347,7 +351,9 @@ export function addListOnlySecurityCases(
   }: {
     browser: import("@playwright/test").Browser;
   }) => {
-    const ctx = await browser.newContext();
+    // No session: inside createAuthTest specs, browser.newContext() inherits the role's storageState
+    // (see 081-chart-of-account-mapping.spec.ts) — clear it explicitly.
+    const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
     const page = await ctx.newPage();
     const { LoginPage } = await import("../pages/login.page");
     const { TEST_PASSWORD } = await import("../test-users");

@@ -101,6 +101,16 @@ export class PageFormCrudHelper {
       .first();
   }
 
+  /**
+   * The field as view mode shows it, whichever way the form renders read mode: plain text
+   * (`readOnly` fields, see viewValueFor) or a disabled input (forms that pass `disabled`, e.g.
+   * operation-plan/category). Use for visibility checks; read values with viewValueFor.
+   * ช่องในโหมด view ไม่ว่าฟอร์มจะแสดงเป็นข้อความล้วนหรือ input ที่ disabled
+   */
+  viewFieldFor(inputId: string): Locator {
+    return this.viewValueFor(inputId).or(this.page.locator(`#${inputId}[disabled]`)).first();
+  }
+
   editButton(): Locator {
     return this.page.getByRole("button", { name: /^(Edit|แก้ไข)$/i });
   }
