@@ -43,6 +43,7 @@ function routes(over: Record<string, unknown> = {}) {
     [`GET ${base}/vendors`]: { data: [{ id: "v1", code: "A001" }] },
     [`GET ${base}/vendors/v1`]: { data: { vendor_contact: [{ email: "v@x" }] } },
     [`GET ${base}/workflows`]: { data: [] },
+    [`GET ${base}/products`]: { data: [{ id: "p1", code: "P1", name: "Rice" }] },
     "GET /api/GR2VYNKQ/inventory-periods/current": { __status: 404 },
     ...over,
   };
@@ -125,6 +126,17 @@ describe("runDataReset", () => {
     expect(backend.writes()).toEqual([]);
     expect(out).toMatch(/already holds 1 purchase request/);
   });
+
+  for (const [label, answer] of [
+    ["answers 500", { __status: 500 }],
+    ["has no paginate total", { data: [] }],
+  ] as const) {
+    it(`--skip-reset refuses when the PR list ${label}`, async () => {
+      const { code, backend } = await run({ "GET /api/GR2VYNKQ/purchase-requests": answer }, { skipReset: true });
+      expect(code).toBe(1);
+      expect(backend.writes()).toEqual([]);
+    });
+  }
 
   it("--skip-reset seeds an empty BU without calling the reset", async () => {
     const { code, backend } = await run({}, { skipReset: true });

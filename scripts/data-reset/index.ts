@@ -56,11 +56,14 @@ function masterStep(results: SeedResult[]): StepResult {
   };
 }
 
-async function countPurchaseRequests(client: ApiClient, cfg: ResetConfig): Promise<number> {
-  const res = await client.get(`/api/${cfg.buCode}/purchase-requests?perpage=1`);
+/** PR count, or why it could not be read — the --skip-reset guard must fail closed. */
+async function countPurchaseRequests(client: ApiClient, cfg: ResetConfig): Promise<number | string> {
+  const path = `/api/${cfg.buCode}/purchase-requests?perpage=1`;
+  const res = await client.get(path);
   const total = res.body?.paginate?.total;
-  if (typeof total === "number") return total;
-  return Array.isArray(res.body?.data) ? res.body.data.length : 0;
+  if (!res.ok) return `GET ${path} → ${res.status}`;
+  if (typeof total !== "number") return `GET ${path} gave no paginate.total`;
+  return total;
 }
 
 export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunDeps = {}): Promise<number> {
@@ -102,6 +105,10 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
 
   if (args.skipReset) {
     const prs = await countPurchaseRequests(admin, cfg);
+    if (typeof prs === "string") {
+      log(`--skip-reset: cannot tell whether ${cfg.buCode} is empty (${prs}) — refusing to seed.`);
+      return 1;
+    }
     if (prs > 0) {
       log(`--skip-reset: ${cfg.buCode} already holds ${prs} purchase request(s); the seed is not written to resume. Reset first.`);
       return 1;
