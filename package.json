@@ -49,6 +49,7 @@
     "wiki:probe": "playwright test --project=wiki-probe",
     "wiki:capture": "playwright test --project=wiki-screenshots",
     "seed:master": "bun run scripts/seed-master/index.ts",
+    "data:reset": "bun run scripts/data-reset/index.ts",
     "create:sitemap:screen": "bun run scripts/capture-screens.ts",
     "test:unit:coverage": "vitest run --coverage",
     "movement:setup-workflows": "bun run scripts/movement/setup-workflows.ts",

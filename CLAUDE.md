@@ -72,6 +72,10 @@ bun only auto-loads `.env` / `.env.local`, never a custom name. `scripts/run-env
   ```
 - **Whenever you add or modify any annotation in any spec, regenerate the user-story docs in the same change**: run `bun docs:user-stories` and commit the resulting `docs/user-stories/*.md` alongside the spec edit. The two are coupled by design — never let them drift. Skip the regeneration only when no annotations changed (e.g. pure refactor, locator update).
 
+## Standard test dataset (`data:reset`)
+
+`bun run data:reset --yes` wipes TEST BU (`GR2VYNKQ`) on the dev backend through `POST api-system/tenant/resets/:bu_id` (backend PR #1004; needs `DATA_RESET_DEPLOY_TOKEN` in `.env.local`) and rebuilds the standard dataset: step 0 checks (all 9 accounts in the BU, purchase may open Vendor / Product Category / Campaign — checked, never granted), master data (the `seed:master` sample subset), user↔department / user↔location mappings, the first PR and PO workflows from `scripts/data-reset/fixtures/workflows.json` (hand-authored: PR Create → HOD → GM when `total_amount` > 100,000 → Purchase; General PO purchase → FC → GM) and an open inventory period covering today. It is **manual** — never wired into `bun run test`. `--dry-run` only reads. Documents and stock come in plan 3 (`docs/superpowers/specs/2026-11-04-standard-test-dataset-design.md`). A 504 from the reset does not mean nothing happened — see `scripts/data-reset/README.md`.
+
 ## Movement suite (opt-in: doc flows + period close)
 
 Merged from the standalone `_movement_play/eop_bf/e2e` suite. It tests inventory movement end to end on the **CARMEN-AVG / CARMEN-FIFO** tenant with its own accounts (`tests/movement-users.ts`, `@carmen.com`) — not the gmail `TEST_USERS` / BLAVG of the rest of the suite — and it verifies results in the backend (API) and the database (read-only SQL), not just on screen. Because none of that exists on UAT/prod targets and the specs post real stock, it is **excluded from `bun run test`** (chromium's `testIgnore`) and only registered when asked for:

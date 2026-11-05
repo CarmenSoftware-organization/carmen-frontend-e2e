@@ -10,10 +10,14 @@ export interface ApiResult {
 export interface ApiClient {
   get(path: string): Promise<ApiResult>;
   post(path: string, body: unknown): Promise<ApiResult>;
+  put(path: string, body: unknown): Promise<ApiResult>;
+  patch(path: string, body: unknown): Promise<ApiResult>;
 }
 
 interface LoginOpts {
   maxRetries?: number;
+  /** Extra request headers, e.g. the suite's `x-rate-limit-bypass`. */
+  headers?: Record<string, string>;
   sleep?: (ms: number) => Promise<void>;
 }
 
@@ -30,7 +34,7 @@ export async function login(
   for (let attempt = 0; ; attempt++) {
     const res = await fetchFn(`${cfg.backendUrl}/api/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-app-id": cfg.xAppId },
+      headers: { "Content-Type": "application/json", "x-app-id": cfg.xAppId, ...opts.headers },
       body: JSON.stringify({ email: cfg.email, password: cfg.password }),
     });
     const json = await res.json().catch(() => ({} as any));
@@ -79,5 +83,7 @@ export function createApiClient(
   return {
     get: (path) => request("GET", path),
     post: (path, body) => request("POST", path, body),
+    put: (path, body) => request("PUT", path, body),
+    patch: (path, body) => request("PATCH", path, body),
   };
 }
