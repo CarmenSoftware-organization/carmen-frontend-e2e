@@ -11,8 +11,10 @@ import { rowsOf, type StepResult } from "./step-result";
 const HOD_EMAIL = "carmensoftware.dev+hod@gmail.com";
 const SECOND_DEPARTMENT_EMAIL = "carmensoftware.dev+owner@gmail.com";
 
-interface Department { id: string; code: string; name: string }
+interface Department { id: string; code: string; name: string; doc_version?: number }
 interface DepartmentBody {
+  /** Required by the gateway's department update (400 without it); the list rows carry it. */
+  doc_version: number;
   department_users: { add: { id: string }[] };
   hod_users?: { add: { id: string }[] };
 }
@@ -29,11 +31,21 @@ export function planDepartmentAssignments(
     {
       departmentId: first.id,
       body: {
+        doc_version: Number(first.doc_version ?? 0),
         department_users: { add: TEST_USERS.map((u) => ({ id: userIds[u.email] })) },
         hod_users: { add: [{ id: userIds[HOD_EMAIL] }] },
       },
     },
-    { departmentId: second.id, body: { department_users: { add: [{ id: userIds[SECOND_DEPARTMENT_EMAIL] }] } } },
+    {
+      departmentId: second.id,
+      // hod also heads the second department: a PR whose department has no HOD fails to submit
+      // (backend answers 503 RPC_SERVICE_UNAVAILABLE at the HOD stage).
+      body: {
+        doc_version: Number(second.doc_version ?? 0),
+        department_users: { add: [{ id: userIds[SECOND_DEPARTMENT_EMAIL] }] },
+        hod_users: { add: [{ id: userIds[HOD_EMAIL] }] },
+      },
+    },
   ];
 }
 
@@ -86,8 +98,22 @@ export async function ensureFirstVendorReady(admin: ApiClient, cfg: ResetConfig)
   const base = `/api/config/${cfg.buCode}/vendors`;
   const [vendor] = byCode(rowsOf<{ id: string; code: string }>((await admin.get(`${base}?perpage=100`)).body));
   if (!vendor) return [];
-  if (vendorEmail((await admin.get(`${base}/${vendor.id}`)).body)) return [];
-  const res = await admin.patch(`${base}/${vendor.id}`, { vendor_contact: { add: [STD_VENDOR_CONTACT] } });
+  const current = (await admin.get(`${base}/${vendor.id}`)).body;
+  if (vendorEmail(current)) return [];
+  // Vendors update with PUT (the gateway has no PATCH route — it answers 404) and need doc_version.
+  // A contact the vendor already has (the workbook's, email "") gets the email through `update`:
+  // the backend's update path creates `add` contacts without vendor_id, so they never show up.
+  const [existing] = (Array.isArray(current?.data?.vendor_contact) ? current.data.vendor_contact : []) as Array<{
+    id: string;
+    name: string;
+  }>;
+  const vendorContact = existing
+    ? { update: [{ vendor_contact_id: existing.id, name: existing.name, email: STD_VENDOR_CONTACT.email }] }
+    : { add: [STD_VENDOR_CONTACT] };
+  const res = await admin.put(`${base}/${vendor.id}`, {
+    doc_version: Number(current?.data?.doc_version ?? 0),
+    vendor_contact: vendorContact,
+  });
   return res.ok ? [] : [`first vendor ${vendor.code}: could not add an email (${res.status})`];
 }
 

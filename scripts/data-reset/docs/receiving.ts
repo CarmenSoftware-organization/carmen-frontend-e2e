@@ -101,12 +101,14 @@ export async function seedReceiving(
   }
 
   const cnBase = `/api/${cfg.buCode}/credit-notes`;
-  for (const [row, submit] of [["cn.draft", false], ["cn.committed", true]] as const) {
+  // The backend credits each product on a GRN once (422 "already credited on this receipt"), so each CN
+  // takes its own line of the committed GRN — that PO carries products[0] and products[1].
+  for (const [row, submit, line] of [["cn.draft", false, 0], ["cn.committed", true, 1]] as const) {
     if (!committedGrn) {
       fail(row, `${row}: no committed GRN to credit`);
       continue;
     }
-    const product = ctx.products[0];
+    const product = ctx.products[line];
     const created = await createDoc(purchase, cnBase, {
       credit_note_type: "quantity_return",
       grn_id: committedGrn,

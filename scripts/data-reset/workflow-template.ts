@@ -53,6 +53,14 @@ export function validateFixture(fixture: WorkflowFixture): string[] {
         );
       }
     }
+    // The backend completes a document on the approval that ENTERS the last stage, so a last stage
+    // with a real approver is never acted on — Carmen workflows end on a terminal "Completed" stage.
+    const last = wf.data.stages[wf.data.stages.length - 1];
+    if (last && Object.values(last.available_actions ?? {}).some((a) => a?.is_active)) {
+      problems.push(
+        `${wf.name}: last stage ${last.name} has active actions — end on a terminal stage (e.g. Completed) or the backend finishes the workflow one stage early`,
+      );
+    }
     for (const stage of wf.data.stages) {
       for (const { email } of stage.assigned_users) {
         if (!known.has(email)) problems.push(`${wf.name}: stage ${stage.name} names ${email}, not a test account`);

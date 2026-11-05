@@ -20,13 +20,19 @@ const userIds = Object.fromEntries(TEST_USERS.map((u) => [u.email, `id-${u.email
 describe("planDepartmentAssignments", () => {
   it("puts everyone in the first department by code with hod as HOD, and owner in the second", () => {
     const plans = planDepartmentAssignments(
-      [{ id: "dB", code: "B", name: "Bar" }, { id: "dA", code: "A", name: "Admin" }],
+      [{ id: "dB", code: "B", name: "Bar", doc_version: 4 }, { id: "dA", code: "A", name: "Admin", doc_version: 2 }],
       userIds,
     );
     expect(plans[0].departmentId).toBe("dA");
     expect(plans[0].body.department_users.add).toHaveLength(9);
     expect(plans[0].body.hod_users).toEqual({ add: [{ id: "id-hod" }] });
-    expect(plans[1]).toEqual({ departmentId: "dB", body: { department_users: { add: [{ id: "id-owner" }] } } });
+    // The gateway's department update requires the doc_version last read (400 without it).
+    expect(plans[0].body.doc_version).toBe(2);
+    expect(plans[1]).toEqual({
+      departmentId: "dB",
+      // A PR's HOD stage needs a HOD in its department — without one the submit fails with 503.
+      body: { doc_version: 4, department_users: { add: [{ id: "id-owner" }] }, hod_users: { add: [{ id: "id-hod" }] } },
+    });
   });
 
   it("needs two departments", () => {
@@ -68,17 +74,41 @@ describe("ensureFirstVendorReady", () => {
   it("adds an email to the first vendor by code when it has none", async () => {
     const backend = fakeBackend({
       [`GET ${base}/vendors`]: list,
-      [`GET ${base}/vendors/v1`]: { data: { id: "v1", code: "A023", vendor_contact: [] } },
+      [`GET ${base}/vendors/v1`]: { data: { id: "v1", code: "A023", doc_version: 3, vendor_contact: [] } },
+    });
+    expect(await ensureFirstVendorReady(await admin(backend), cfg)).toEqual([]);
+    // The gateway updates a vendor with PUT (PATCH is 404) and requires doc_version.
+    expect(backend.writes()).toEqual([
+      {
+        method: "PUT",
+        path: `${base}/vendors/v1`,
+        body: {
+          doc_version: 3,
+          vendor_contact: {
+            add: [{ name: "STD contact", email: "carmensoftware.dev+vendor@gmail.com", phone: "0800000000", is_primary: true }],
+          },
+        },
+      },
+    ]);
+  });
+
+  it("fills the email on the vendor's existing contact instead of adding one", async () => {
+    // The sample workbook gives A023 a primary contact with email "". The backend's update path
+    // creates added contacts without vendor_id (they never show on the vendor), so set it via update.
+    const backend = fakeBackend({
+      [`GET ${base}/vendors`]: list,
+      [`GET ${base}/vendors/v1`]: {
+        data: { id: "v1", code: "A023", doc_version: 1, vendor_contact: [{ id: "c1", name: "บจก. เอบีโอ", email: "", is_primary: true }] },
+      },
     });
     expect(await ensureFirstVendorReady(await admin(backend), cfg)).toEqual([]);
     expect(backend.writes()).toEqual([
       {
-        method: "PATCH",
+        method: "PUT",
         path: `${base}/vendors/v1`,
         body: {
-          vendor_contact: {
-            add: [{ name: "STD contact", email: "carmensoftware.dev+vendor@gmail.com", phone: "0800000000", is_primary: true }],
-          },
+          doc_version: 1,
+          vendor_contact: { update: [{ vendor_contact_id: "c1", name: "บจก. เอบีโอ", email: "carmensoftware.dev+vendor@gmail.com" }] },
         },
       },
     ]);
@@ -97,7 +127,7 @@ describe("ensureFirstVendorReady", () => {
     const backend = fakeBackend({
       [`GET ${base}/vendors`]: list,
       [`GET ${base}/vendors/v1`]: { data: { id: "v1", code: "A023" } },
-      [`PATCH ${base}/vendors/v1`]: { __status: 400 },
+      [`PUT ${base}/vendors/v1`]: { __status: 400 },
     });
     expect(await ensureFirstVendorReady(await admin(backend), cfg)).toEqual([
       "first vendor A023: could not add an email (400)",

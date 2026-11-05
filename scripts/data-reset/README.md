@@ -22,10 +22,13 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
 1. ขั้น 0 — ทั้ง 9 บัญชีอยู่ใน TEST BU (BU อื่นต้องไม่เป็น default) และสิทธิ์ purchase ครบ ไม่ผ่าน = ไม่แตะอะไร
 2. reset (deploy token เท่านั้น ไม่ใช้ token ของ user)
 3. master data — ชุด sample ของ `seed:master` (`sample_seed_data/Preconfig_CARMEN_AVG.xlsx`, 50 แถวต่อชนิด)
-4. ผูก user: ทุกบัญชีอยู่แผนกแรก (เรียงตาม code) โดย hod เป็นหัวหน้า, owner อยู่แผนกที่สอง, ทุกบัญชีได้ทุก location
+4. ผูก user: ทุกบัญชีอยู่แผนกแรก (เรียงตาม code) โดย hod เป็นหัวหน้า, owner อยู่แผนกที่สอง (hod เป็นหัวหน้าด้วย —
+   PR ของแผนกที่ไม่มี HOD ส่งไม่ได้ backend ตอบ 503), ทุกบัญชีได้ทุก location
 5. workflow จาก `fixtures/workflows.json` — PR: Create → HOD → Purchase → GM (ทุกใบผ่าน GM),
    General PO: purchase → FC → GM, SR: Create → Store Approval (purchase) → Issue — ทุก workflow ได้รายการสินค้า
    ทั้งหมดที่ seed ไว้ (`data.products`) ไม่งั้นช่องเลือกสินค้าจะว่าง
+   ทุก workflow จบด้วยขั้น `Completed` (ไม่มีคน ไม่มี action) — backend ปิดเอกสารตอนอนุมัติที่ "เข้า" ขั้นสุดท้าย
+   ถ้าขั้นสุดท้ายเป็นผู้อนุมัติจริง (เช่น GM) เอกสารจะ approved ข้ามคนนั้นไป `validateFixture` จึงปฏิเสธ workflow แบบนั้น
    ทำไมทุก PR ผ่าน GM: ราคาของ PR ใส่ได้ตอนขั้น Purchase เท่านั้น และหน้าแก้ workflow ตั้งกฎ "ข้าม GM แล้วจบ" หลัง
    Purchase ไม่ได้ จึงคัด PR มูลค่าสูงด้วยกฎไม่ได้ (ผู้ใช้เลือกเมื่อ 2026-11-05)
    vendor ตัวแรก (เรียงตาม code) ที่ไม่มีอีเมลจะถูกเติม `carmensoftware.dev+vendor@gmail.com` ให้ (flow ส่ง PO ให้ vendor)
