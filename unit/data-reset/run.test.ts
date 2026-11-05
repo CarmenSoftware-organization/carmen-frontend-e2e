@@ -3,6 +3,7 @@ import { runDataReset } from "../../scripts/data-reset/index";
 import type { ResetConfig } from "../../scripts/data-reset/config";
 import type { ResetArgs } from "../../scripts/data-reset/cli";
 import type { SeedResult } from "../../scripts/seed-master/types";
+import type { StepResult } from "../../scripts/data-reset/step-result";
 import { TEST_USERS } from "../../tests/test-users";
 import { fakeBackend } from "./fake-backend";
 
@@ -51,17 +52,27 @@ function routes(over: Record<string, unknown> = {}) {
 
 const okSeed = async (): Promise<SeedResult[]> => [{ entity: "unit", key: "ea", status: "created" }];
 
-async function run(over: Record<string, unknown> = {}, a: Partial<ResetArgs> = {}, seedMaster = okSeed) {
+async function run(
+  over: Record<string, unknown> = {},
+  a: Partial<ResetArgs> = {},
+  seedMaster = okSeed,
+  documents: StepResult[] = [{ step: "verify", created: 0, skipped: 0, failed: [] }],
+) {
   const backend = fakeBackend(routes(over));
   const lines: string[] = [];
   const seedCalls: boolean[] = [];
+  const documentCalls: number[] = [];
   const code = await runDataReset(args(a), cfg, {
     fetchFn: backend.fetchFn,
     now,
     log: (l) => lines.push(l),
     seedMaster: async (_client, dryRun) => { seedCalls.push(dryRun); return seedMaster(); },
+    seedDocuments: async () => {
+      documentCalls.push(backend.writes().length);
+      return documents;
+    },
   });
-  return { code, backend, out: lines.join("\n"), seedCalls };
+  return { code, backend, out: lines.join("\n"), seedCalls, documentCalls };
 }
 
 const firstWrite = (paths: string[], prefix: string) => paths.findIndex((p) => p.startsWith(prefix));
@@ -150,6 +161,28 @@ describe("runDataReset", () => {
     expect(out).toContain("period");
   });
 
+  it("seeds documents after the period, once, and fails the run on a short verify row", async () => {
+    const ok = await run();
+    expect(ok.code).toBe(0);
+    expect(ok.documentCalls).toHaveLength(1);
+    const lastWrite = ok.backend.writes().at(-1)!;
+    expect(lastWrite.path).toBe("/api/GR2VYNKQ/inventory-periods");
+    const short = await run({}, {}, okSeed, [{ step: "verify", created: 0, skipped: 0, failed: ["PR draft: expected ≥ 3, found 0"] }]);
+    expect(short.code).toBe(1);
+    expect(short.out).toContain("PR draft: expected ≥ 3, found 0");
+  });
+
+  it("dry run does not seed documents but prints the document plan", async () => {
+    const { documentCalls, out } = await run({}, { dryRun: true, yes: false });
+    expect(documentCalls).toEqual([]);
+    expect(out).toMatch(/documents: would create .*41 PR/);
+  });
+
+  it("does not seed documents after a failed earlier step", async () => {
+    const { documentCalls } = await run({ "POST /api/GR2VYNKQ/inventory-periods": { __status: 400 } });
+    expect(documentCalls).toEqual([]);
+  });
+
   it("logs in each of the 9 accounts once", async () => {
     const backend = fakeBackend(routes());
     let logins = 0;
@@ -157,7 +190,7 @@ describe("runDataReset", () => {
       if (url.endsWith("/api/auth/login")) logins++;
       return backend.fetchFn(url, init);
     }) as unknown as typeof fetch;
-    await runDataReset(args(), cfg, { fetchFn: counting, now, log: () => {}, seedMaster: okSeed });
+    await runDataReset(args(), cfg, { fetchFn: counting, now, log: () => {}, seedMaster: okSeed, seedDocuments: async () => [] });
     expect(logins).toBe(TEST_USERS.length);
   });
 });

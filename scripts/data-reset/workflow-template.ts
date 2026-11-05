@@ -1,16 +1,15 @@
 // scripts/data-reset/workflow-template.ts
-// The first PR and PO workflows of the standard dataset, as a template that names users by email.
+// The first PR, PO and SR workflows of the standard dataset, as a template that names users by email.
 // workflow PR/PO ชุดแรกของชุดข้อมูลมาตรฐาน — แม่แบบที่อ้าง user ด้วยอีเมล
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { TEST_USERS } from "../../tests/test-users";
 
-export const GM_THRESHOLD = 100_000;
 export const FIXTURE_PATH = fileURLToPath(new URL("./fixtures/workflows.json", import.meta.url));
 
 export interface TemplateStage {
   name: string;
-  role: "create" | "approve" | "purchase";
+  role: "create" | "approve" | "purchase" | "issue";
   is_hod?: boolean;
   assigned_users: Array<{ email: string }>;
   [key: string]: unknown;
@@ -25,7 +24,7 @@ export interface RoutingRule {
 export interface WorkflowTemplate {
   order: number;
   name: string;
-  workflow_type: "purchase_request" | "purchase_order";
+  workflow_type: "purchase_request" | "purchase_order" | "store_requisition";
   description: string | null;
   is_active: boolean;
   data: { stages: TemplateStage[]; routing_rules: RoutingRule[] };
