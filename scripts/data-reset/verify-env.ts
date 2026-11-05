@@ -22,6 +22,13 @@ interface Permission {
 
 type ProfileUnit = { id: string; code: string; is_default?: boolean };
 
+export interface TestUserInfo {
+  id: string;
+  firstname: string;
+  middlename: string;
+  lastname: string;
+}
+
 const dataOf = <T>(body: unknown): T => ((body as { data?: T })?.data ?? body) as T;
 
 export function checkMembership(email: string, profileBody: unknown, buCode: string): string | null {
@@ -29,8 +36,11 @@ export function checkMembership(email: string, profileBody: unknown, buCode: str
   const target = units.find((u) => u.code === buCode);
   if (!target) return `${email}: not a member of ${buCode}`;
   if (target.is_default) return null;
-  const actual = units.find((u) => u.is_default)?.code ?? "(none)";
-  return `${email}: default BU is ${actual}, not ${buCode}`;
+  // An account whose only BU is the target lands in it anyway (dev: purchase, requestor).
+  // บัญชีที่มี BU เดียวคือ TEST BU จะเข้า BU นั้นอยู่แล้ว แม้ is_default เป็น false
+  const otherDefault = units.find((u) => u.is_default);
+  if (!otherDefault) return null;
+  return `${email}: default BU is ${otherDefault.code}, not ${buCode}`;
 }
 
 export function missingPermissions(roles: Array<{ permissions: Permission[] }>, required: string[]): string[] {
@@ -61,9 +71,10 @@ async function purchaseProblems(sessions: Sessions, cfg: ResetConfig, purchaseId
 export async function verifyEnvironment(
   sessions: Sessions,
   cfg: ResetConfig,
-): Promise<{ problems: string[]; userIds: Record<string, string>; buId: string }> {
+): Promise<{ problems: string[]; userIds: Record<string, string>; users: Record<string, TestUserInfo>; buId: string }> {
   const problems: string[] = [];
   const userIds: Record<string, string> = {};
+  const users: Record<string, TestUserInfo> = {};
   let buId = "";
   for (const { email } of TEST_USERS) {
     const client = await sessions.client(email);
@@ -72,7 +83,14 @@ export async function verifyEnvironment(
       problems.push(`${email}: profile request failed (${res.status})`);
       continue;
     }
-    userIds[email] = dataOf<{ id: string }>(res.body).id;
+    const me = dataOf<{ id: string; user_info?: Partial<TestUserInfo> }>(res.body);
+    userIds[email] = me.id;
+    users[email] = {
+      id: me.id,
+      firstname: me.user_info?.firstname ?? "",
+      middlename: me.user_info?.middlename ?? "",
+      lastname: me.user_info?.lastname ?? "",
+    };
     const problem = checkMembership(email, res.body, cfg.buCode);
     if (problem) problems.push(problem);
     if (email === cfg.adminEmail && !problem) buId = findBuId(res.body, cfg.buCode);
@@ -81,5 +99,5 @@ export async function verifyEnvironment(
   if (!buId && !problems.some((p) => p.startsWith(cfg.adminEmail))) {
     problems.push(`${cfg.adminEmail}: could not resolve the id of ${cfg.buCode}`);
   }
-  return { problems, userIds, buId };
+  return { problems, userIds, users, buId };
 }

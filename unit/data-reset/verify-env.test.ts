@@ -31,6 +31,10 @@ describe("checkMembership", () => {
     expect(checkMembership("a@x", body, "GR2VYNKQ")).toBe("a@x: default BU is CARMEN-AVG, not GR2VYNKQ");
   });
 
+  it("passes an account whose only BU is TEST BU even without is_default", () => {
+    expect(checkMembership("a@x", profile([{ id: "b", code: "GR2VYNKQ", is_default: false }]), "GR2VYNKQ")).toBeNull();
+  });
+
   it("reports a non-member", () => {
     expect(checkMembership("a@x", profile([{ id: "c", code: "OTHER", is_default: true }]), "GR2VYNKQ")).toBe(
       "a@x: not a member of GR2VYNKQ",
@@ -71,7 +75,11 @@ describe("verifyEnvironment", () => {
       const email = tokenOf[(init!.headers as Record<string, string>).Authorization];
       if (url.endsWith("/api/user/profile")) {
         const isHod = email === "carmensoftware.dev+hod@gmail.com";
-        return jsonResponse(200, profile([{ id: "bu-1", code: "GR2VYNKQ", is_default: !isHod }], `id-${email}`));
+        const units = [{ id: "bu-1", code: "GR2VYNKQ", is_default: !isHod }];
+        if (isHod) units.push({ id: "bu-2", code: "CARMEN-AVG", is_default: true });
+        return jsonResponse(200, {
+          data: { id: `id-${email}`, user_info: { firstname: "F", middlename: "", lastname: "L" }, business_unit: units },
+        });
       }
       if (url.includes("/user-application-roles/")) {
         return jsonResponse(200, { data: { application_roles: [{ application_role_id: "r1" }] } });
@@ -83,10 +91,13 @@ describe("verifyEnvironment", () => {
     }) as unknown as typeof fetch;
 
     const result = await verifyEnvironment(createSessions(cfg, fakeFetch), cfg);
-    expect(result.problems).toEqual(["carmensoftware.dev+hod@gmail.com: default BU is (none), not GR2VYNKQ"]);
+    expect(result.problems).toEqual(["carmensoftware.dev+hod@gmail.com: default BU is CARMEN-AVG, not GR2VYNKQ"]);
     expect(Object.keys(result.userIds)).toHaveLength(TEST_USERS.length);
     expect(result.userIds["carmensoftware.dev+purchase@gmail.com"]).toBe("id-carmensoftware.dev+purchase@gmail.com");
     expect(result.buId).toBe("bu-1");
+    expect(result.users["carmensoftware.dev+gm@gmail.com"]).toEqual({
+      id: "id-carmensoftware.dev+gm@gmail.com", firstname: "F", middlename: "", lastname: "L",
+    });
   });
 
   it("reports purchase's missing permissions", async () => {
