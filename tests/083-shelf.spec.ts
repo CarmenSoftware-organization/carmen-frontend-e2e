@@ -52,9 +52,9 @@ test.describe("Shelf — Smoke & error-state", () => {
       await expect(page).toHaveURL(new RegExp(PATH));
       // Page heading or document title should contain shelf-related text
       const headingOrTitle = page
-        .getByRole("heading", { name: /Shelf|ชั้นวาง/i })
+        .getByRole("heading", { name: /Shel(f|ves)|ชั้นวาง/i })
         .first()
-        .or(page.locator("h1, h2").filter({ hasText: /Shelf|ชั้นวาง/i }).first());
+        .or(page.locator("h1, h2").filter({ hasText: /Shel(f|ves)|ชั้นวาง/i }).first());
       await expect(headingOrTitle).toBeVisible({ timeout: 15_000 });
     },
   );
@@ -89,8 +89,11 @@ test.describe("Shelf — Smoke & error-state", () => {
         await expect(page).toHaveURL(new RegExp(PATH));
       } else {
         // Endpoint available: table or empty-state visible — test passes
+        // An empty list renders the table AND its "No data found" row — `.or()` matches both,
+        // so take the first to stay out of strict mode.
         const tableOrEmpty = page.locator("table").first()
-          .or(page.getByText(/no.*data|no.*results|ไม่พบ/i).first());
+          .or(page.getByText(/no.*data|no.*results|ไม่พบ/i).first())
+          .first();
         await expect(tableOrEmpty).toBeVisible({ timeout: 10_000 });
       }
     },

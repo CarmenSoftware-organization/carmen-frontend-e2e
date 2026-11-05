@@ -245,7 +245,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       // Click back button
       const backBtn = page.getByRole("button", { name: /Go back|Back|ย้อนกลับ/i }).first();
       await backBtn.click({ timeout: 5_000 }).catch(() => page.goBack());
-      await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 10_000 });
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 10_000 });
     },
   );
 
@@ -278,7 +278,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       }
       await h.saveButton().click();
       // Should redirect back to list
-      await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 15_000 });
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
     },
   );
 
@@ -313,7 +313,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
         const discardDialog2 = page.getByRole("alertdialog")
           .or(page.getByRole("dialog", { name: /Discard/i }));
         await discardDialog2.getByRole("button", { name: /Discard/i }).click();
-        await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 10_000 });
+        await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 10_000 });
       } else {
         expect(page.url()).not.toMatch(`${PATH}/new`);
       }
@@ -347,7 +347,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       await page.waitForLoadState("networkidle");
       await h.nameInput().fill(NAME_UPDATED);
       await h.saveButton().click();
-      await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 15_000 });
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
     },
   );
 
@@ -382,7 +382,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
         const wasActive = (await sw.getAttribute("aria-checked")) === "true";
         await sw.click();
         await h.saveButton().click();
-        await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 15_000 });
+        await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
       } else {
         // Switch not visible in this context — skip toggle but verify save works
         await h.cancelButton().click();
@@ -418,6 +418,11 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       await page.waitForLoadState("networkidle");
       await h.nameInput().fill("UNSAVED_CHANGE_XYZ");
       await h.cancelButton().click();
+      // A dirty form asks "Discard changes?" before leaving edit mode (DiscardDialog).
+      const discard = page.getByRole("alertdialog").or(page.getByRole("dialog", { name: /Discard/i })).first();
+      if (await discard.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await discard.getByRole("button", { name: /^Discard$/i }).click();
+      }
       await page.waitForLoadState("networkidle");
       // Back to view mode — Edit button should reappear
       await expect(h.editButton()).toBeVisible({ timeout: 5_000 });
@@ -452,7 +457,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       await page.waitForLoadState("networkidle");
       await h.nameInput().fill(NAME_DEL);
       await h.saveButton().click();
-      await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 15_000 });
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
 
       // Delete it
       await h.list.search(NAME_DEL);
@@ -511,7 +516,9 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       ],
     },
     async ({ browser }) => {
-      const ctx = await browser.newContext(); // fresh context — no auth
+      // No session: inside createAuthTest specs, browser.newContext() inherits the role's storageState
+      // (see 081-chart-of-account-mapping.spec.ts) — clear it explicitly.
+      const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
       const page = await ctx.newPage();
       await page.goto(PATH);
       await page.waitForLoadState("networkidle");

@@ -45,9 +45,9 @@ const { code: CODE_DEL, name: NAME_DEL } = buildEntity({
 
 const opts = {
   listPath: PATH,
-  codeInputId: "recipe-category-code",
-  nameInputId: "recipe-category-name",
-  descriptionInputId: "recipe-category-description",
+  codeInputId: "rc-code",
+  nameInputId: "rc-name",
+  descriptionInputId: "rc-description",
 };
 
 test.describe("Operation Plan Category — Smoke & CRUD", () => {
@@ -126,11 +126,11 @@ test.describe("Operation Plan Category — Smoke & CRUD", () => {
       await h.nameInput().fill(NAME);
       await h.saveButton().click();
       // Should redirect back to list
-      await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 15_000 });
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
       // Verify new row in list
       await h.list.search(CODE);
       await expect(page.getByRole("button", { name: NAME, exact: false }).first()
-        .or(page.getByRole("cell", { name: new RegExp(CODE) }).first())).toBeVisible({ timeout: 10_000 });
+        .or(page.getByRole("cell", { name: new RegExp(CODE) }).first()).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -174,7 +174,7 @@ test.describe("Operation Plan Category — Smoke & CRUD", () => {
         const discardDialog2 = page.getByRole("alertdialog")
           .or(page.getByRole("dialog", { name: /Discard/i }));
         await discardDialog2.getByRole("button", { name: /Discard/i }).click();
-        await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 10_000 });
+        await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 10_000 });
       } else {
         // Framework may handle navigation differently — just assert we're not on /new
         expect(page.url()).not.toMatch(`${PATH}/new`);
@@ -210,7 +210,7 @@ test.describe("Operation Plan Category — Smoke & CRUD", () => {
       await nameInput.fill(NAME_UPDATED);
       await h.saveButton().click();
       // Redirect back to list
-      await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 15_000 });
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
     },
   );
 
@@ -241,7 +241,7 @@ test.describe("Operation Plan Category — Smoke & CRUD", () => {
       // In view mode, Edit button should be present
       await expect(h.editButton()).toBeVisible({ timeout: 10_000 });
       // The name field should be in read-only / plain-text form
-      const viewValue = h.viewValueFor(opts.nameInputId);
+      const viewValue = h.viewFieldFor(opts.nameInputId);
       await expect(viewValue).toBeVisible({ timeout: 5_000 });
       // Click Edit
       await h.editButton().click();
@@ -281,7 +281,7 @@ test.describe("Operation Plan Category — Smoke & CRUD", () => {
       await h.codeInput().fill(CODE_DEL);
       await h.nameInput().fill(NAME_DEL);
       await h.saveButton().click();
-      await page.waitForURL(new RegExp(`^.+${PATH}\\/?$`), { timeout: 15_000 });
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
 
       // Now delete it
       await h.list.search(CODE_DEL);
@@ -292,7 +292,8 @@ test.describe("Operation Plan Category — Smoke & CRUD", () => {
       await page.getByRole("menuitem", { name: /^Delete$/i }).click();
       const alertDialog = page.getByRole("alertdialog");
       await expect(alertDialog).toBeVisible({ timeout: 5_000 });
-      await expect(alertDialog.getByText(/Delete Recipe Category/i)).toBeVisible();
+      // Title and description both mention "Delete Recipe Category" — assert on the title.
+      await expect(alertDialog.getByRole("heading", { name: /Delete Recipe Category/i })).toBeVisible();
       await alertDialog.getByRole("button", { name: /^Delete$/i }).click();
       // Toast should appear
       await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
@@ -343,7 +344,9 @@ test.describe("Operation Plan Category — Smoke & CRUD", () => {
       ],
     },
     async ({ browser }) => {
-      const ctx = await browser.newContext();
+      // No session: inside createAuthTest specs, browser.newContext() inherits the role's storageState
+      // (see 081-chart-of-account-mapping.spec.ts) — clear it explicitly.
+      const ctx = await browser.newContext({ storageState: { cookies: [], origins: [] } });
       const page = await ctx.newPage();
       const { LoginPage } = await import("./pages/login.page");
       const { TEST_PASSWORD } = await import("./test-users");
