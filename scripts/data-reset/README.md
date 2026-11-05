@@ -23,12 +23,12 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
 2. reset (deploy token เท่านั้น ไม่ใช้ token ของ user)
 3. master data — ชุด sample ของ `seed:master` (`sample_seed_data/Preconfig_CARMEN_AVG.xlsx`, 50 แถวต่อชนิด)
 4. ผูก user: ทุกบัญชีอยู่แผนกแรก (เรียงตาม code) โดย hod เป็นหัวหน้า, owner อยู่แผนกที่สอง, ทุกบัญชีได้ทุก location
-5. workflow จาก `fixtures/workflows.json` — PR: Create → HOD → GM (เฉพาะยอดเกิน 100,000) → Purchase,
-   General PO: purchase → FC → GM — ทุก workflow ได้รายการสินค้าทั้งหมดที่ seed ไว้ (`data.products`)
-   ไม่งั้นช่องเลือกสินค้าของ PR/PO จะว่าง
-   **ข้อจำกัด:** กฎ GM ตัดสินตอนขั้น HOD จากราคาที่ requestor กรอกไว้ PR ที่ requestor ไม่ใส่ราคาจะข้าม GM เสมอ
-   แม้ purchase จะใส่ราคาเกิน 100,000 ทีหลัง — PR "มูลค่าสูง" ของชุดข้อมูลต้องให้ requestor ใส่ราคาตั้งแต่สร้าง
-   (หน้าแก้ workflow ให้ข้ามได้เฉพาะไปขั้นที่อยู่ถัดไป จึงวาง GM เป็นขั้นสุดท้ายแบบข้ามได้ไม่ได้)
+5. workflow จาก `fixtures/workflows.json` — PR: Create → HOD → Purchase → GM (ทุกใบผ่าน GM),
+   General PO: purchase → FC → GM, SR: Create → Store Approval (purchase) → Issue — ทุก workflow ได้รายการสินค้า
+   ทั้งหมดที่ seed ไว้ (`data.products`) ไม่งั้นช่องเลือกสินค้าจะว่าง
+   ทำไมทุก PR ผ่าน GM: ราคาของ PR ใส่ได้ตอนขั้น Purchase เท่านั้น และหน้าแก้ workflow ตั้งกฎ "ข้าม GM แล้วจบ" หลัง
+   Purchase ไม่ได้ จึงคัด PR มูลค่าสูงด้วยกฎไม่ได้ (ผู้ใช้เลือกเมื่อ 2026-11-05)
+   vendor ตัวแรก (เรียงตาม code) ที่ไม่มีอีเมลจะถูกเติม `carmensoftware.dev+vendor@gmail.com` ให้ (flow ส่ง PO ให้ vendor)
 6. งวดสินค้าคงคลังของเดือนนี้ (เวลาไทย) ถ้ายังไม่มีงวดเปิดที่ครอบวันนี้
 
 ## ถ้า reset ตอบ 504 / timeout

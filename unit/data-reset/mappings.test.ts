@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   checkMasterShape,
+  ensureFirstVendorReady,
   planDepartmentAssignments,
   planLocationAssignments,
   seedMappings,
@@ -55,6 +56,52 @@ describe("checkMasterShape", () => {
 
   it("reports a BU with no vendor", () => {
     expect(checkMasterShape({ departments: 2, locations: 2, firstVendor: null })).toEqual(["master data has no vendor"]);
+  });
+});
+
+describe("ensureFirstVendorReady", () => {
+  const base = "/api/config/GR2VYNKQ";
+  const list = { data: [{ id: "v2", code: "B002" }, { id: "v1", code: "A023" }] };
+  const admin = async (backend: ReturnType<typeof fakeBackend>) =>
+    createSessions(cfg, backend.fetchFn).client(cfg.adminEmail);
+
+  it("adds an email to the first vendor by code when it has none", async () => {
+    const backend = fakeBackend({
+      [`GET ${base}/vendors`]: list,
+      [`GET ${base}/vendors/v1`]: { data: { id: "v1", code: "A023", vendor_contact: [] } },
+    });
+    expect(await ensureFirstVendorReady(await admin(backend), cfg)).toEqual([]);
+    expect(backend.writes()).toEqual([
+      {
+        method: "PATCH",
+        path: `${base}/vendors/v1`,
+        body: {
+          vendor_contact: {
+            add: [{ name: "STD contact", email: "carmensoftware.dev+vendor@gmail.com", phone: "0800000000", is_primary: true }],
+          },
+        },
+      },
+    ]);
+  });
+
+  it("leaves a vendor that already has an email alone", async () => {
+    const backend = fakeBackend({
+      [`GET ${base}/vendors`]: list,
+      [`GET ${base}/vendors/v1`]: { data: { id: "v1", code: "A023", vendor_contact: [{ email: "a@x" }] } },
+    });
+    expect(await ensureFirstVendorReady(await admin(backend), cfg)).toEqual([]);
+    expect(backend.writes()).toEqual([]);
+  });
+
+  it("reports a refused update", async () => {
+    const backend = fakeBackend({
+      [`GET ${base}/vendors`]: list,
+      [`GET ${base}/vendors/v1`]: { data: { id: "v1", code: "A023" } },
+      [`PATCH ${base}/vendors/v1`]: { __status: 400 },
+    });
+    expect(await ensureFirstVendorReady(await admin(backend), cfg)).toEqual([
+      "first vendor A023: could not add an email (400)",
+    ]);
   });
 });
 

@@ -3,6 +3,7 @@
 // HOD of the first department) and the locations each account may use.
 // สร้างการผูก user กับแผนกและ location ใหม่หลัง reset
 import { TEST_USERS } from "../../tests/test-users";
+import type { ApiClient } from "../seed-master/api-client";
 import type { ResetConfig } from "./config";
 import type { Sessions } from "./sessions";
 import { rowsOf, type StepResult } from "./step-result";
@@ -69,6 +70,27 @@ function vendorEmail(detail: unknown): string | null {
   return null;
 }
 
+export const STD_VENDOR_CONTACT = {
+  name: "STD contact",
+  email: "carmensoftware.dev+vendor@gmail.com",
+  phone: "0800000000",
+  is_primary: true,
+};
+
+/**
+ * Spec step 1: the first vendor card needs an email so the PO send-to-vendor flow can finish.
+ * The sample workbook's first vendor by code (A023) has none — add the standard contact.
+ * vendor ตัวแรกต้องมีอีเมล — ตัวอย่างใน workbook (A023) ไม่มี จึงเติมให้
+ */
+export async function ensureFirstVendorReady(admin: ApiClient, cfg: ResetConfig): Promise<string[]> {
+  const base = `/api/config/${cfg.buCode}/vendors`;
+  const [vendor] = byCode(rowsOf<{ id: string; code: string }>((await admin.get(`${base}?perpage=100`)).body));
+  if (!vendor) return [];
+  if (vendorEmail((await admin.get(`${base}/${vendor.id}`)).body)) return [];
+  const res = await admin.patch(`${base}/${vendor.id}`, { vendor_contact: { add: [STD_VENDOR_CONTACT] } });
+  return res.ok ? [] : [`first vendor ${vendor.code}: could not add an email (${res.status})`];
+}
+
 export async function seedMappings(
   sessions: Sessions,
   cfg: ResetConfig,
@@ -76,6 +98,10 @@ export async function seedMappings(
 ): Promise<StepResult & { firstDepartment: { id: string; name: string } | null }> {
   const admin = await sessions.client(cfg.adminEmail);
   const base = `/api/config/${cfg.buCode}`;
+  const vendorProblems = await ensureFirstVendorReady(admin, cfg);
+  if (vendorProblems.length > 0) {
+    return { step: "mappings", created: 0, skipped: 0, failed: vendorProblems, firstDepartment: null };
+  }
   const departments = rowsOf<Department>((await admin.get(`${base}/departments?perpage=100`)).body);
   const locations = rowsOf<{ id: string; code: string }>((await admin.get(`${base}/locations?perpage=100`)).body);
   const [vendor] = byCode(rowsOf<{ id: string; code: string }>((await admin.get(`${base}/vendors?perpage=100`)).body));

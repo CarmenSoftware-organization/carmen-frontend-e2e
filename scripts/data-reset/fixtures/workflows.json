@@ -1,5 +1,5 @@
 {
-  "note": "Hand-authored 2026-11-05: TEST BU had no workflows to capture. assigned_users carry emails; data:reset fills id, names and department from each account's profile. GM threshold: total_amount > 100000.",
+  "note": "Hand-authored 2026-11-05: TEST BU had no workflows to capture. assigned_users carry emails; data:reset fills id, names and department from each account's profile. Every PR passes GM (user decision 2026-11-05: PR prices exist only from the Purchase stage, so an amount rule cannot pick high-value PRs).",
   "bu_code": "GR2VYNKQ",
   "workflows": [
     {
@@ -112,56 +112,6 @@
             "is_hod": true
           },
           {
-            "name": "GM Approval",
-            "role": "approve",
-            "sla": "24",
-            "sla_unit": "hours",
-            "description": "General Manager — only PRs over 100,000",
-            "hide_fields": {
-              "price_per_unit": false,
-              "total_price": false
-            },
-            "assigned_users": [
-              {
-                "email": "carmensoftware.dev+gm@gmail.com"
-              }
-            ],
-            "available_actions": {
-              "submit": {
-                "is_active": false,
-                "recipients": {
-                  "next_step": false,
-                  "requestor": false,
-                  "current_approve": false
-                }
-              },
-              "approve": {
-                "is_active": true,
-                "recipients": {
-                  "next_step": true,
-                  "requestor": true,
-                  "current_approve": false
-                }
-              },
-              "reject": {
-                "is_active": true,
-                "recipients": {
-                  "next_step": false,
-                  "requestor": true,
-                  "current_approve": false
-                }
-              },
-              "sendback": {
-                "is_active": true,
-                "recipients": {
-                  "next_step": false,
-                  "requestor": true,
-                  "current_approve": false
-                }
-              }
-            }
-          },
-          {
             "name": "Purchase",
             "role": "purchase",
             "sla": "24",
@@ -210,26 +160,59 @@
                 }
               }
             }
-          }
-        ],
-        "routing_rules": [
+          },
           {
-            "trigger_stage": "HOD Approval",
-            "condition": {
-              "field": "total_amount",
-              "operator": "lte",
-              "value": [
-                "100000"
-              ]
+            "name": "GM Approval",
+            "role": "approve",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "General Manager — every PR",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
             },
-            "action": {
-              "type": "SKIP_STAGE",
-              "parameters": {
-                "target_stage": "Purchase"
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+gm@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
               }
             }
           }
-        ]
+        ],
+        "routing_rules": []
       }
     },
     {
@@ -354,6 +337,178 @@
             "assigned_users": [
               {
                 "email": "carmensoftware.dev+gm@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              }
+            }
+          }
+        ],
+        "routing_rules": []
+      }
+    },
+    {
+      "order": 2,
+      "name": "Store Requisition",
+      "workflow_type": "store_requisition",
+      "description": "Standard test dataset SR workflow",
+      "is_active": true,
+      "data": {
+        "stages": [
+          {
+            "name": "Create Request",
+            "role": "create",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Requester creates and submits the SR",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+purchase@gmail.com"
+              },
+              {
+                "email": "carmensoftware.dev+requestor@gmail.com"
+              },
+              {
+                "email": "carmensoftware.dev+storemanager@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
+          },
+          {
+            "name": "Store Approval",
+            "role": "approve",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Purchase approves the requisition",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+purchase@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              }
+            }
+          },
+          {
+            "name": "Issue",
+            "role": "issue",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Store issues the goods",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+purchase@gmail.com"
+              },
+              {
+                "email": "carmensoftware.dev+storemanager@gmail.com"
               }
             ],
             "available_actions": {
