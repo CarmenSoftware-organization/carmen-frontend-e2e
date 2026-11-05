@@ -55,6 +55,8 @@ describe("seedReceiving", () => {
     const w = backend.writesBy();
     const cns = w.filter((x) => x.path === "/api/GR2VYNKQ/credit-notes");
     expect(cns.map((x) => (x.body as any).grn_id)).toEqual(["d1", "d1"]);
+    // The backend credits each product on a GRN once (422 otherwise), so the two CNs take different lines.
+    expect(cns.map((x) => (x.body as any).credit_note_detail.add[0].product_id)).toEqual(["p1", "p2"]);
     expect((cns[0].body as any)).toMatchObject({ credit_note_type: "quantity_return", vendor_id: "v1" });
     expect(w.filter((x) => /credit-notes\/d\d+\/submit$/.test(x.path))).toHaveLength(1);
     expect(w.every((x) => x.caller === email("purchase"))).toBe(true);

@@ -26,6 +26,9 @@
               },
               {
                 "email": "carmensoftware.dev+purchase@gmail.com"
+              },
+              {
+                "email": "carmensoftware.dev+owner@gmail.com"
               }
             ],
             "available_actions": {
@@ -210,6 +213,53 @@
                 }
               }
             }
+          },
+          {
+            "name": "Completed",
+            "role": "approve",
+            "sla": "0",
+            "sla_unit": "hours",
+            "description": "Terminal stage — the backend completes the document on the approval that enters it",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
           }
         ],
         "routing_rules": []
@@ -373,6 +423,53 @@
                 }
               }
             }
+          },
+          {
+            "name": "Completed",
+            "role": "approve",
+            "sla": "0",
+            "sla_unit": "hours",
+            "description": "Terminal stage — the backend completes the document on the approval that enters it",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
           }
         ],
         "routing_rules": []
@@ -545,6 +642,53 @@
                 }
               }
             }
+          },
+          {
+            "name": "Completed",
+            "role": "approve",
+            "sla": "0",
+            "sla_unit": "hours",
+            "description": "Terminal stage — the backend completes the document on the approval that enters it",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
           }
         ],
         "routing_rules": []

@@ -23,7 +23,10 @@ describe("workflow fixture", () => {
       ["HOD Approval", "approve"],
       ["Purchase", "purchase"],
       ["GM Approval", "approve"],
+      ["Completed", "approve"],
     ]);
+    // owner raises the second-department PR; a creator not on the create stage cannot submit (503).
+    expect(pr.data.stages[0].assigned_users.map((u) => u.email.split("+")[1].split("@")[0])).toEqual(["requestor", "purchase", "owner"]);
     expect(pr.data.stages[1].is_hod).toBe(true);
     expect(pr.data.stages[1].assigned_users).toEqual([]);
     expect(pr.data.routing_rules).toEqual([]);
@@ -34,6 +37,7 @@ describe("workflow fixture", () => {
       ["Create Request", "create", ["purchase", "requestor", "storemanager"]],
       ["Store Approval", "approve", ["purchase"]],
       ["Issue", "issue", ["purchase", "storemanager"]],
+      ["Completed", "approve", []],
     ]);
   });
 
@@ -42,6 +46,7 @@ describe("workflow fixture", () => {
       ["Create Request", "create", ["carmensoftware.dev+purchase@gmail.com"]],
       ["FC Approval", "approve", ["carmensoftware.dev+fc@gmail.com"]],
       ["GM Approval", "approve", ["carmensoftware.dev+gm@gmail.com"]],
+      ["Completed", "approve", []],
     ]);
   });
 
@@ -53,6 +58,18 @@ describe("workflow fixture", () => {
 });
 
 describe("validateFixture", () => {
+  it("requires every workflow to end on a terminal stage with no active action", () => {
+    // The backend completes a document on the approval that ENTERS the last stage
+    // (isFinalApproval = no stage after the one it moves into), so a real approver
+    // on the last stage is skipped. Carmen workflows end on a "Completed" stage.
+    const bad = loadWorkflowFixture();
+    bad.workflows[0].data.stages.pop();
+    expect(validateFixture(bad)).toEqual([
+      "Purchase Request: last stage GM Approval has active actions — end on a terminal stage (e.g. Completed) or the backend finishes the workflow one stage early",
+    ]);
+  });
+
+
   it("reports a rule whose target is not after its trigger, and an unknown account", () => {
     const bad = loadWorkflowFixture();
     bad.workflows[0].data.routing_rules.push({

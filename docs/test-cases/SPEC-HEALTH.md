@@ -65,7 +65,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `079-delivery-point.spec.ts` | 49 | 0 | 1 | 2% | 0 | 0 | 0 | **25** | 67 | 34 |
 | `501-grn.spec.ts` | 76 | 0 | 0 | 0% | **57** | 0 | **4** | **6** | 26 | 49 |
 | `310-pr-template.spec.ts` | 61 | 0 | 0 | 0% | **51** | 0 | **4** | 0 | 13 | 11 |
-| `111-cuisine.spec.ts` | 17 | 0 | 0 | 0% | **1** | 0 | 0 | 0 | 30 | 7 |
+| `111-cuisine.spec.ts` | 17 | 0 | 0 | 0% | **1** | 0 | 0 | 0 | 30 | 8 |
 | `302-pr-creator-journey.spec.ts` | 42 | 0 | 0 | 0% | **1** | 0 | 0 | **21** | 52 | 10 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `010-department.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | **2** | 57 | 0 |
