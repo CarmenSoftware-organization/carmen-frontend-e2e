@@ -6,7 +6,8 @@ import type { ResetConfig } from "../config";
 import type { Sessions } from "../sessions";
 import type { StepResult } from "../step-result";
 import type { SeedContext } from "./context";
-import { addDays } from "./dates";
+import { addDays, isoDay } from "./dates";
+import { refId } from "./refs";
 import type { RowLedger } from "./row-ledger";
 import { createDoc, transition, why } from "./transition";
 
@@ -82,7 +83,7 @@ function createBody(ctx: SeedContext, pr: PlannedPr) {
   return {
     stage_role: "create",
     details: {
-      pr_date: ctx.today,
+      pr_date: isoDay(ctx.today),
       description: `STD ${pr.row}`,
       requestor_id: ctx.users[pr.requestor]?.id,
       workflow_id: ctx.workflows.pr,
@@ -94,7 +95,7 @@ function createBody(ctx: SeedContext, pr: PlannedPr) {
             product_id: product.id,
             location_id: ctx.locations.first.id,
             delivery_point_id: ctx.deliveryPointId,
-            ...(pr.deliveryDate ? { delivery_date: pr.deliveryDate } : {}),
+            ...(pr.deliveryDate ? { delivery_date: isoDay(pr.deliveryDate) } : {}),
             requested_qty: l.qty,
             requested_unit_id: product.unitId,
             currency_id: ctx.currencyId,
@@ -114,7 +115,7 @@ function actionBody(ctx: SeedContext, pr: PlannedPr, action: Action, by: Role, v
   const lines = detailsOf(doc);
   const approveLine = (l: any) => ({
     id: l.id, purchase_request_id: doc.id, stage_status: "approve", stage_message: null,
-    approved_qty: l.requested_qty, approved_unit_id: l.requested_unit_id,
+    approved_qty: l.requested_qty, approved_unit_id: refId(l, "requested_unit"),
   });
   switch (action) {
     case "submit":

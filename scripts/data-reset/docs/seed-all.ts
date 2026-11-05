@@ -40,6 +40,16 @@ const DEFAULT_STEPS: DocumentSteps = {
   verify: verifyDataset,
 };
 
+/** Run a step; a throw becomes a failed step instead of aborting the run without a summary. */
+async function guard<T extends StepResult>(step: string, run: () => Promise<T>, fallback: Omit<T, keyof StepResult>): Promise<T> {
+  try {
+    return await run();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { step, created: 0, skipped: 0, failed: [`${step} threw: ${msg}`], ...fallback } as T;
+  }
+}
+
 const strip = ({ step, created, skipped, failed }: StepResult): StepResult => ({ step, created, skipped, failed });
 
 export async function seedAllDocuments(
@@ -59,16 +69,23 @@ export async function seedAllDocuments(
   }
   const ledger = new RowLedger();
   const results: StepResult[] = [];
-  results.push(await s.stock(sessions, cfg, ctx, ledger));
-  results.push(await s.prTemplate(sessions, cfg, ctx, ledger));
-  const prs = await s.purchaseRequests(sessions, cfg, ctx, ledger);
+  results.push(await guard("stock", () => s.stock(sessions, cfg, ctx, ledger), {}));
+  results.push(await guard("pr-template", () => s.prTemplate(sessions, cfg, ctx, ledger), {}));
+  const prs = await guard("purchase-requests", () => s.purchaseRequests(sessions, cfg, ctx, ledger), { reservedForPo: "" });
   results.push(strip(prs));
-  const pos = await s.purchaseOrders(sessions, cfg, ctx, ledger, prs.reservedForPo);
+  const pos = await guard("purchase-orders", () => s.purchaseOrders(sessions, cfg, ctx, ledger, prs.reservedForPo), {
+    forGrn: { full: "", partial: "" },
+  });
   results.push(strip(pos));
-  results.push(await s.receiving(sessions, cfg, ctx, ledger, pos.forGrn));
-  results.push(await s.storeRequisitions(sessions, cfg, ctx, ledger));
-  results.push(await s.pricing(sessions, cfg, ctx, ledger));
-  const verified = await s.verify(sessions, cfg, ledger);
+  results.push(await guard("receiving", () => s.receiving(sessions, cfg, ctx, ledger, pos.forGrn), {}));
+  results.push(await guard("store-requisitions", () => s.storeRequisitions(sessions, cfg, ctx, ledger), {}));
+  results.push(await guard("pricing", () => s.pricing(sessions, cfg, ctx, ledger), {}));
+  let verified: { short: string[]; table: string };
+  try {
+    verified = await s.verify(sessions, cfg, ledger);
+  } catch (err) {
+    verified = { short: [`verify threw: ${err instanceof Error ? err.message : String(err)}`], table: "" };
+  }
   if (verified.table) log(verified.table);
   results.push({ step: "verify", created: 0, skipped: 0, failed: verified.short });
   return results;

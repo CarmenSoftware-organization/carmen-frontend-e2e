@@ -20,10 +20,10 @@ describe("addDays", () => {
 describe("planStock", () => {
   const plan = planStock(ctx);
 
-  it("puts products 1–3 at par 100 on location 1", () => {
-    expect(plan.parLevels).toEqual(
-      ["p1", "p2", "p3"].map((productId) => ({ productId, locationId: "l1", par_qty: 100, min_qty: 10, max_qty: 150, re_order_qty: 50 })),
-    );
+  it("links every product to both locations and puts products 1–3 at par 100 on location 1", () => {
+    expect(plan.productLocations).toHaveLength(10);
+    expect(plan.productLocations[0].entries).toEqual([{ location_id: "l1", par_qty: 100, min_qty: 10, max_qty: 150 }, { location_id: "l2" }]);
+    expect(plan.productLocations[3].entries).toEqual([{ location_id: "l1" }, { location_id: "l2" }]);
   });
 
   it("stocks the tier products so on-hand / par is 0.2, 0.4 and 0.8", () => {
@@ -54,23 +54,27 @@ describe("seedStock", () => {
 
   it("sets par levels as admin, then posts and commits each stock-in as storemanager", async () => {
     let n = 0;
-    const backend = fakeBackend({
-      [`GET ${current}`]: open,
-      "POST /api/GR2VYNKQ/stock-ins": () => ({ data: { id: `si${++n}`, si_no: `SI00${n}` } }),
-      ...Object.fromEntries([1, 2, 3, 4, 5].map((i) => [`GET /api/GR2VYNKQ/stock-ins/si${i}`, { data: { doc_version: 0 } }])),
-    });
+    const backend = fakeBackend(
+      {
+        [`GET ${current}`]: open,
+        "POST /api/GR2VYNKQ/stock-ins": () => ({ data: { id: `si${++n}`, doc_version: 0 } }),
+        ...Object.fromEntries([1, 2, 3, 4, 5].map((i) => [`GET /api/GR2VYNKQ/stock-ins/si${i}`, { data: { doc_version: 0, si_no: `SI00${i}` } }])),
+      },
+      (method) => (method === "GET" ? { data: { doc_version: 3, locations: [] } } : undefined),
+    );
     const ledger = new RowLedger();
     const result = await seedStock(createSessions(cfg, backend.fetchFn), cfg, ctx, ledger);
     expect(result.failed).toEqual([]);
     const writes = backend.writes().map((c) => `${c.method} ${c.path}`);
-    expect(writes.filter((w) => w.startsWith("PATCH /api/config/GR2VYNKQ/products/"))).toHaveLength(3);
+    expect(writes.filter((w) => w.startsWith("PATCH /api/config/GR2VYNKQ/products/"))).toHaveLength(10);
     expect(writes.filter((w) => w === "POST /api/GR2VYNKQ/stock-ins")).toHaveLength(5);
     expect(writes.filter((w) => /stock-ins\/si\d\/commit$/.test(w))).toHaveLength(5);
     expect(Object.keys(ledger.rows()).sort()).toEqual(
       ["stock.expired", "stock.near-expiry", "stock.on-hand.l1", "stock.on-hand.l2", "stock.tiers"],
     );
     const first = backend.writes().find((c) => c.path === "/api/GR2VYNKQ/stock-ins")!.body as any;
-    expect(first).toMatchObject({ adjustment_type_id: "adj-in", si_date: "2026-11-05" });
+    expect(first).toMatchObject({ adjustment_type_id: "adj-in", si_date: "2026-11-05T05:00:00.000Z" });
+    expect(ledger.rows()["stock.tiers"].docNos).toEqual(["SI001"]);
     expect(first.note).toMatch(/^STD stock\./);
   });
 });

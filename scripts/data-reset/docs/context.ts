@@ -7,6 +7,7 @@ import { rowsOf } from "../step-result";
 import type { TestUserInfo } from "../verify-env";
 import { localDate } from "../period";
 import { vendorEmail } from "../mappings";
+import { refId } from "./refs";
 
 export interface Id {
   id: string;
@@ -48,6 +49,7 @@ export async function resolveSeedContext(
   const [d1, d2] = byCode(await list("departments"));
   const inventory = byCode((await list("locations")).filter((l) => (l.location_type ?? "inventory") === "inventory"));
   const products = byCode(await list("products")).slice(0, 10);
+  if (products.length < 10) throw new Error(`need 10 products in ${bu}, found ${products.length}`);
   const [vendorRow] = byCode(await list("vendors"));
   const vendor = need(vendorRow, `no vendor in ${bu}`);
   const email = need(vendorEmail((await admin.get(`/api/config/${bu}/vendors/${vendor.id}`)).body), `first vendor ${vendor.code} has no email`);
@@ -68,7 +70,7 @@ export async function resolveSeedContext(
       first: { id: need(inventory[0], `need 2 inventory locations in ${bu}`).id, name: inventory[0].name },
       second: { id: need(inventory[1], `need 2 inventory locations in ${bu}`).id, name: inventory[1].name },
     },
-    products: products.map((p) => ({ id: p.id, code: p.code, unitId: p.inventory_unit_id })),
+    products: products.map((p) => ({ id: p.id, code: p.code, unitId: refId(p, "inventory_unit") ?? "" })),
     vendor: { id: vendor.id, email },
     currencyId: need((await list("currencies")).find((c) => c.code === "THB")?.id, `no THB currency in ${bu}`),
     deliveryPointId: need((await list("delivery-points"))[0]?.id, `no delivery point in ${bu}`),

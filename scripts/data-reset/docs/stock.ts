@@ -6,13 +6,15 @@ import type { ResetConfig } from "../config";
 import type { Sessions } from "../sessions";
 import type { StepResult } from "../step-result";
 import type { SeedContext } from "./context";
-import { addDays } from "./dates";
+import { addDays, isoDay } from "./dates";
+import { refId } from "./refs";
 import type { RowLedger } from "./row-ledger";
 import { createDoc, transition, why } from "./transition";
 import { localDate } from "../period";
 
 const STOREMANAGER = "carmensoftware.dev+storemanager@gmail.com";
-const PAR = { par_qty: 100, min_qty: 10, max_qty: 150, re_order_qty: 50 };
+// ProductUpdateSchema location entries accept location_id, shelf_id, min/max/par — no re_order_qty.
+const PAR = { par_qty: 100, min_qty: 10, max_qty: 150 };
 
 interface StockLine { productId: string; qty: number; cost: number; expiredAt?: string }
 
@@ -21,7 +23,12 @@ export function planStock(ctx: SeedContext) {
   const l1 = ctx.locations.first.id;
   const range = (from: number, to: number) => Array.from({ length: to - from + 1 }, (_, i) => from + i);
   return {
-    parLevels: [1, 2, 3].map((i) => ({ productId: p(i), locationId: l1, ...PAR })),
+    // Every product sits at both locations (the PR item picker lists products by location);
+    // products 1–3 carry the par level that 711's tiers read at location 1.
+    productLocations: ctx.products.map((product, i) => ({
+      productId: product.id,
+      entries: [{ location_id: l1, ...(i < 3 ? PAR : {}) }, { location_id: ctx.locations.second.id }] as Array<Record<string, unknown> & { location_id: string }>,
+    })),
     stockIns: [
       { row: "stock.tiers", locationId: l1, lines: [[1, 20], [2, 40], [3, 80]].map(([i, qty]) => ({ productId: p(i), qty, cost: 10 })) },
       { row: "stock.on-hand.l1", locationId: l1, lines: range(4, 8).map((i) => ({ productId: p(i), qty: 200, cost: 10 })) },
@@ -49,11 +56,25 @@ export async function seedStock(sessions: Sessions, cfg: ResetConfig, ctx: SeedC
   }
   const plan = planStock(ctx);
   const admin = await sessions.client(cfg.adminEmail);
-  for (const par of plan.parLevels) {
-    const { productId, ...levels } = par;
-    const res = await admin.patch(`/api/config/${cfg.buCode}/products/${productId}`, { locations: { add: [levels] } });
+  for (const { productId, entries } of plan.productLocations) {
+    const path = `/api/config/${cfg.buCode}/products/${productId}`;
+    const current = await admin.get(path);
+    if (!current.ok) {
+      result.failed.push(why(`read product ${productId}`, current));
+      continue;
+    }
+    const doc = current.body?.data ?? {};
+    const linked = new Set(
+      (Array.isArray(doc.locations) ? doc.locations : []).map((l: any) => refId(l, "location")).filter(Boolean),
+    );
+    const update = entries.filter((e) => linked.has(e.location_id));
+    const add = entries.filter((e) => !linked.has(e.location_id));
+    const res = await admin.patch(path, {
+      doc_version: Number(doc.doc_version ?? 0),
+      locations: { ...(update.length ? { update } : {}), ...(add.length ? { add } : {}) },
+    });
     if (res.ok) result.created += 1;
-    else result.failed.push(why(`par level ${productId}`, res));
+    else result.failed.push(why(`product locations ${productId}`, res));
   }
   const store = await sessions.client(STOREMANAGER);
   const base = `/api/${cfg.buCode}/stock-ins`;
@@ -61,12 +82,12 @@ export async function seedStock(sessions: Sessions, cfg: ResetConfig, ctx: SeedC
     const created = await createDoc(store, base, {
       adjustment_type_id: ctx.adjustmentTypeId,
       location_id: si.locationId,
-      si_date: ctx.today,
+      si_date: isoDay(ctx.today),
       note: `STD ${si.row}`,
       stock_in_detail: {
         add: si.lines.map((l) => ({
           product_id: l.productId, qty: l.qty, cost_per_unit: l.cost, total_cost: l.qty * l.cost,
-          ...(l.expiredAt ? { expired_at: l.expiredAt } : {}),
+          ...(l.expiredAt ? { expired_at: isoDay(l.expiredAt) } : {}),
         })),
       },
     });

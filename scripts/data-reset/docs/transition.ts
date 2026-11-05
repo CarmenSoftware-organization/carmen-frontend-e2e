@@ -26,7 +26,8 @@ export async function transition(
     const doc = docOf(current.body);
     const res = await client[method](`${docPath}/${action}`, body(Number(doc?.doc_version ?? 0), doc));
     last = { ok: res.ok, status: res.status, doc, body: res.body };
-    if (res.status !== 409) return last;
+    const stale = res.status === 409 || (res.status >= 400 && res.status < 500 && /version/i.test(JSON.stringify(res.body ?? "")));
+    if (!stale) return last;
   }
   return last;
 }
@@ -37,8 +38,14 @@ export async function createDoc(
   body: unknown,
 ): Promise<{ ok: boolean; status: number; id?: string; no?: string; body?: any }> {
   const res = await client.post(listPath, body);
-  const data = docOf(res.body) ?? {};
-  const noKey = Object.keys(data).find((k) => k.endsWith("_no") && typeof data[k] === "string");
+  let data = docOf(res.body) ?? {};
+  const findNo = (d: any) => Object.keys(d ?? {}).find((k) => k.endsWith("_no") && typeof d[k] === "string");
+  if (res.ok && data.id && !findNo(data)) {
+    // Mutation responses carry only id + doc_version; the number is on the document.
+    const doc = await client.get(`${listPath}/${data.id}`);
+    if (doc.ok) data = { ...docOf(doc.body), id: data.id };
+  }
+  const noKey = findNo(data);
   return {
     ok: res.ok,
     status: res.status,

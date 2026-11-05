@@ -48,7 +48,18 @@ export const EXPECTED_ROWS: ExpectedRow[] = [
   { row: "SR completed", list: SR, filter: "doc_status:completed", min: 1, ledgerRows: ["sr.completed"] },
   { row: "Price list active", list: at("pricelists"), filter: "status:active", min: 3, ledgerRows: ["pricelist.active"] },
   { row: "Campaign", list: at("request-for-pricings"), min: 3, ledgerRows: ["campaign.active", "campaign.draft", "campaign.expired"] },
+  {
+    row: "Stock-ins completed", list: at("stock-ins"), filter: "doc_status:completed", min: 5,
+    ledgerRows: ["stock.tiers", "stock.on-hand.l1", "stock.on-hand.l2", "stock.expired", "stock.near-expiry"],
+  },
 ];
+
+/** Cross-BU lists (/api/purchase-requests, /api/store-requisitions) answer `data: [{ bu_code, paginate, data }]`. */
+function listOf(body: any): { total: number; rows: any[] } {
+  const perBu = Array.isArray(body?.data) && body.data[0] && "paginate" in body.data[0] ? body.data[0] : null;
+  const scope = perBu ?? body;
+  return { total: Number(scope?.paginate?.total ?? 0), rows: Array.isArray(scope?.data) ? scope.data : [] };
+}
 
 function url(list: string, bu: string, params: Record<string, string>): string {
   const path = list.replace("{bu}", bu);
@@ -68,11 +79,11 @@ export async function verifyDataset(
     if (r.stage) {
       // Stage filter key on the list is unverified; count the in-progress rows client-side.
       const res = await admin.get(url(r.list, cfg.buCode, { perpage: "100", filter: "pr_status:in_progress" }));
-      const rows: any[] = Array.isArray(res.body?.data) ? res.body.data : [];
+      const { rows } = listOf(res.body);
       found = rows.filter((x) => x.workflow_current_stage === r.stage).length;
     } else {
       const res = await admin.get(url(r.list, cfg.buCode, { perpage: "1", ...(r.filter ? { filter: r.filter } : {}) }));
-      found = Number(res.body?.paginate?.total ?? 0);
+      found = listOf(res.body).total;
     }
     lines.push(`${r.row.padEnd(22)}${String(r.min).padStart(5)}${String(found).padStart(7)}${found < r.min ? "  ✗" : ""}`);
     if (found < r.min) {

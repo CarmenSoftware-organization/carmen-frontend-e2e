@@ -1,7 +1,7 @@
 // scripts/data-reset/docs/receiving.ts
 // GRNs (draft / saved / committed in full / committed partially) and credit notes on the committed
-// GRN. On an AVG BU saving a GRN posts stock; committing updates the PO to completed / partial.
-// GRN ทุกสถานะ และ CN บน GRN ที่ commit แล้ว — BU แบบ AVG ตัดสต๊อกตอน save, PO เปลี่ยนสถานะตอน commit
+// GRN. Committing updates the PO to completed / partial.
+// GRN ทุกสถานะ และ CN บน GRN ที่ commit แล้ว — PO เปลี่ยนสถานะตอน commit
 import type { ApiClient } from "../../seed-master/api-client";
 import type { ResetConfig } from "../config";
 import type { Sessions } from "../sessions";
@@ -9,6 +9,8 @@ import type { StepResult } from "../step-result";
 import type { SeedContext } from "./context";
 import type { RowLedger } from "./row-ledger";
 import { createDoc, transition, why } from "./transition";
+import { isoDay } from "./dates";
+import { refId } from "./refs";
 
 const PURCHASE = "carmensoftware.dev+purchase@gmail.com";
 const PRICE = 100;
@@ -18,9 +20,9 @@ interface GrnLine { poDetailId?: string; productId: string; locationId: string; 
 function grnBody(ctx: SeedContext, row: string, docType: "purchase_order" | "manual", lines: GrnLine[]) {
   return {
     doc_type: docType,
-    grn_date: ctx.today,
+    grn_date: isoDay(ctx.today),
     invoice_no: `STD-${row}`,
-    invoice_date: ctx.today,
+    invoice_date: isoDay(ctx.today),
     description: `STD ${row}`,
     received_by_id: ctx.users[PURCHASE]?.id,
     vendor_id: ctx.vendor.id,
@@ -41,8 +43,8 @@ async function poLines(client: ApiClient, cfg: ResetConfig, poId: string, portio
   const res = await client.get(`/api/${cfg.buCode}/purchase-orders/${poId}`);
   const lines: any[] = res.body?.data?.purchase_order_detail ?? [];
   const mapped = lines.map((l) => ({
-    poDetailId: l.id, productId: l.product_id, locationId: l.location_id, qty: Number(l.order_qty),
-    unitId: l.order_unit_id, price: Number(l.price ?? PRICE),
+    poDetailId: l.id, productId: refId(l, "product")!, locationId: refId(l, "location")!, qty: Number(l.order_qty),
+    unitId: refId(l, "order_unit")!, price: Number(l.price ?? PRICE),
   }));
   return portion === "full" ? mapped : mapped.slice(0, 1).map((l) => ({ ...l, qty: Math.floor(l.qty / 2) }));
 }
@@ -111,7 +113,7 @@ export async function seedReceiving(
       vendor_id: ctx.vendor.id,
       currency_id: ctx.currencyId,
       exchange_rate: 1,
-      cn_date: ctx.today,
+      cn_date: isoDay(ctx.today),
       description: `STD ${row}`,
       credit_note_detail: {
         add: [{

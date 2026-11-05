@@ -7,7 +7,7 @@ import type { ResetConfig } from "../config";
 import type { Sessions } from "../sessions";
 import type { StepResult } from "../step-result";
 import type { SeedContext } from "./context";
-import { addDays } from "./dates";
+import { addDays, isoDay } from "./dates";
 import type { RowLedger } from "./row-ledger";
 import { createDoc, why } from "./transition";
 
@@ -44,8 +44,8 @@ export async function seedPricing(sessions: Sessions, cfg: ResetConfig, ctx: See
       status: "active",
       vendor_id: ctx.vendor.id,
       currency_id: ctx.currencyId,
-      effective_from_date: addDays(ctx.today, -1),
-      effective_to_date: addDays(ctx.today, 90),
+      effective_from_date: isoDay(addDays(ctx.today, -1)),
+      effective_to_date: isoDay(addDays(ctx.today, 90)),
       pricelist_detail: {
         add: products.map((p) => ({
           product_id: p.id, unit_id: p.unitId, price: PRICE, price_without_tax: PRICE, tax_amt: 0,
@@ -76,7 +76,8 @@ export async function seedPricing(sessions: Sessions, cfg: ResetConfig, ctx: See
     const res = await createDoc(purchase, `/api/${cfg.buCode}/request-for-pricings`, {
       name: `STD campaign.${state}`,
       pricelist_template_id: template.id,
-      ...dates,
+      start_date: isoDay(dates.start_date),
+      end_date: isoDay(dates.end_date),
       custom_message: `STD campaign.${state}`,
       vendors: { add: [{ vendor_id: ctx.vendor.id, contact_person: "STD contact", contact_phone: "0800000000", contact_email: ctx.vendor.email }] },
     });

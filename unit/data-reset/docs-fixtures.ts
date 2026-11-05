@@ -37,6 +37,18 @@ export const callerOf = (init?: RequestInit) =>
  * detail line per added line, GET <list>/<id> returns it (doc_version 0), any other write → 200.
  * `failOn("PATCH", /approve$/, 2)` makes the 2nd matching call answer 400.
  */
+/** What the gateway's @CollapseRefs does on GET: `unit_id: "u"` → `unit: { id: "u" }`. */
+export function collapseRefs<T>(value: T): T {
+  if (Array.isArray(value)) return value.map(collapseRefs) as T;
+  if (!value || typeof value !== "object") return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (k.endsWith("_id") && k !== "id" && typeof v === "string") out[k.slice(0, -3)] = { id: v };
+    else out[k] = collapseRefs(v);
+  }
+  return out as T;
+}
+
 export function docStore(detailKey: string, noKey: string) {
   const docs = new Map<string, any>();
   const failures: Array<{ method: string; re: RegExp; nth: number; seen: number }> = [];
@@ -46,16 +58,17 @@ export function docStore(detailKey: string, noKey: string) {
       if (f.method === method && f.re.test(path) && ++f.seen === f.nth) return { __status: 400, message: "boom" };
     }
     const id = path.split("/").pop()!;
-    if (method === "GET" && docs.has(id)) return { data: docs.get(id) };
+    if (method === "GET" && docs.has(id)) return { data: collapseRefs(docs.get(id)) };
     if (method === "POST" && /\/(purchase-requests|purchase-orders|good-received-notes|credit-notes|store-requisitions|pricelists|pricelist-templates|request-for-pricings|purchase-request-templates)$/.test(path)) {
       const newId = `d${++n}`;
       const added = body?.details?.[detailKey]?.add ?? body?.[detailKey]?.add ?? [];
       const doc = {
-        id: newId, doc_version: 0, [noKey]: `NO-${n}`,
+        id: newId, doc_version: 0, [noKey]: `NO-${n}`, ...(body?.details ?? {}),
         [detailKey]: added.map((l: any, i: number) => ({ id: `${newId}-l${i + 1}`, ...l })),
       };
       docs.set(newId, doc);
-      return { data: doc };
+      // Mutation responses carry only id + doc_version (PurchaseRequestMutationResponseSchema & co.).
+      return { data: { id: newId, doc_version: 0 } };
     }
     return method === "GET" ? undefined : { data: {} };
   };

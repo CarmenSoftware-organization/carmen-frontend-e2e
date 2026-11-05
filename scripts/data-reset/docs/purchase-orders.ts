@@ -6,7 +6,7 @@ import type { ResetConfig } from "../config";
 import type { Sessions } from "../sessions";
 import type { StepResult } from "../step-result";
 import type { SeedContext } from "./context";
-import { addDays } from "./dates";
+import { addDays, isoDay } from "./dates";
 import type { RowLedger } from "./row-ledger";
 import { createDoc, transition, why } from "./transition";
 
@@ -42,7 +42,7 @@ function createBody(ctx: SeedContext, row: string) {
       po_type: "manual",
       vendor_id: ctx.vendor.id,
       currency_id: ctx.currencyId,
-      delivery_date: addDays(ctx.today, 7),
+      delivery_date: isoDay(addDays(ctx.today, 7)),
       workflow_id: ctx.workflows.po,
       description: `STD ${row}`,
       purchase_order_detail: {
@@ -112,7 +112,9 @@ export async function seedPurchaseOrders(
     if (target === "for-grn-partial") result.forGrn.partial = created.id;
   }
 
-  if (reservedPr) {
+  if (!reservedPr) {
+    fail("pr.completed", "pr.completed: no PR reached approved to convert");
+  } else {
     const purchase = await sessions.client(mail("purchase"));
     const confirmed = await purchase.post(`${base}/confirm-pr`, { workflow_id: ctx.workflows.po, pr_ids: [reservedPr] });
     const po = firstDoc(confirmed.body);

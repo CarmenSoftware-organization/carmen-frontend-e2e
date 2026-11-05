@@ -7,7 +7,7 @@ import type { ResetConfig } from "../config";
 import type { Sessions } from "../sessions";
 import type { StepResult } from "../step-result";
 import type { SeedContext } from "./context";
-import { addDays } from "./dates";
+import { addDays, isoDay } from "./dates";
 import type { RowLedger } from "./row-ledger";
 import { createDoc, transition, why } from "./transition";
 
@@ -61,8 +61,8 @@ export async function seedStoreRequisitions(
     const created = await createDoc(purchase, base, {
       stage_role: "create",
       details: {
-        sr_date: ctx.today,
-        expected_date: addDays(ctx.today, 1),
+        sr_date: isoDay(ctx.today),
+        expected_date: isoDay(addDays(ctx.today, 1)),
         requestor_id: ctx.users[PURCHASE]?.id,
         workflow_id: ctx.workflows.sr,
         department_id: ctx.departments.first.id,
