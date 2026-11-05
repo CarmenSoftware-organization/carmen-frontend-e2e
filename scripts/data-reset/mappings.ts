@@ -60,7 +60,7 @@ export function checkMasterShape(snapshot: {
 }
 
 /** Any email on the vendor's contact lists, wherever the detail puts them. */
-function vendorEmail(detail: unknown): string | null {
+export function vendorEmail(detail: unknown): string | null {
   const vendor = ((detail as { data?: unknown })?.data ?? detail) as Record<string, unknown>;
   for (const [key, value] of Object.entries(vendor ?? {})) {
     if (!key.includes("contact") || !Array.isArray(value)) continue;
