@@ -1,4 +1,4 @@
-import { test as baseTest, expect } from "@playwright/test";
+import { test as baseTest, expect, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { PurchaseRequestPage, LIST_PATH } from "./pages/purchase-request.page";
 import {
@@ -586,6 +586,203 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       await pr.enterEditMode();
       const price = pr.unitPriceInput(0);
       if ((await price.count()) > 0) await price.fill("999");
+      await pr.cancelEditMode();
+      await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
+    },
+  );
+});
+
+// ── Step 3b — Price Comparison dialog ────────────────────────────────────
+// carmen-frontend #536–#538 (v2.5.56): the dialog gained its own Inc VAT column
+// (✓ / —) placed before Price, and a Net Price column (price before VAT) after
+// it. "Best" moved from Price to Net Price, so every row is compared on the
+// same pre-VAT basis. Values are checked against the dialog's own
+// /pricelists/price-compare response (bearer-token SPA → waitForResponse).
+
+interface PriceCompareEntry {
+  vendor_name: string;
+  pricelist_detail_id: string;
+  price: number;
+  is_tax_included?: boolean;
+  price_without_tax?: number;
+}
+
+/** Mirrors netPriceOf() in pr-pricelist-dialog.tsx. */
+const netPriceOf = (e: PriceCompareEntry) =>
+  e.price_without_tax != null && e.price_without_tax > 0 ? e.price_without_tax : e.price;
+
+const parseMoney = (text: string) => Number(text.replace(/[^\d.-]/g, ""));
+
+/** Open the dialog and return the rows it renders (selected prepended, as the dialog does). */
+async function openComparisonWithData(page: Page, pr: PurchaseRequestPage): Promise<PriceCompareEntry[]> {
+  const respP = page.waitForResponse(
+    (r) => r.url().includes("/pricelists/price-compare") && r.request().method() === "GET",
+    { timeout: 20_000 },
+  );
+  await pr.openPriceComparison(0);
+  const resp = await respP;
+  expect(resp.ok()).toBeTruthy();
+  const json = await resp.json();
+  const lists: PriceCompareEntry[] = json.data?.lists ?? [];
+  const selected: PriceCompareEntry | null = json.data?.selected ?? null;
+  const rows =
+    selected && !lists.some((l) => l.pricelist_detail_id === selected.pricelist_detail_id)
+      ? [selected, ...lists]
+      : lists;
+  if (rows.length > 0) {
+    await expect(pr.priceComparisonDialog().locator("tbody tr")).toHaveCount(rows.length, { timeout: 10_000 });
+  }
+  return rows;
+}
+
+/** Header text → column index inside the dialog's grid. */
+async function headerIndexes(pr: PurchaseRequestPage) {
+  const headers = (await pr.priceComparisonDialog().getByRole("columnheader").allInnerTexts()).map((h) => h.trim());
+  const at = (re: RegExp) => headers.findIndex((h) => re.test(h));
+  return { headers, incVat: at(/^inc vat$/i), price: at(/^price$/i), net: at(/^net price$/i) };
+}
+
+purchaseTest.describe.serial("Step 3b — Price Comparison dialog", () => {
+  let ref = "";
+
+  purchaseTest.beforeAll(async ({ browser }) => {
+    purchaseTest.setTimeout(120_000);
+    const created = await submitPRAsRequestor(browser, { items: 1, description: "TC-PR-0703 price comparison" });
+    await approveAsHOD(browser, created.ref);
+    ref = created.ref;
+  });
+
+  purchaseTest(
+    "TC-PR-070311 Price Comparison มีคอลัมน์ Inc VAT ก่อน Price และ Net Price ถัดจาก Price",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น Purchaser; PR 1 รายการที่ผ่าน HOD แล้ว (อยู่ขั้นตอน Purchase) สร้างใน beforeAll" },
+        { type: "steps", description: "1. เปิด PR detail\n2. กด Expand row ของรายการแรก\n3. กดปุ่ม Compare price\n4. อ่านหัวคอลัมน์ของตารางใน dialog" },
+        { type: "expected", description: "dialog 'Price Comparison' เปิดขึ้น; มีหัวคอลัมน์ Inc VAT, Price, Net Price และเรียงลำดับ Inc VAT → Price → Net Price" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
+        { type: "note", description: "carmen-frontend #537/#538 (v2.5.56)" },
+      ],
+    },
+    async ({ page }) => {
+      const pr = new PurchaseRequestPage(page);
+      await gotoPRDetail(page, ref);
+      await openComparisonWithData(page, pr);
+      const { headers, incVat, price, net } = await headerIndexes(pr);
+      expect(incVat, `headers: ${headers.join(" | ")}`).toBeGreaterThanOrEqual(0);
+      expect(price, `headers: ${headers.join(" | ")}`).toBeGreaterThan(incVat);
+      expect(net, `headers: ${headers.join(" | ")}`).toBe(price + 1);
+    },
+  );
+
+  purchaseTest(
+    "TC-PR-070312 คอลัมน์ Inc VAT แสดง ✓ หรือ — ตรงกับ is_tax_included ทุกแถว",
+    {
+      annotation: [
+        { type: "preconditions", description: "PR ขั้นตอน Purchase จาก beforeAll; สินค้ามีรายการราคา (price list) อย่างน้อย 1 รายการใน BU" },
+        { type: "steps", description: "1. เปิด Price Comparison ของรายการแรก\n2. ดักผลลัพธ์ API price-compare\n3. อ่านเซลล์คอลัมน์ Inc VAT ของแต่ละแถว" },
+        { type: "expected", description: "แถวที่ is_tax_included = true มีไอคอน ✓ (aria-label 'Inc VAT'); แถวอื่นแสดง '—' — ไม่มีแถวที่ว่าง" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Functional" },
+        { type: "note", description: "carmen-frontend #538 — เดิมแถวที่ไม่ติ๊กอ่านไม่ออกว่า 'ไม่รวม' หรือ 'ไม่มีข้อมูล'" },
+      ],
+    },
+    async ({ page }) => {
+      const pr = new PurchaseRequestPage(page);
+      await gotoPRDetail(page, ref);
+      const rows = await openComparisonWithData(page, pr);
+      purchaseTest.skip(rows.length === 0, "สินค้าในรายการแรกไม่มี price list ใน BU นี้");
+      const { incVat } = await headerIndexes(pr);
+      const bodyRows = pr.priceComparisonDialog().locator("tbody tr");
+      for (const [i, entry] of rows.entries()) {
+        const cell = bodyRows.nth(i).locator("td").nth(incVat);
+        if (entry.is_tax_included) {
+          await expect(cell.getByLabel(/^inc vat$/i), `row ${i} (${entry.vendor_name})`).toBeVisible();
+        } else {
+          await expect(cell, `row ${i} (${entry.vendor_name})`).toHaveText("—");
+        }
+      }
+    },
+  );
+
+  purchaseTest(
+    "TC-PR-070313 Net Price แสดงราคาก่อน VAT และป้าย Best อยู่ที่ Net Price ต่ำสุด",
+    {
+      annotation: [
+        { type: "preconditions", description: "PR ขั้นตอน Purchase จาก beforeAll; สินค้ามีรายการราคาอย่างน้อย 1 รายการใน BU" },
+        { type: "steps", description: "1. เปิด Price Comparison ของรายการแรก\n2. ดักผลลัพธ์ API price-compare\n3. เทียบเซลล์ Price และ Net Price ของแต่ละแถวกับ price / price_without_tax\n4. ตรวจตำแหน่งป้าย Best" },
+        { type: "expected", description: "Price = price ที่กรอก; Net Price = price_without_tax (หรือ price เมื่อไม่มีค่า); ป้าย Best อยู่ในคอลัมน์ Net Price เฉพาะแถวที่ Net Price ต่ำสุด และไม่อยู่ในคอลัมน์ Price" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
+        { type: "note", description: "carmen-frontend #537 — Best เดิมตัดสินจากราคาที่กรอก ทำให้ราคารวม VAT เทียบกับราคาไม่รวมตรง ๆ" },
+      ],
+    },
+    async ({ page }) => {
+      const pr = new PurchaseRequestPage(page);
+      await gotoPRDetail(page, ref);
+      const rows = await openComparisonWithData(page, pr);
+      purchaseTest.skip(rows.length === 0, "สินค้าในรายการแรกไม่มี price list ใน BU นี้");
+      const { price, net } = await headerIndexes(pr);
+      const positive = rows.map(netPriceOf).filter((p) => p > 0);
+      const minNet = positive.length ? Math.min(...positive) : 0;
+      const bodyRows = pr.priceComparisonDialog().locator("tbody tr");
+      for (const [i, entry] of rows.entries()) {
+        const label = `row ${i} (${entry.vendor_name})`;
+        const priceCell = bodyRows.nth(i).locator("td").nth(price);
+        const netCell = bodyRows.nth(i).locator("td").nth(net);
+        expect(parseMoney(await priceCell.innerText()), label).toBeCloseTo(entry.price, 2);
+        // Net cell = [Best] <amount> <currency> — read the amount span alone.
+        const netAmount = netCell.locator("span.tabular-nums");
+        expect(parseMoney(await netAmount.innerText()), label).toBeCloseTo(netPriceOf(entry), 2);
+        await expect(priceCell.getByText(/^best$/i), label).toHaveCount(0);
+        const isBest = minNet > 0 && netPriceOf(entry) === minNet;
+        await expect(netCell.getByText(/^best$/i), label).toHaveCount(isBest ? 1 : 0);
+      }
+    },
+  );
+
+  purchaseTest(
+    "TC-PR-070314 โหมดดู (ไม่ได้กด Edit) dialog เป็นแบบอ่านอย่างเดียว ไม่มีปุ่ม Assign",
+    {
+      annotation: [
+        { type: "preconditions", description: "PR ขั้นตอน Purchase จาก beforeAll; Purchaser ยังไม่เข้า edit mode" },
+        { type: "steps", description: "1. เปิด PR detail (โหมดดู)\n2. เปิด Price Comparison ของรายการแรก\n3. หาปุ่ม Assign ใน dialog" },
+        { type: "expected", description: "dialog เปิดได้ แต่ไม่มีปุ่ม Assign ในตาราง (readOnly เมื่อฟอร์มยังไม่อยู่ใน edit mode)" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      const pr = new PurchaseRequestPage(page);
+      await gotoPRDetail(page, ref);
+      await openComparisonWithData(page, pr);
+      await expect(pr.priceComparisonDialog().getByRole("button", { name: /^assign$/i })).toHaveCount(0);
+    },
+  );
+
+  purchaseTest(
+    "TC-PR-070315 Edit mode: กด Assign แล้ว dialog ปิดและรายการได้ vendor ของแถวที่เลือก",
+    {
+      annotation: [
+        { type: "preconditions", description: "PR ขั้นตอน Purchase จาก beforeAll; สินค้ามีรายการราคาอย่างน้อย 1 รายการใน BU" },
+        { type: "steps", description: "1. เปิด PR detail แล้วกด Edit\n2. เปิด Price Comparison ของรายการแรก\n3. กด Assign ที่แถวสุดท้าย\n4. Cancel เพื่อไม่บันทึก" },
+        { type: "expected", description: "dialog ปิด; ชื่อ vendor ของแถวที่ Assign แสดงในตารางรายการ; Cancel แล้วออกจาก edit mode (ไม่บันทึกข้อมูล)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const pr = new PurchaseRequestPage(page);
+      await gotoPRDetail(page, ref);
+      purchaseTest.skip((await pr.editModeButton().count()) === 0, "Edit button not present");
+      await pr.enterEditMode();
+      const rows = await openComparisonWithData(page, pr);
+      purchaseTest.skip(rows.length === 0, "สินค้าในรายการแรกไม่มี price list ใน BU นี้");
+      const target = rows[rows.length - 1];
+      const dialog = pr.priceComparisonDialog();
+      await dialog.locator("tbody tr").nth(rows.length - 1).getByRole("button", { name: /^assign$/i }).click();
+      await expect(dialog).toBeHidden({ timeout: 10_000 });
+      await expect(page.getByText(target.vendor_name, { exact: false }).first()).toBeVisible({ timeout: 10_000 });
       await pr.cancelEditMode();
       await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
     },

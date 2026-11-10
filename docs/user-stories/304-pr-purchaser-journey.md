@@ -5,7 +5,7 @@ _Generated from `tests/304-pr-purchaser-journey.spec.ts` annotations. Edit annot
 **Module:** Pr Purchaser Journey
 **Spec:** `tests/304-pr-purchaser-journey.spec.ts`
 **Default role:** Purchase
-**Total test cases:** 26 (14 High / 10 Medium / 2 Low)
+**Total test cases:** 31 (17 High / 12 Medium / 2 Low)
 
 ## Test Cases at a Glance
 
@@ -31,6 +31,11 @@ _Generated from `tests/304-pr-purchaser-journey.spec.ts` annotations. Edit annot
 | TC-PR-070308 | Multiple line items — pricing on each row independent | Medium | CRUD |
 | TC-PR-070309 | Save edits → exit edit mode + persist values | High | CRUD |
 | TC-PR-070310 | Cancel edits → discard changes, restore original | Medium | Functional |
+| TC-PR-070311 | Price Comparison มีคอลัมน์ Inc VAT ก่อน Price และ Net Price ถัดจาก Price | High | Functional |
+| TC-PR-070312 | คอลัมน์ Inc VAT แสดง ✓ หรือ — ตรงกับ is_tax_included ทุกแถว | Medium | Functional |
+| TC-PR-070313 | Net Price แสดงราคาก่อน VAT และป้าย Best อยู่ที่ Net Price ต่ำสุด | High | Functional |
+| TC-PR-070314 | โหมดดู (ไม่ได้กด Edit) dialog เป็นแบบอ่านอย่างเดียว ไม่มีปุ่ม Assign | Medium | Negative |
+| TC-PR-070315 | Edit mode: กด Assign แล้ว dialog ปิดและรายการได้ vendor ของแถวที่เลือก | High | Happy Path |
 | TC-PR-070401 | Bulk Approve → PR advances to next stage (FC) | High | CRUD |
 | TC-PR-070402 | Bulk Reject (with reason) | High | CRUD |
 | TC-PR-070403 | Bulk Send for Review (return to HOD) | High | CRUD |
@@ -469,6 +474,127 @@ Edit mode active อยู่บน PR ขั้นตอน Purchase
 
 ---
 
+## TC-PR-070311 — Price Comparison มีคอลัมน์ Inc VAT ก่อน Price และ Net Price ถัดจาก Price
+
+> **As a** Purchase user, **I want** this Pr Purchaser Journey interaction to behave as expected, **so that** the workflow stays predictable.
+
+**Priority:** High · **Test Type:** Functional
+
+**Preconditions**
+
+Login เป็น Purchaser; PR 1 รายการที่ผ่าน HOD แล้ว (อยู่ขั้นตอน Purchase) สร้างใน beforeAll
+
+**Steps**
+
+1. เปิด PR detail
+2. กด Expand row ของรายการแรก
+3. กดปุ่ม Compare price
+4. อ่านหัวคอลัมน์ของตารางใน dialog
+
+**Expected**
+
+dialog 'Price Comparison' เปิดขึ้น; มีหัวคอลัมน์ Inc VAT, Price, Net Price และเรียงลำดับ Inc VAT → Price → Net Price
+
+> _Note: carmen-frontend #537/#538 (v2.5.56)_
+
+---
+
+## TC-PR-070312 — คอลัมน์ Inc VAT แสดง ✓ หรือ — ตรงกับ is_tax_included ทุกแถว
+
+> **As a** Purchase user, **I want** this Pr Purchaser Journey interaction to behave as expected, **so that** the workflow stays predictable.
+
+**Priority:** Medium · **Test Type:** Functional
+
+**Preconditions**
+
+PR ขั้นตอน Purchase จาก beforeAll; สินค้ามีรายการราคา (price list) อย่างน้อย 1 รายการใน BU
+
+**Steps**
+
+1. เปิด Price Comparison ของรายการแรก
+2. ดักผลลัพธ์ API price-compare
+3. อ่านเซลล์คอลัมน์ Inc VAT ของแต่ละแถว
+
+**Expected**
+
+แถวที่ is_tax_included = true มีไอคอน ✓ (aria-label 'Inc VAT'); แถวอื่นแสดง '—' — ไม่มีแถวที่ว่าง
+
+> _Note: carmen-frontend #538 — เดิมแถวที่ไม่ติ๊กอ่านไม่ออกว่า 'ไม่รวม' หรือ 'ไม่มีข้อมูล'_
+
+---
+
+## TC-PR-070313 — Net Price แสดงราคาก่อน VAT และป้าย Best อยู่ที่ Net Price ต่ำสุด
+
+> **As a** Purchase user, **I want** this Pr Purchaser Journey interaction to behave as expected, **so that** the workflow stays predictable.
+
+**Priority:** High · **Test Type:** Functional
+
+**Preconditions**
+
+PR ขั้นตอน Purchase จาก beforeAll; สินค้ามีรายการราคาอย่างน้อย 1 รายการใน BU
+
+**Steps**
+
+1. เปิด Price Comparison ของรายการแรก
+2. ดักผลลัพธ์ API price-compare
+3. เทียบเซลล์ Price และ Net Price ของแต่ละแถวกับ price / price_without_tax
+4. ตรวจตำแหน่งป้าย Best
+
+**Expected**
+
+Price = price ที่กรอก; Net Price = price_without_tax (หรือ price เมื่อไม่มีค่า); ป้าย Best อยู่ในคอลัมน์ Net Price เฉพาะแถวที่ Net Price ต่ำสุด และไม่อยู่ในคอลัมน์ Price
+
+> _Note: carmen-frontend #537 — Best เดิมตัดสินจากราคาที่กรอก ทำให้ราคารวม VAT เทียบกับราคาไม่รวมตรง ๆ_
+
+---
+
+## TC-PR-070314 — โหมดดู (ไม่ได้กด Edit) dialog เป็นแบบอ่านอย่างเดียว ไม่มีปุ่ม Assign
+
+> **As a** Purchase user, **I want** this Pr Purchaser Journey behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Medium · **Test Type:** Negative
+
+**Preconditions**
+
+PR ขั้นตอน Purchase จาก beforeAll; Purchaser ยังไม่เข้า edit mode
+
+**Steps**
+
+1. เปิด PR detail (โหมดดู)
+2. เปิด Price Comparison ของรายการแรก
+3. หาปุ่ม Assign ใน dialog
+
+**Expected**
+
+dialog เปิดได้ แต่ไม่มีปุ่ม Assign ในตาราง (readOnly เมื่อฟอร์มยังไม่อยู่ใน edit mode)
+
+---
+
+## TC-PR-070315 — Edit mode: กด Assign แล้ว dialog ปิดและรายการได้ vendor ของแถวที่เลือก
+
+> **As a** Purchase user, **I want** this Pr Purchaser Journey behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** High · **Test Type:** Happy Path
+
+**Preconditions**
+
+PR ขั้นตอน Purchase จาก beforeAll; สินค้ามีรายการราคาอย่างน้อย 1 รายการใน BU
+
+**Steps**
+
+1. เปิด PR detail แล้วกด Edit
+2. เปิด Price Comparison ของรายการแรก
+3. กด Assign ที่แถวสุดท้าย
+4. Cancel เพื่อไม่บันทึก
+
+**Expected**
+
+dialog ปิด; ชื่อ vendor ของแถวที่ Assign แสดงในตารางรายการ; Cancel แล้วออกจาก edit mode (ไม่บันทึกข้อมูล)
+
+---
+
 ## TC-PR-070401 — Bulk Approve → PR advances to next stage (FC)
 
 > **As a** FC user, **I want** to manage Pr Purchaser Journey records via CRUD, **so that** the data stays correct over time.
@@ -609,4 +735,4 @@ URL ยังคงอยู่ที่ PR ref หลังจาก bulk appro
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-10 · git 3d9ae0d</sub>
