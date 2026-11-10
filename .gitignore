@@ -30,3 +30,7 @@ graft/
 
 # vitest coverage output
 coverage/
+
+# trail hooks ของ Cursor มี absolute path ของเครื่อง local
+.cursor/hooks/
+.cursor/hooks.json
