@@ -398,6 +398,30 @@ export class PurchaseRequestPage extends BasePage {
     return this.page.getByRole("tab", { name: /workflow history|workflow/i }).first();
   }
 
+  // ── Price Comparison dialog (Purchase / Approve stage) ───────────────
+  /** Chevron in the select column that toggles an item's expanded panel. */
+  expandItemButton(index = 0): Locator {
+    return this.page.getByRole("button", { name: /^expand row$/i }).nth(index);
+  }
+
+  /** Scale icon in the expanded panel's left gutter — rendered only at Purchase/Approve stage. */
+  comparePriceButton(index = 0): Locator {
+    return this.page.getByRole("button", { name: /^compare price$/i }).nth(index);
+  }
+
+  priceComparisonDialog(): Locator {
+    return this.page.getByRole("dialog").filter({ hasText: /price comparison/i });
+  }
+
+  /** Expand item row `index` and open its Price Comparison dialog. */
+  async openPriceComparison(index = 0) {
+    if ((await this.comparePriceButton(index).count()) === 0) {
+      await this.expandItemButton(index).click();
+    }
+    await this.comparePriceButton(index).click();
+    await this.priceComparisonDialog().waitFor({ state: "visible", timeout: 10_000 });
+  }
+
   // ── Edit mode ────────────────────────────────────────────────────────
   editModeButton(): Locator {
     return this.page.getByRole("button", { name: /^edit$|edit pr|edit mode/i }).first();
