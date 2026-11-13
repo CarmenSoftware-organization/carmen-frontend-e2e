@@ -43,6 +43,12 @@ function routes(over: Record<string, unknown> = {}) {
     [`GET ${base}/locations`]: { data: [{ id: "l1", code: "L1" }, { id: "l2", code: "L2" }] },
     [`GET ${base}/vendors`]: { data: [{ id: "v1", code: "A001" }] },
     [`GET ${base}/vendors/v1`]: { data: { vendor_contact: [{ email: "v@x" }] } },
+    [`GET ${base}/application-roles`]: {
+      data: ["Accounting", "Approval", "HOD", "Purchase", "Requestor"].map((name) => ({ id: `r-${name}`, name })),
+    },
+    [`GET ${base}/user-application-roles`]: { data: [] },
+    "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 1, default_currency_id: null } },
+    [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
     [`GET ${base}/workflows`]: { data: [] },
     [`GET ${base}/products`]: { data: [{ id: "p1", code: "P1", name: "Rice" }] },
     "GET /api/GR2VYNKQ/inventory-periods/current": { __status: 404 },
@@ -87,6 +93,8 @@ describe("runDataReset", () => {
       "POST /api-system/tenant/resets/",
       `PATCH ${base}/departments/`,
       `PUT ${base}/locations-users/`,
+      `POST ${base}/user-application-roles`,
+      "PATCH /api/business-units",
       `POST ${base}/workflows`,
       "POST /api/GR2VYNKQ/inventory-periods",
     ].map((p) => firstWrite(writes, p));
@@ -99,7 +107,7 @@ describe("runDataReset", () => {
     expect(code).toBe(0);
     expect(backend.writes()).toEqual([]);
     expect(seedCalls).toEqual([true]);
-    for (const step of ["reset", "master", "mappings", "workflows", "period"]) expect(out).toContain(step);
+    for (const step of ["reset", "master", "mappings", "access", "workflows", "period"]) expect(out).toContain(step);
   });
 
   it("refuses a live run against a remote backend without --yes", async () => {

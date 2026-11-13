@@ -24,6 +24,12 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
 3. master data — ชุด sample ของ `seed:master` (`sample_seed_data/Preconfig_CARMEN_AVG.xlsx`, 50 แถวต่อชนิด)
 4. ผูก user: ทุกบัญชีอยู่แผนกแรก (เรียงตาม code) โดย hod เป็นหัวหน้า, owner อยู่แผนกที่สอง (hod เป็นหัวหน้าด้วย —
    PR ของแผนกที่ไม่มี HOD ส่งไม่ได้ backend ตอบ 503), ทุกบัญชีได้ทุก location
+   สิทธิ์ (`access.ts`): ให้ application role ที่ยังไม่มี — requestor → Requestor, hod → HOD, purchase → Purchase,
+   fc / gm / owner / storemanager → Approval, budget → Accounting (admin เป็น BU admin อยู่แล้ว) ใช้
+   `POST /api/config/:bu/user-application-roles` แบบเดียวกับ movement suite และเพิ่มอย่างเดียว ไม่ถอด role ที่มีอยู่
+   และตั้ง THB เป็นสกุลเงินหลักของ BU ถ้ายังไม่ได้ตั้ง (`PATCH /api/business-units` เขียน BU default ของ admin
+   จึงปฏิเสธถ้า BU นั้นไม่ใช่ TEST BU) — 2026-11-11 มีแต่ purchase ที่ถือ role (บัญชีอื่นเจอ Permission Denied ทั้งชุด
+   PR) และ BU ไม่มีสกุลเงินหลัก (แบนเนอร์เตือนทุกหน้า)
 5. workflow จาก `fixtures/workflows.json` — PR: Create → HOD → Purchase → GM (ทุกใบผ่าน GM),
    General PO: purchase → FC → GM, SR: Create → Store Approval (purchase) → Issue — ทุก workflow ได้รายการสินค้า
    ทั้งหมดที่ seed ไว้ (`data.products`) ไม่งั้นช่องเลือกสินค้าจะว่าง
