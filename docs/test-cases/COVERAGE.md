@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **120 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **192 routes** across **121 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
@@ -10,7 +10,7 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | --- | --- | --- |
 | ✅ spec | an automated Playwright spec drives this module | 47 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
-| ❌ none | neither — this is the coverage gap | 33 |
+| ❌ none | neither — this is the coverage gap | 34 |
 
 ## *
 
@@ -26,7 +26,7 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | `/accounting/accounts-payable` | 1 | — | — | ❌ none |
 | `/accounting/accounts-payable/invoice` | 2 | — | — | ❌ none |
 | `/accounting/accounts-payable/payment` | 2 | — | — | ❌ none |
-| `/accounting/accounts-payable/payment-approvals` | 1 _(redirect → `/accounting/accounts-payable/payment?lifecycle=submitted`)_ | — | — | ❌ none |
+| `/accounting/accounts-payable/payment-approvals` | 1 _(redirect → `/accounting/accounts-payable/payment?filter=doc_status%7Cstring%3Ain_review`)_ | — | — | ❌ none |
 | `/accounting/accounts-receivable/invoice` | 2 | — | — | ❌ none |
 | `/accounting/journal-voucher` | 2 | — | — | ❌ none |
 | `/accounting/settings` | 1 | — | — | ❌ none |
@@ -177,6 +177,12 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | --- | --- | --- | --- | --- |
 | `/profile` | 1 | `002-spa-smoke.spec.ts` | `1201-profile.md` | ✅ spec |
 | `/profile/setting` | 1 | — | `1201-profile.md` | 📄 catalog |
+
+## qr
+
+| Module | Routes | Spec | Catalog | Status |
+| --- | --- | --- | --- | --- |
+| `/qr` | 1 | — | — | ❌ none |
 
 ## register
 

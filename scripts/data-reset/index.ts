@@ -12,6 +12,7 @@ import { getPasswordFor } from "../../tests/test-users";
 import { parseResetArgs, resetHelpText, type ResetArgs } from "./cli";
 import { resolveResetConfig, type ResetConfig } from "./config";
 import { seedMappings } from "./mappings";
+import { seedAccess } from "./access";
 import { seedPeriod, planPeriod } from "./period";
 import { callReset } from "./reset";
 import { createSessions } from "./sessions";
@@ -105,6 +106,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     const master = masterStep(await seedMaster(admin, true, cfg));
     log(`master: would create ${master.created}, ${master.skipped} already present`);
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
+    log("access: would POST each account's missing role (requestor, hod, purchase, fc/gm/owner/storemanager → Approval, budget → Accounting) and set THB as the BU's default currency if none is set");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
     log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today`);
     log("documents: would create 5 stock-ins, 1 PR template, 41 PRs, 7 POs, 4 GRNs, 2 CNs, 7 SRs, 3 price lists, 3 campaigns, then verify the counts");
@@ -144,6 +146,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
   }
   const mappings = await seedMappings(sessions, cfg, env.userIds);
   results.push(mappings);
+  if (mappings.firstDepartment) results.push(await seedAccess(sessions, cfg, env.userIds));
   if (mappings.firstDepartment) {
     results.push(await seedWorkflows(sessions, cfg, fixture, env.users, mappings.firstDepartment));
     results.push(await seedPeriod(sessions, cfg, now));
