@@ -73,7 +73,10 @@ export function planDefaultCurrency(
   buCode: string,
 ): { body: { id: string; doc_version: number; default_currency_id: string } | null } | { problem: string } {
   if (bu.code !== buCode) return { problem: `admin's default BU is ${bu.code}, not ${buCode} — refusing to set its currency` };
-  if (bu.default_currency_id) return { body: null };
+  // The reset re-creates the BU's currencies with new ids but leaves the BU row (central schema)
+  // alone, so a set default can point at a currency that is gone — the app then warns "no longer
+  // exists" and PR/PO saves fail. Only a default that still resolves counts as set.
+  if (bu.default_currency_id && currencies.some((c) => c.id === bu.default_currency_id)) return { body: null };
   const currency = currencies.find((c) => c.code === DEFAULT_CURRENCY);
   if (!currency) return { problem: `no ${DEFAULT_CURRENCY} currency in ${buCode} to make the default` };
   return { body: { id: bu.id, doc_version: Number(bu.doc_version ?? 0), default_currency_id: currency.id } };

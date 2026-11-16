@@ -64,6 +64,12 @@ describe("planDefaultCurrency", () => {
     expect(planDefaultCurrency({ ...bu, default_currency_id: "c-usd" }, currencies, "GR2VYNKQ")).toEqual({ body: null });
   });
 
+  it("replaces a default currency that no longer exists — the reset re-creates currencies with new ids", () => {
+    expect(planDefaultCurrency({ ...bu, default_currency_id: "c-gone" }, currencies, "GR2VYNKQ")).toEqual({
+      body: { id: "bu1", doc_version: 2, default_currency_id: "c-thb" },
+    });
+  });
+
   it("refuses when the admin's default BU is not TEST BU — the PATCH writes the caller's default BU", () => {
     expect(planDefaultCurrency({ ...bu, code: "OTHER" }, currencies, "GR2VYNKQ")).toEqual({
       problem: "admin's default BU is OTHER, not GR2VYNKQ — refusing to set its currency",
