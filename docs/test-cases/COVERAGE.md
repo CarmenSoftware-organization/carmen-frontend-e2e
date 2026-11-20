@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **120 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **123 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
@@ -10,7 +10,7 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | --- | --- | --- |
 | ✅ spec | an automated Playwright spec drives this module | 47 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
-| ❌ none | neither — this is the coverage gap | 33 |
+| ❌ none | neither — this is the coverage gap | 36 |
 
 ## *
 
@@ -23,11 +23,14 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
 | `/accounting` | 6 | — | — | ❌ none |
-| `/accounting/accounts-payable` | 1 | — | — | ❌ none |
-| `/accounting/accounts-payable/invoice` | 2 | — | — | ❌ none |
-| `/accounting/accounts-payable/payment` | 2 | — | — | ❌ none |
-| `/accounting/accounts-payable/payment-approvals` | 1 _(redirect → `/accounting/accounts-payable/payment?lifecycle=submitted`)_ | — | — | ❌ none |
-| `/accounting/accounts-receivable/invoice` | 2 | — | — | ❌ none |
+| `/accounting/accounts-payable` | 3 | — | — | ❌ none |
+| `/accounting/accounts-receivable` | 2 | — | — | ❌ none |
+| `/accounting/accounts-receivable/contract` | 1 _(redirect → `/accounting/accounts-receivable/profile`)_ | — | — | ❌ none |
+| `/accounting/accounts-receivable/preview` | 1 _(redirect → `/accounting/accounts-receivable`)_ | — | — | ❌ none |
+| `/accounting/accounts-receivable/preview/contracts` | 1 _(redirect → `/accounting/accounts-receivable/contract`)_ | — | — | ❌ none |
+| `/accounting/accounts-receivable/preview/folio` | 1 _(redirect → `/accounting/accounts-receivable/folio`)_ | — | — | ❌ none |
+| `/accounting/accounts-receivable/preview/invoice` | 2 _(redirect → `/accounting/accounts-receivable/invoice`)_ | — | — | ❌ none |
+| `/accounting/accounts-receivable/preview/profiles` | 1 _(redirect → `/accounting/accounts-receivable/profile`)_ | — | — | ❌ none |
 | `/accounting/journal-voucher` | 2 | — | — | ❌ none |
 | `/accounting/settings` | 1 | — | — | ❌ none |
 
@@ -178,6 +181,12 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | `/profile` | 1 | `002-spa-smoke.spec.ts` | `1201-profile.md` | ✅ spec |
 | `/profile/setting` | 1 | — | `1201-profile.md` | 📄 catalog |
 
+## qr
+
+| Module | Routes | Spec | Catalog | Status |
+| --- | --- | --- | --- | --- |
+| `/qr` | 1 | — | — | ❌ none |
+
 ## register
 
 | Module | Routes | Spec | Catalog | Status |
@@ -218,7 +227,6 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | `/system-admin/ask-ai` | 1 | — | — | ❌ none |
 | `/system-admin/business-setting` | 1 _(redirect → `/system-admin/company-profile`)_ | — | `1114-company-profile.md` | 📄 catalog |
 | `/system-admin/company-profile` | 1 | — | `1114-company-profile.md` | 📄 catalog |
-| `/system-admin/dashboard-dataset` | 1 | — | `1112-dashboard-dataset.md` | 📄 catalog |
 | `/system-admin/default-setting` | 1 | `910-period-close-prestep.spec.ts` | `1115-default-setting.md` | ✅ spec |
 | `/system-admin/document` | 1 | — | `1107-document.md` | 📄 catalog |
 | `/system-admin/email-profile` | 1 | — | `1116-email-profile.md` | 📄 catalog |
@@ -230,7 +238,7 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | `/system-admin/period` | 1 _(redirect → `/system-admin/inventory-period`)_ | — | `1105-system-period.md` | 📄 catalog |
 | `/system-admin/role` | 3 | — | `1101-role.md` | 📄 catalog |
 | `/system-admin/running-code` | 1 | — | `1110-running-code.md` | 📄 catalog |
-| `/system-admin/storage` | 1 | — | — | ❌ none |
+| `/system-admin/storage` | 1 _(redirect → `/system-admin/document`)_ | — | `1107-document.md` | 📄 catalog |
 | `/system-admin/user` | 2 | `910-period-close-prestep.spec.ts` | `1102-user.md` | ✅ spec |
 | `/system-admin/user-activity` | 1 | — | `1106-user-activity.md` | 📄 catalog |
 | `/system-admin/workflow` | 7 | — | `1103-workflow.md` | 📄 catalog |
@@ -251,3 +259,11 @@ Parsed from the frontend router (`routes/router.tsx`): **191 routes** across **1
 | `/vendor-management/price-list-template` | 3 | `160-pl-template.spec.ts` | — | ✅ spec |
 | `/vendor-management/request-price-list` | 3 | `1001-campaign.spec.ts` | — | ✅ spec |
 | `/vendor-management/vendor` | 3 | `150-vendor.spec.ts` | — | ✅ spec |
+
+## Stale catalogs
+
+The declared route no longer matches any route in the app — renamed, moved, or removed. Each needs a decision: re-point it, or retire it.
+
+| Catalog | Prefix | Declared URL | Declared route dir |
+| --- | --- | --- | --- |
+| `1112-dashboard-dataset.md` | `DDS` | `/system-admin/dashboard-dataset` | `system-admin/dashboard-dataset` |
