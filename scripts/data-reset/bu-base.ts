@@ -35,17 +35,41 @@ export async function seedBuCurrency(sessions: Sessions, cfg: ResetConfig): Prom
     result.failed.push(`no ${DEFAULT_CURRENCY_CODE} currency in ${cfg.buCode} (GET currencies → ${list.status})`);
     return result;
   }
-  const bu = await admin.get("/api/business-units");
-  const row = bu.body?.data as { id?: string; doc_version?: number; default_currency_id?: string | null } | undefined;
-  if (!bu.ok || !row?.id) {
-    result.failed.push(`GET /api/business-units → ${bu.status}`);
+  // Both calls act on the session's current BU, not on a code in the URL: assert it is TEST BU
+  // before writing, otherwise a mismatch would patch another BU.
+  type BuRow = { id?: string; code?: string; doc_version?: number; default_currency_id?: string | null };
+  const readBu = async (): Promise<{ row?: BuRow; status: number }> => {
+    const bu = await admin.get("/api/business-units");
+    return { row: bu.ok ? (bu.body?.data as BuRow | undefined) : undefined, status: bu.status };
+  };
+  let { row, status } = await readBu();
+  if (!row?.id) {
+    result.failed.push(`GET /api/business-units → ${status}`);
+    return result;
+  }
+  if (row.code !== cfg.buCode) {
+    result.failed.push(`current BU of ${cfg.adminEmail} is ${row.code ?? "unknown"}, not ${cfg.buCode} — refusing to PATCH /api/business-units`);
     return result;
   }
   if (row.default_currency_id === currency.id) {
     result.skipped = 1;
     return result;
   }
-  const res = await admin.patch("/api/business-units", { id: row.id, doc_version: row.doc_version, default_currency_id: currency.id });
+  const patch = (r: BuRow) => admin.patch("/api/business-units", { id: r.id, doc_version: r.doc_version, default_currency_id: currency.id });
+  let res = await patch(row);
+  if (res.status === 409) {
+    // Someone edited the BU between our read and write: re-read once and retry once.
+    ({ row, status } = await readBu());
+    if (!row?.id || row.code !== cfg.buCode) {
+      result.failed.push(`PATCH /api/business-units → 409, re-read gave ${row?.code ?? `status ${status}`}`);
+      return result;
+    }
+    if (row.default_currency_id === currency.id) {
+      result.skipped = 1;
+      return result;
+    }
+    res = await patch(row);
+  }
   if (res.ok) result.created = 1;
   else result.failed.push(`PATCH /api/business-units → ${res.status} ${JSON.stringify(res.body?.message ?? "")}`);
   return result;

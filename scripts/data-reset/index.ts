@@ -147,6 +147,12 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
   }
   results.push(await seedBuCurrency(sessions, cfg));
   results.push(await seedChartOfAccounts(sessions, cfg));
+  if (results.slice(-2).some((r) => r.failed.length > 0)) {
+    // Mappings, workflows and documents on a BU without a currency / COA only make a second mess.
+    log(summaryTable(results));
+    log("✗ BU base (default currency / chart of accounts) failed — stopping before mappings and workflows");
+    return 1;
+  }
   const mappings = await seedMappings(sessions, cfg, env.userIds);
   results.push(mappings);
   if (mappings.firstDepartment) {

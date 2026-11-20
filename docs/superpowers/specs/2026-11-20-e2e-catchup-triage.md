@@ -22,22 +22,34 @@ Re-measured set (`--project=chromium`, specs `0[1-8]x`, `1[0-6]x`, `1001`, `201`
 | Re-run A (`phase05-rerun.log`) | 402, 403, 501, 601, 602 (post-gap, after fresh `data:reset`) | 152 | 32 | 94 | 0 |
 | Re-run B (`phase05-rerun2.log`) | the 16 spec files that failed in run 1 (run 1 was killed before the reporters wrote, so error text had to be recovered) | 304 | 84 | 161 | 9 |
 
-Sleep gap: run 1 froze at about #945-#951 (`402-po-purchaser-journey` Step 3: durations jump from ~22 s to 7-33 min). Everything from #945 on was discarded and re-run (re-run A, after a fresh `data:reset`). Result of the re-measure: T2 80 -> 47 rows, T3 213 -> 148 rows; `env-data` 198 -> 62. The Phase 0 `save-validation-summary`, `view-text` and `delete-feedback` clusters and nearly all `list-toolbar` failure rows are gone (those tests pass now); the remaining `doc-header-card` / `list-toolbar` rows are guard-only skips kept from Phase 0.
+Sleep gap: run 1 froze at about #945-#951 (`402-po-purchaser-journey` Step 3: durations jump from ~22 s to 7-33 min). Everything from #945 on was discarded and re-run (re-run A, after a fresh `data:reset`). Result of the re-measure: T2 80 -> 48 rows, T3 213 -> 148 rows; `env-data` 198 -> 62. The Phase 0 `save-validation-summary`, `view-text` and `delete-feedback` clusters and nearly all `list-toolbar` failure rows are gone (those tests pass now); the remaining `doc-header-card` / `list-toolbar` rows are guard-only skips kept from Phase 0.
 
 No distinct `audit-footer`, `single-primary-button` or `list-columns` cluster appeared (none of the 116 failure messages involve them). What remains: (1) PO create helper does not pick a vendor (`module`, about 45 rows across 401/402/403 incl. serial cascades), (2) COA spec still written for dialogs while create/edit/detail are routed pages (`module`, 10), (3) list default scope "My pending" (`openRecordFromRow`, `ui-pattern:list-default-scope`), (4) serial PR approver/purchaser journeys 303/304 (timeouts, root cause not isolated), (5) vendor create form timeouts (150), plus one-off `module` rows. The 79 guard-only rows kept are tests that still skip in-body even with data seeded (e.g. "No draft PR available"); probably masked by list default scope or role filters, re-check in Task 1.
 
+### Source runs (Phase 0.5 numbers)
+
+The run logs are not committed; the committed `tests/results/*.json` are the evidence. Where each number comes from:
+
+- **Run 1** (`phase05-run.log`, tests #1-#944 only): pass/fail/skip counts in the first table row, and the pass/skip status of every spec that was not re-run (used to keep or drop Phase 0 guard-only rows). #945+ is discarded (sleep gap).
+- **Re-run B** (16 spec files that had failures in run 1: 010, 030, 079, 080, 081, 082, 101, 110, 111, 150, 159, 301, 302, 303, 304, 401): source of the error text and `tests/results` JSON for those files; every failure row for them comes from here.
+- **Re-run A** (402, 403, 501, 601, 602, after a fresh `data:reset`): source of every row for those five specs.
+- **Re-run C** (042, 160, 311, run after review fix round 1 to refresh their JSON): 58 passed / 1 failed / 14 skipped. 042 and 311 clean; 160 `TC-PT-030001` failed once (success toast not shown), added as a `module` row. Sixteen-file count of run 1 is unchanged.
+- Specs that passed in run 1 and were not re-run keep their Phase 0 `tests/results` JSON; their Phase 0 failure rows were dropped, their guard-only rows kept only while run 1 shows them skipped.
+
+T-group mapping is inferred from the spec number (T1 001/002, T2 0xx/1xx/1001, T3 2xx-6xx, T4 7xx, T5 9xx) because Phase 0 did not store a group per row. Counting by that rule gives 17 T5 rows and 81 T2 rows from the Phase 0 table, against the 19 and 80 printed in its summary: that is the 2-row T5 difference (and 1-row T2 difference); the Phase 0 summary used a grouping that was not recorded.
+
 ## Summary
 
-Rows: 242 after Phase 0.5 (T2 + T3 re-measured; T1/T4/T5 rows unchanged). Phase 0 had 342 = 186 failed cases + 156 further cases behind an in-body skip guard (251 guarded cases in SPEC-HEALTH; 95 of them also failed and are one row with a guard note). The 244 statically dormant (`test.skip`/`fixme`) cases are SPEC-HEALTH debt for the group tasks and are not rows here.
+Rows: 243 after Phase 0.5 (T2 + T3 re-measured; T1/T4/T5 rows unchanged). Phase 0 had 342 = 186 failed cases + 156 further cases behind an in-body skip guard (251 guarded cases in SPEC-HEALTH; 95 of them also failed and are one row with a guard note). The 244 statically dormant (`test.skip`/`fixme`) cases are SPEC-HEALTH debt for the group tasks and are not rows here.
 
 | Cluster | Rows | T1 login/smoke | T2 master data | T3 procurement | T4 inventory/movement | T5 period |
 | --- | --- | --- | --- | --- | --- | --- |
-| `module` | 153 | 1 | 46 | 89 | 12 | 5 |
+| `module` | 154 | 1 | 47 | 89 | 12 | 5 |
 | `env-data` | 62 | 10 | 0 | 37 | 3 | 12 |
 | `ui-pattern:doc-header-card` | 12 | 0 | 0 | 10 | 2 | 0 |
 | `ui-pattern:list-default-scope` | 10 | 0 | 0 | 8 | 2 | 0 |
 | `ui-pattern:list-toolbar` | 5 | 0 | 1 | 4 | 0 | 0 |
-| **Total** | 242 | 11 | 47 | 148 | 19 | 17 |
+| **Total** | 243 | 11 | 48 | 148 | 19 | 17 |
 
 `ui-pattern:*` work list for Task 1: `doc-header-card`, `list-toolbar`, `list-default-scope`, `save-validation-summary`, `view-text`, `delete-feedback`.
 Expected but **not** observed as distinct failure clusters: `audit-footer`, `single-primary-button`, `list-columns` (their commits are FE `39eb77f9`/`68b3226c`, `d6536f28`, `45ba9d3c`/`6802a125`); they can still be hiding behind the guard rows (guards report "button not present" without saying why) and behind the `env-data` create failures, which stop tests before they reach the detail page.
@@ -114,6 +126,7 @@ Evidence confidence: rows tagged "(unverified)" are classified from the error si
 | `150-vendor.spec.ts` | TC-VEN-200004 | Test timeout of 30000ms exceeded. | `module` | screenshot TC-VEN-030002: /vendor/new form renders with Name/Code empty and Create enabled, test times out filling it; form drifted (unverified) |
 | `150-vendor.spec.ts` | TC-VEN-200006 | Test timeout of 30000ms exceeded. | `module` | screenshot TC-VEN-030002: /vendor/new form renders with Name/Code empty and Create enabled, test times out filling it; form drifted (unverified) |
 | `159-pl.spec.ts` | TC-PL-020001 | Error: expect(locator).toBeVisible() failed | `module` | unverified: classified from error signature; BU default currency and COA no longer the cause |
+| `160-pl-template.spec.ts` | TC-PT-030001 | Error: expect(locator).toBeVisible() failed — success toast not shown | `module` | re-run C (042/160/311, after fix round 1): only failure of the 73; passed in run 1, so intermittent or order/data dependent; unverified |
 | `160-pl-template.spec.ts` | TC-PT-060004 | not in default run: true , "Filter by Product Count UI not exposed" | `ui-pattern:list-toolbar` | toolbar reflow/scope buttons: 6802a125, 9c510378, 6231d974 |
 | `301-pr.spec.ts` | TC-PR-020002 | not in default run: true , "No returned PR available in this environment" | `env-data` | data/BU-type guard — keep with reason (not visibility) |
 | `301-pr.spec.ts` | TC-PR-040003 | not in default run: true , "No fully-approved PR available in this environment" | `env-data` | data/BU-type guard — keep with reason (not visibility) |

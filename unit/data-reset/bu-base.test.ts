@@ -11,7 +11,7 @@ describe("seedBuCurrency", () => {
   it("repoints a stale default currency at the new THB row", async () => {
     const backend = fakeBackend({
       [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
-      "GET /api/business-units": { data: { id: "bu-1", doc_version: 4, default_currency_id: "c-old" } },
+      "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 4, default_currency_id: "c-old" } },
       "PATCH /api/business-units": { data: {} },
     });
     const r = await seedBuCurrency(sessionsOf(backend), cfg);
@@ -24,7 +24,7 @@ describe("seedBuCurrency", () => {
   it("does nothing when the BU already points at THB", async () => {
     const backend = fakeBackend({
       [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
-      "GET /api/business-units": { data: { id: "bu-1", doc_version: 4, default_currency_id: "c-thb" } },
+      "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 4, default_currency_id: "c-thb" } },
     });
     const r = await seedBuCurrency(sessionsOf(backend), cfg);
     expect(r.skipped).toBe(1);
@@ -35,6 +35,42 @@ describe("seedBuCurrency", () => {
     const backend = fakeBackend({ [`GET ${base}/currencies`]: { data: [] } });
     const r = await seedBuCurrency(sessionsOf(backend), cfg);
     expect(r.failed).toHaveLength(1);
+  });
+});
+
+describe("seedBuCurrency guards", () => {
+  const currencies = { [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] } };
+
+  it("refuses to PATCH when the session's current BU is not the test BU", async () => {
+    const backend = fakeBackend({ ...currencies, "GET /api/business-units": { data: { id: "bu-x", code: "OTHER", doc_version: 1, default_currency_id: "c-old" } } });
+    const r = await seedBuCurrency(sessionsOf(backend), cfg);
+    expect(r.failed).toHaveLength(1);
+    expect(r.failed[0]).toContain("OTHER");
+    expect(backend.writes()).toEqual([]);
+  });
+
+  it("re-reads once and retries once on a 409", async () => {
+    let reads = 0;
+    let writes = 0;
+    const backend = fakeBackend({
+      ...currencies,
+      "GET /api/business-units": () => ({ data: { id: "bu-1", code: cfg.buCode, doc_version: ++reads + 3, default_currency_id: "c-old" } }),
+      "PATCH /api/business-units": () => (++writes === 1 ? { __status: 409 } : { data: {} }),
+    });
+    const r = await seedBuCurrency(sessionsOf(backend), cfg);
+    expect(r).toEqual({ step: "bu-currency", created: 1, skipped: 0, failed: [] });
+    expect(backend.writes().map((w) => (w.body as { doc_version: number }).doc_version)).toEqual([4, 5]);
+  });
+
+  it("fails after a second 409 instead of looping", async () => {
+    const backend = fakeBackend({
+      ...currencies,
+      "GET /api/business-units": { data: { id: "bu-1", code: cfg.buCode, doc_version: 4, default_currency_id: "c-old" } },
+      "PATCH /api/business-units": { __status: 409 },
+    });
+    const r = await seedBuCurrency(sessionsOf(backend), cfg);
+    expect(r.failed).toHaveLength(1);
+    expect(backend.writes()).toHaveLength(2);
   });
 });
 

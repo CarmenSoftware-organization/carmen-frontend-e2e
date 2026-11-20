@@ -47,7 +47,7 @@ function routes(over: Record<string, unknown> = {}) {
     [`GET ${base}/products`]: { data: [{ id: "p1", code: "P1", name: "Rice" }] },
     "GET /api/GR2VYNKQ/inventory-periods/current": { __status: 404 },
     [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
-    "GET /api/business-units": { data: { id: "bu-1", doc_version: 4, default_currency_id: "c-old" } },
+    "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 4, default_currency_id: "c-old" } },
     "PATCH /api/business-units": { data: { id: "bu-1", doc_version: 5 } },
     [`GET ${base}/chart-of-accounts`]: { data: [] },
     [`POST ${base}/chart-of-accounts`]: { data: { id: "a1" } },
@@ -120,6 +120,21 @@ describe("runDataReset", () => {
     expect(code).toBe(1);
     expect(backend.calls.some((c) => c.path.startsWith("/api-system/tenant/resets/"))).toBe(false);
     expect(out).toContain("purchase lacks vendor_management.vendor.view");
+  });
+
+  it("stops with exit 1 before mappings and workflows when the BU default currency cannot be set", async () => {
+    const { code, backend, out, documentCalls } = await run({ "PATCH /api/business-units": { __status: 500 } });
+    expect(code).toBe(1);
+    expect(out).toContain("BU base");
+    const writes = backend.writes().map((c) => `${c.method} ${c.path}`);
+    expect(writes.some((p) => p.startsWith(`PATCH ${base}/departments/`) || p === `POST ${base}/workflows`)).toBe(false);
+    expect(documentCalls).toEqual([]);
+  });
+
+  it("stops with exit 1 before mappings when the chart of accounts cannot be seeded", async () => {
+    const { code, backend } = await run({ [`POST ${base}/chart-of-accounts`]: { __status: 500 } });
+    expect(code).toBe(1);
+    expect(backend.writes().some((c) => c.path === `${base}/workflows`)).toBe(false);
   });
 
   it("stops when the reset fails", async () => {
