@@ -11,6 +11,7 @@ import type { SeedResult } from "../seed-master/types";
 import { getPasswordFor } from "../../tests/test-users";
 import { parseResetArgs, resetHelpText, type ResetArgs } from "./cli";
 import { resolveResetConfig, type ResetConfig } from "./config";
+import { DEFAULT_CURRENCY_CODE, loadCoaFixture, seedBuCurrency, seedChartOfAccounts } from "./bu-base";
 import { seedMappings } from "./mappings";
 import { seedPeriod, planPeriod } from "./period";
 import { callReset } from "./reset";
@@ -104,6 +105,8 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log(`reset: would POST /api-system/tenant/resets/${env.buId}${args.skipReset ? " (skipped: --skip-reset)" : ""}`);
     const master = masterStep(await seedMaster(admin, true, cfg));
     log(`master: would create ${master.created}, ${master.skipped} already present`);
+    log(`bu-currency: would PATCH /api/business-units default_currency_id to the ${DEFAULT_CURRENCY_CODE} row`);
+    log(`coa: would POST ${loadCoaFixture().length} accounts unless their codes exist`);
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
     log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today`);
@@ -142,6 +145,8 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log(summaryTable(results));
     return 1;
   }
+  results.push(await seedBuCurrency(sessions, cfg));
+  results.push(await seedChartOfAccounts(sessions, cfg));
   const mappings = await seedMappings(sessions, cfg, env.userIds);
   results.push(mappings);
   if (mappings.firstDepartment) {

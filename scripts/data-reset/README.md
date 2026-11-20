@@ -22,6 +22,8 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
 1. ขั้น 0 — ทั้ง 9 บัญชีอยู่ใน TEST BU (BU อื่นต้องไม่เป็น default) และสิทธิ์ purchase ครบ ไม่ผ่าน = ไม่แตะอะไร
 2. reset (deploy token เท่านั้น ไม่ใช้ token ของ user)
 3. master data — ชุด sample ของ `seed:master` (`sample_seed_data/Preconfig_CARMEN_AVG.xlsx`, 50 แถวต่อชนิด)
+3b. ตั้งค่าตัว BU: `default_currency_id` ชี้แถว THB ที่เพิ่งสร้าง (reset สร้างสกุลเงินใหม่ id ใหม่ แต่แถว BU ยังถือ id เก่า → ทุกหน้าขึ้นแถบ "default currency ... no longer exists")
+   และผังบัญชีขั้นต่ำ 13 บัญชีจาก `fixtures/chart-of-accounts.json` (workbook ไม่มี COA และ reset ล้างตารางนี้) — `verify-dataset` เช็คทั้งสองอย่าง
 4. ผูก user: ทุกบัญชีอยู่แผนกแรก (เรียงตาม code) โดย hod เป็นหัวหน้า, owner อยู่แผนกที่สอง (hod เป็นหัวหน้าด้วย —
    PR ของแผนกที่ไม่มี HOD ส่งไม่ได้ backend ตอบ 503), ทุกบัญชีได้ทุก location
 5. workflow จาก `fixtures/workflows.json` — PR: Create → HOD → Purchase → GM (ทุกใบผ่าน GM),

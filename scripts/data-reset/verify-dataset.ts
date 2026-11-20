@@ -2,6 +2,7 @@
 // Spec step 3: read back counts per document type and state for the whole BU, compare with the
 // table, and name every short row with the doc numbers seeded for it.
 // ขั้น 3: นับเอกสารทั้ง BU เทียบกับตาราง แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้
+import type { ApiClient } from "../seed-master/api-client";
 import type { ResetConfig } from "./config";
 import type { RowLedger } from "./docs/row-ledger";
 import type { Sessions } from "./sessions";
@@ -67,12 +68,25 @@ function url(list: string, bu: string, params: Record<string, string>): string {
   return `${path}${path.includes("?") ? "&" : "?"}${query}`;
 }
 
+/** BU-level state the reset can leave broken: a resolvable default currency and a non-empty COA. */
+async function verifyBuBase(admin: ApiClient, cfg: ResetConfig): Promise<string[]> {
+  const problems: string[] = [];
+  const profile = await admin.get("/api/user/profile");
+  const bu = (profile.body?.data?.business_unit ?? []).find((b: any) => b.code === cfg.buCode);
+  // Same rule as the app's banner (lib/bu-currency-status.ts): an id with no resolved currency row.
+  if (!bu?.config?.default_currency_id) problems.push(`BU default currency: not set on ${cfg.buCode}`);
+  else if (!bu.config.default_currency) problems.push(`BU default currency: ${bu.config.default_currency_id} no longer exists in ${cfg.buCode}`);
+  const coa = await admin.get(`/api/config/${cfg.buCode}/chart-of-accounts?perpage=1`);
+  if (listOf(coa.body).total < 1) problems.push("Chart of accounts: expected ≥ 1 account, found 0");
+  return problems;
+}
+
 export async function verifyDataset(
   sessions: Sessions, cfg: ResetConfig, ledger: RowLedger,
 ): Promise<{ short: string[]; table: string }> {
   const admin = await sessions.client(cfg.adminEmail);
   const seeded = ledger.rows();
-  const short: string[] = [];
+  const short: string[] = await verifyBuBase(admin, cfg);
   const lines = ["row                     min  found"];
   for (const r of EXPECTED_ROWS) {
     let found: number;

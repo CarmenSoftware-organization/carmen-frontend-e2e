@@ -46,6 +46,11 @@ function routes(over: Record<string, unknown> = {}) {
     [`GET ${base}/workflows`]: { data: [] },
     [`GET ${base}/products`]: { data: [{ id: "p1", code: "P1", name: "Rice" }] },
     "GET /api/GR2VYNKQ/inventory-periods/current": { __status: 404 },
+    [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
+    "GET /api/business-units": { data: { id: "bu-1", doc_version: 4, default_currency_id: "c-old" } },
+    "PATCH /api/business-units": { data: { id: "bu-1", doc_version: 5 } },
+    [`GET ${base}/chart-of-accounts`]: { data: [] },
+    [`POST ${base}/chart-of-accounts`]: { data: { id: "a1" } },
     ...over,
   };
 }
@@ -85,6 +90,8 @@ describe("runDataReset", () => {
     const writes = backend.writes().map((c) => `${c.method} ${c.path}`);
     const order = [
       "POST /api-system/tenant/resets/",
+      "PATCH /api/business-units",
+      `POST ${base}/chart-of-accounts`,
       `PATCH ${base}/departments/`,
       `PUT ${base}/locations-users/`,
       `POST ${base}/workflows`,
