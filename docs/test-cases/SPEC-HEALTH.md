@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1290 |
-| **Running** | **1101** |
+| Cases declared | 1283 |
+| **Running** | **1098** |
 | Skipped | 183 |
-| Fixme | 6 |
-| **Dormant** (skipped + fixme) | **15%** |
+| Fixme | 2 |
+| **Dormant** (skipped + fixme) | **14%** |
 | Running cases asserting only through a page-object helper | 29 |
-| **Running cases asserting nothing at all** | **62** |
+| **Running cases asserting nothing at all** | **44** |
 | Running cases whose assertions are all trivial | 0 |
-| Running cases behind an in-body skip guard | 24 |
-| Assertions in running cases | 2491 |
+| Running cases behind an in-body skip guard | 25 |
+| Assertions in running cases | 2629 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -48,8 +48,6 @@ Sorted by dormant share, then by cases that assert nothing.
 | `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 141 | 0 |
 | `301-pr.spec.ts` | 59 | 47 | 0 | 44% | 0 | 0 | 0 | 0 | 120 | 0 |
-| `711-stock-replenishment.spec.ts` | 33 | 0 | 3 | 8% | 0 | 0 | 0 | 0 | 47 | 16 |
-| `720-stock-issue.spec.ts` | 24 | 0 | 1 | 4% | **18** | 0 | 0 | **1** | 10 | 9 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
 | `701-sr.spec.ts` | 46 | 0 | 1 | 2% | **44** | 0 | 0 | **3** | 2 | 14 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
@@ -92,7 +90,9 @@ Sorted by dormant share, then by cases that assert nothing.
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |
 | `603-cn-doc-flow.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 20 | 1 |
 | `702-sr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
-| `710-wastage-reporting.spec.ts` | 20 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 35 | 6 |
+| `710-wastage-reporting.spec.ts` | 18 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 67 | 0 |
+| `711-stock-replenishment.spec.ts` | 36 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 110 | 0 |
+| `720-stock-issue.spec.ts` | 20 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 53 | 0 |
 | `721-sr-issue-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 9 | 0 | 0 | 10 | 1 |
 | `730-inventory-adjustment-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 11 | 0 | 0 | 1 | 1 |
 | `910-period-close-prestep.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 9 | 1 |
