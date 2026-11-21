@@ -14,7 +14,7 @@ _Generated from `tests/303-pr-approver-journey.spec.ts` annotations. Edit annota
 | TC-PR-060101 | Dashboard loads with Total Pending count visible | High | Smoke |
 | TC-PR-060102 | Click pending PR row navigates to PR detail | High | Smoke |
 | TC-PR-060103 | Pending count matches actual list row count | Medium | Functional |
-| TC-PR-060104 | Filter tabs render and filter when present | Medium | Functional |
+| TC-PR-060104 | Category filter chips render and the PR chip becomes active | Medium | Functional |
 | TC-PR-060150 | active BU = BLAVG | High | Smoke |
 | TC-PR-060201 | My Pending tab shows PRs at HOD stage | High | Smoke |
 | TC-PR-060202 | All Documents tab broadens scope | Medium | Functional |
@@ -31,7 +31,7 @@ _Generated from `tests/303-pr-approver-journey.spec.ts` annotations. Edit annota
 | TC-PR-060404 | Delivery Point field is editable | Medium | CRUD |
 | TC-PR-060405 | Vendor field is read-only | High | Authorization |
 | TC-PR-060406 | Unit Price field is read-only | High | Authorization |
-| TC-PR-060407 | Discount / Tax / FOC Qty are read-only | Medium | Authorization |
+| TC-PR-060407 | Discount / Tax / FOC Qty are read-only (FOC pinned: editable today) | Medium | Authorization |
 | TC-PR-060408 | Bulk Approve via Select All → toolbar | High | CRUD |
 | TC-PR-060409 | Bulk Reject via toolbar (with reason) | High | CRUD |
 | TC-PR-060410 | Bulk Send for Review via toolbar | High | CRUD |
@@ -96,15 +96,15 @@ URL นำทางไปยัง /procurement/purchase-request/<ref>
 **Steps**
 
 1. อ่านค่า badge pending
-2. นับแถว PR ที่แสดงผล
+2. อ่านยอดรวมจาก label pagination
 
 **Expected**
 
-ค่า badge เท่ากับจำนวนแถวที่แสดงผล (หรือทั้งคู่เป็นศูนย์)
+ค่า badge Total Pending เท่ากับยอดรวมใน label 'Showing 1–N of TOTAL' ของ pagination
 
 ---
 
-## TC-PR-060104 — Filter tabs render and filter when present
+## TC-PR-060104 — Category filter chips render and the PR chip becomes active
 
 > **As a** FC user, **I want** to filter the Pr Approver Journey list, **so that** I can narrow results to relevant records.
 
@@ -116,12 +116,12 @@ URL นำทางไปยัง /procurement/purchase-request/<ref>
 
 **Steps**
 
-1. หา category filter tabs (PO/PR/SR)
-2. คลิก tab PR ถ้ามี
+1. หา category chip (PO/PR/SR)
+2. คลิก chip Purchase Request
 
 **Expected**
 
-tab PR ถูกเลือก (ข้ามหาก dashboard ไม่มี tabs)
+chip Purchase Request แสดงผลและเปลี่ยนเป็น aria-pressed=true หลังคลิก
 
 ---
 
@@ -185,7 +185,7 @@ URL อยู่ที่ PR list และ My Pending tab ถูกเลือ
 
 **Expected**
 
-tab All Documents ถูกเลือก
+หลังคลิก All Documents URL มี ?view=all-document (ขอบเขตกว้างขึ้นจาก My Pending)
 
 ---
 
@@ -224,12 +224,11 @@ tab All Documents ถูกเลือก
 **Steps**
 
 1. เปิดแผง Filter
-2. เลือก status
-3. Apply
+2. เลือกฟิลด์ Status แล้วติ๊ก In progress (ไม่มีปุ่ม Apply)
 
 **Expected**
 
-URL ยังคงอยู่ที่ PR list หลัง apply filter
+หลังติ๊ก In progress ทุกแถวที่แสดงมีสถานะ In progress
 
 ---
 
@@ -271,7 +270,7 @@ URL ยังคงอยู่ที่ PR list หลังพิมพ์ใ�
 
 **Expected**
 
-URL เป็น detail URL; Items tab ถูกเลือกเมื่อมี
+URL เป็น detail URL; ตารางรายการสินค้า (คอลัมน์ Product + แถวรายการที่ seed) แสดงเป็นค่าเริ่มต้น
 
 ---
 
@@ -291,7 +290,7 @@ URL เป็น detail URL; Items tab ถูกเลือกเมื่อ�
 
 **Expected**
 
-tab Workflow History ถูกเลือก
+หลังคลิกตัวเปิดประวัติ (stepper) แสดง sheet Workflow History ที่มีรายการของ requestor
 
 ---
 
@@ -464,7 +463,7 @@ tab Workflow History ถูกเลือก
 
 ---
 
-## TC-PR-060407 — Discount / Tax / FOC Qty are read-only
+## TC-PR-060407 — Discount / Tax / FOC Qty are read-only (FOC pinned: editable today)
 
 > **As a** low-privilege user, **I should NOT** see Add/edit controls on Pr Approver Journey, **so that** role separation is enforced.
 
@@ -504,7 +503,7 @@ tab Workflow History ถูกเลือก
 
 **Expected**
 
-สถานะเปลี่ยนออกจาก In Progress (toast / ขั้นตอนถัดไป / reload state)
+PATCH .../approve สำเร็จและกลับหน้า list; เปิด PR ใหม่แล้ว HOD ไม่มีปุ่ม Edit (เอกสารไปขั้นตอนถัดไปแล้ว)
 
 ---
 
@@ -522,13 +521,13 @@ tab Workflow History ถูกเลือก
 
 1. เข้าโหมดแก้ไข
 2. เลือกทุกแถว
-3. คลิก Reject
-4. กรอกเหตุผล
-5. Confirm
+3. คลิก Reject ใน bulk toolbar
+4. กรอกเหตุผล + Reject ใน dialog
+5. กด Reject ระดับเอกสารที่ footer + ยืนยัน
 
 **Expected**
 
-URL ยังคงอยู่ที่ ref ของ PR หลัง reject (badge สถานะอัปเดต)
+PATCH .../reject สำเร็จ (ต้องกด Reject ที่รายการแล้วกด Reject ระดับเอกสารอีกครั้ง) และ PR ที่เปิดใหม่มีสถานะ Voided
 
 ---
 
@@ -552,7 +551,7 @@ URL ยังคงอยู่ที่ ref ของ PR หลัง reject (b
 
 **Expected**
 
-URL ยังคงอยู่ที่ ref ของ PR หลัง send for review
+PATCH .../review สำเร็จ กลับหน้า list และเปิด PR ใหม่แล้ว HOD ไม่มีปุ่ม Edit (เอกสารถูกส่งกลับไป Create Request)
 
 ---
 
@@ -568,13 +567,13 @@ URL ยังคงอยู่ที่ ref ของ PR หลัง send for 
 
 **Steps**
 
-1. เข้าโหมดแก้ไข
-2. เลือกทุกแถว
+1. เข้าโหมดแก้ไขบน PR ที่มี 2 รายการ
+2. ติ๊กแถวแรกแถวเดียว
 3. คลิก Split
 
 **Expected**
 
-UI ของ Split ปรากฏ (dialog หรือ inline) — ยืนยันโดย URL ยังคงอยู่ที่หน้ารายละเอียด
+POST .../split สำเร็จ (200) — รายการที่ติ๊กถูกย้ายไป PR ใหม่
 
 ---
 
@@ -618,7 +617,7 @@ Login เป็น FC (carmensoftware.dev+fc@gmail.com); มี PR ที่ pen
 
 **Expected**
 
-มีค่า department อย่างน้อย 2 ค่าที่แตกต่างกันปรากฏใน list (ข้ามหากฐานข้อมูลไม่มี PR ข้ามแผนก)
+มีค่า department อย่างน้อย 2 ค่าที่แตกต่างกันปรากฏใน list 
 
 ---
 
@@ -642,9 +641,9 @@ Login เป็น HOD; มี PR ที่ pending ใหม่ seeded ผ่�
 
 **Expected**
 
-URL ยังคงอยู่ที่ ref ของ PR หลัง bulk approve; journey เสร็จสมบูรณ์แบบ end-to-end
+Approved Qty แก้เป็น 2 ได้; bulk approve สำเร็จ และ HOD ไม่มีปุ่ม Edit บน PR นั้นอีก (journey เสร็จสมบูรณ์)
 
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>
+<sub>Last regenerated: 2026-11-21 · git 9d79c62</sub>

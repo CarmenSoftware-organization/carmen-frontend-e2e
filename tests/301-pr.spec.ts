@@ -1,10 +1,13 @@
-import { test as baseTest, expect } from "@playwright/test";
+import { test as baseTest, expect, type Browser, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { PurchaseRequestPage, LIST_PATH, NEW_PATH, APPROVALS_PATH } from "./pages/purchase-request.page";
 import { BU_CODE } from "./test-users";
+import { buGet } from "./helpers/bu-api";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
 import { openRecordFromRow, recordRows } from "./helpers/list-row";
+import { approveOpenPR, approveAsHOD, bulkApprove, bulkReject, gotoPRDetail, openSendBackDialog, enterApproverEditMode, splitFirstItem, submitPRAsRequestor } from "./pages/pr-approver.helpers";
+import { expectActionUnavailable } from "./helpers/unavailable";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Multi-role auth — each createAuthTest registers a per-role login fixture.
@@ -16,6 +19,7 @@ const fcTest = createAuthTest("carmensoftware.dev+fc@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 const gmTest = createAuthTest("carmensoftware.dev+gm@gmail.com");
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
+const budgetTest = createAuthTest("carmensoftware.dev+budget@gmail.com");
 
 // `noAuthTest` is used for the "PR access without login" case.
 const noAuthTest = baseTest;
@@ -33,12 +37,69 @@ const SKIP_NOTE_NOT_IMPLEMENTED =
   "Feature not yet implemented in the frontend (no Recall / Save-as-Template button found). " +
   "Re-enable once the UI ships.";
 
+// Creating a PR drives the whole item cascade (workflow, location, product, qty, unit, delivery point)
+// and runs 28-31s on dev against the 30s default - every case that creates one needs the room.
+for (const t of [requestorTest, hodTest, fcTest, purchaseTest, gmTest]) t.describe.configure({ timeout: 120_000 });
+
+/** Own PR taken to the Purchase stage (requestor + HOD contexts) and opened in the purchaser's edit mode. */
+async function openAtPurchaseStage(page: Page, browser: Browser) {
+  purchaseTest.setTimeout(240_000);
+  const created = await submitPRAsRequestor(browser);
+  await approveAsHOD(browser, created.ref);
+  await gotoPRDetail(page, created.ref);
+  const pr = await enterApproverEditMode(page);
+  return { pr, id: created.ref };
+}
+const firstLineOf = async (id: string) => (await buGet("Purchase", `/purchase-requests/${id}`)).body.data.purchase_request_detail[0];
+
+const prDoc = async (id: string) => (await buGet("Purchase", `/purchase-requests/${id}`)).body.data;
+const prStage = async (id: string) => {
+  const d = await prDoc(id);
+  return String(d.workflow_current_stage);
+};
+/** Own PR submitted by the requestor, opened as the HOD and really approved (toolbar Approve + footer Approve); checks it left the HOD stage. */
+async function approveOwnPRAsHod(page: Page, browser: Browser, opts?: { foc?: boolean }) {
+  hodTest.setTimeout(240_000);
+  const created = await submitPRAsRequestor(browser, opts);
+  const before = await prStage(created.ref);
+  await gotoPRDetail(page, created.ref);
+  const pr = new PurchaseRequestPage(page);
+  await expect(pr.editModeButton(), "PR is not at the HOD stage - no Edit available").toBeVisible({ timeout: 15_000 });
+  await pr.enterEditMode();
+  await bulkApprove(page);
+  await expect.poll(() => prStage(created.ref), { message: "PR stage did not advance after Approve", timeout: 15_000 }).not.toBe(before);
+  await gotoPRDetail(page, created.ref);
+  await expect(pr.editModeButton(), "HOD still owns the PR after approving").toHaveCount(0, { timeout: 10_000 });
+  return created;
+}
+
 const FUTURE_DATE = "2099-12-31";
-const PAST_DATE = "2020-01-01";
 const LONG_TEXT_500 = "a".repeat(500);
 const LONG_TEXT_2001 = "a".repeat(2001);
 const SHORT_REASON = "I";
 const VALID_REASON = "Items discontinued in catalogue";
+
+/**
+ * The header has no delivery date any more: it is a per-line DatePicker with fromDate=today
+ * (FE pr-item-cells/delivery-date-cell.tsx), so "a past delivery date" is blocked in the calendar.
+ * Builds a draft line, opens that calendar, and asserts past days are disabled and clicking one changes nothing.
+ */
+async function expectPastDeliveryDateBlocked(pr: PurchaseRequestPage, page: Page) {
+  await pr.gotoNew();
+  await pr.fillHeader({ prType: "general", deliveryDate: FUTURE_DATE });
+  await pr.addLineItem({ product: "Past Date", quantity: 1, uom: "ea", unitPrice: 100 });
+  const dateButton = page.locator("tbody tr").first().getByRole("button", { name: /\d{4}-\d{2}-\d{2}/ }).first();
+  const before = await dateButton.innerText();
+  await dateButton.click();
+  const calendar = page.getByRole("grid").first();
+  await expect(calendar, "delivery date calendar did not open").toBeVisible({ timeout: 10_000 });
+  const pastDay = calendar.locator("button[disabled], button[aria-disabled='true'], [data-disabled='true']").first();
+  await expect(pastDay, "calendar offers selectable past days").toBeVisible();
+  await pastDay.click({ force: true });
+  await page.keyboard.press("Escape");
+  await expect(dateButton, "a past day changed the delivery date").toHaveText(before);
+  return before;
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // TC-PR-900001 — Create PR (Requestor)
@@ -97,7 +158,7 @@ requestorTest.describe("PR — Create", () => {
         notes: "auto-generated by E2E",
       });
       await pr.addLineItem({ product: "Test Item", description: "E2E item", quantity: 1, uom: "ea", unitPrice: 100 });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
+      await pr.saveDraftButton().click({ timeout: 5_000 });
       await pr.expectSavedToast();
     },
   );
@@ -128,8 +189,13 @@ requestorTest.describe("PR — Create", () => {
       await pr.openCreateDialog();
       await pr.fillHeader({ prType: "general", deliveryDate: FUTURE_DATE });
       await pr.addLineItem({ product: "FOC Item", quantity: 5, uom: "ea", isFOC: true });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
+      await pr.saveDraftButton().click({ timeout: 5_000 });
       await pr.expectSavedToast();
+      await expect(page).toHaveURL(/purchase-request\/[0-9a-f-]{36}/, { timeout: 15_000 });
+      const id = page.url().match(/[0-9a-f-]{36}/)![0];
+      const rec = (await buGet("Requestor", `/purchase-requests/${id}`)).body.data;
+      expect(rec.purchase_request_detail).toHaveLength(1);
+      expect(Number(rec.purchase_request_detail[0].foc_qty)).toBeGreaterThan(0);
     },
   );
 
@@ -138,23 +204,16 @@ requestorTest.describe("PR — Create", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Requestor" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'New Purchase Request'\n3. เลือก PR type เป็น General\n4. กรอก delivery date ที่ไม่ถูกต้อง (วันที่ในอดีต)\n5. กด 'Save as Draft'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความ error สำหรับวันที่ไม่ถูกต้องและไม่บันทึก PR" },
+        { type: "steps", description: "1. เปิดฟอร์ม PR ใหม่ เลือก workflow\n2. เพิ่มรายการ\n3. เปิดปฏิทิน delivery date ของรายการ\n4. คลิกวันที่ที่ผ่านมาแล้ว" },
+        { type: "expected", description: "ปฏิทินวันส่งของของรายการเลือกวันในอดีตไม่ได้ (วันก่อนวันนี้ disabled) และคลิกแล้วค่าวันที่ไม่เปลี่ยน — จึงบันทึก PR ด้วยวันที่ในอดีตไม่ได้" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      await pr.openCreateDialog();
-      await pr.fillHeader({ prType: "general", deliveryDate: PAST_DATE });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const kept = await expectPastDeliveryDateBlocked(pr, page);
+      expect(kept, "the line keeps its default (today or later) delivery date").toMatch(/\d{4}-\d{2}-\d{2}/);
     },
   );
 
@@ -223,23 +282,25 @@ requestorTest.describe("PR — Edit", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
+      await pr.gotoAllDocuments();
       // Open first draft PR found (best-effort; depends on seeded data)
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) {
-        requestorTest.skip(true, "No draft PR available for editing in this environment");
-        return;
-      }
+      const draftRow = pr.rowWithStatus(/draft/i).first();
+      await expect(draftRow, "No draft PR available for editing in this environment — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(draftRow);
-      await pr.editButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.fillHeader({ deliveryDate: FUTURE_DATE, notes: "edited by E2E" });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.expectSavedToast();
+      await pr.enterEditMode();
+      await expect(pr.descriptionInput()).toBeVisible({ timeout: 10_000 });
+      await pr.descriptionInput().fill("edited by E2E");
+      // Pinned suspected bug (cluster: BE, same as the 302 draft-edit case): saving the seeded Draft makes
+      // PATCH /purchase-requests/<id> answer 400 {"message":"Unknown argument `product_id`. Did you
+      // mean `product_code`?"} — the update path of `details` rejects the payload FE mapItemToPayload
+      // builds. Measured 2026-11-21 on dev API v4.0.13-build.20261112. Flips red once accepted.
+      requestorTest.fail(true, "suspected bug: PATCH of a seeded Draft -> 400 'Unknown argument product_id' (BE details update path) - bisected by replaying PATCH .../save: a line carrying BOTH pricelist_detail_id:null AND is_tax_included fails, dropping either key gives 200; FE 76ec45e4 (2026-11-09) added is_tax_included to the payload, BE schema 1ac85b1ae (2026-11-09) has the column and dev runs build f529576a9 (2026-11-13), so this is not a not-yet-deployed change");
+      await pr.saveEditMode();
     },
   );
 
   requestorTest(
-    "TC-PR-020002 Edit returned PR - Negative Case",
+    "TC-PR-020002 Edit returned PR - creator can re-edit",
     {
       annotation: [
         { type: "preconditions", description: "มี PR ที่ถูกส่งคืนพร้อมเหตุผลการ reject" },
@@ -255,14 +316,14 @@ requestorTest.describe("PR — Edit", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const returnedRow = page.locator("tbody").getByRole("row").filter({ hasText: /returned|rejected/i }).first();
-      if ((await returnedRow.count()) === 0) {
-        requestorTest.skip(true, "No returned PR available in this environment");
-        return;
-      }
+      await pr.gotoAllDocuments();
+      const returnedRow = pr.returnedPRRow().first();
+      await expect(returnedRow, "No returned PR available in this environment — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(returnedRow);
-      await expect(pr.editButton()).toBeDisabled({ timeout: 5_000 });
+      // Returned = In progress @ Create Request: the creator owns that stage, so Edit is
+      // offered (FE pr-form: role=create) — there is no "returned is read-only" rule.
+      await expect(pr.commentButton()).toBeVisible({ timeout: 15_000 });
+      await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -307,12 +368,9 @@ requestorTest.describe("PR — Submit — Requestor flows", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) {
-        requestorTest.skip(true, "No draft PR available for submission in this environment");
-        return;
-      }
+      await pr.gotoAllDocuments();
+      const draftRow = pr.rowWithStatus(/draft/i).first();
+      await expect(draftRow, "No draft PR available for submission in this environment — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(draftRow);
       await pr.submitButton().click({ timeout: 10_000 });
       // Submitting opens a confirm dialog ("Submit Purchase Request — This will
@@ -343,7 +401,7 @@ requestorTest.describe("PR — Submit — Requestor flows", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
       await pr.openCreateDialog();
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
+      await pr.submitButton().click({ timeout: 5_000 });
       await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
   );
@@ -352,13 +410,9 @@ requestorTest.describe("PR — Submit — Requestor flows", () => {
     "TC-PR-030004 Submit PR with extremely large value",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor และมี draft PR ที่มีมูลค่าสูงมาก" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กดปุ่ม 'Submit for Approval'\n3. รอการ validate\n4. ตรวจสอบว่าการ validate ล้มเหลว",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความ error ว่ามูลค่าเกินขีดจำกัด" },
+        { type: "preconditions", description: "Login เป็น Requestor" },
+        { type: "steps", description: "1. เปิดฟอร์ม PR ใหม่ เลือก workflow\n2. เพิ่มรายการและตั้งจำนวน 999999999\n3. กด Submit และยืนยัน" },
+        { type: "expected", description: "ไม่ส่ง PR: ขึ้น toast 'Some fields aren\'t filled in correctly' และยังอยู่ที่ฟอร์ม /new (ไม่ถูกสร้าง/ส่ง)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
       ],
@@ -367,9 +421,12 @@ requestorTest.describe("PR — Submit — Requestor flows", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
       await pr.openCreateDialog();
+      await pr.fillHeader({ prType: "general" });
       await pr.addLineItem({ product: "Large", quantity: 999999999, uom: "ea", unitPrice: 999999999 });
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      await pr.submitButton().click({ timeout: 5_000 });
+      await pr.confirmDialogButton(/^submit$|confirm|ok|yes/i).click({ timeout: 10_000 });
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /aren't filled in correctly/i }), "the oversized quantity was not rejected").toBeVisible({ timeout: 15_000 });
+      await expect(page).toHaveURL(/purchase-request\/new/);
     },
   );
 
@@ -381,20 +438,28 @@ requestorTest.describe("PR — Submit — Requestor flows", () => {
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/purchase-request\n2. กดปุ่ม 'Submit for Approval'\n3. รอการ validate\n4. ตรวจสอบว่าการ validate ล้มเหลว",
+            "1. เปิดฟอร์ม PR ใหม่ เลือก workflow และเพิ่มรายการ\n2. เลือก location แล้วเปิดตัวเลือก Product\n3. ค้นรหัสสินค้าที่ไม่มีอยู่",
         },
-        { type: "expected", description: "ระบบแสดงข้อความ error สำหรับ item codes ที่ไม่ถูกต้อง" },
+        { type: "expected", description: "กรอก item code ที่ไม่มีจริงเองไม่ได้: ตัวเลือกสินค้ามีแต่สินค้าในแคตาล็อก ค้นรหัสที่ไม่มีแล้วไม่เหลือตัวเลือกให้เลือก" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
+      // An item code cannot be typed free-hand: the product picker only lists catalogue products,
+      // so an invalid code is never submittable - searching one finds nothing.
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      await pr.openCreateDialog();
-      await pr.addLineItem({ product: "INVALID-ITEM-CODE-XYZ-9999", quantity: 1, uom: "ea", unitPrice: 1 });
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      await pr.gotoNew();
+      await pr.fillHeader({ prType: "general" });
+      await pr.addItemButton().click({ timeout: 10_000 });
+      const row = page.locator("tbody tr").first();
+      await pr.pickFirstInCombobox(row.getByRole("button", { name: /select location/i }).first());
+      await row.getByRole("button", { name: /select product/i }).first().click({ timeout: 10_000 });
+      const search = page.locator("[data-slot=popover-content]:visible [data-slot=command-input]").last();
+      await expect(search, "product picker did not open").toBeVisible({ timeout: 10_000 });
+      await expect(page.locator("[data-slot=popover-content]:visible button[data-value]").first(), "picker lists no products to start with").toBeVisible({ timeout: 10_000 });
+      await search.fill("INVALID-ITEM-CODE-XYZ-9999");
+      await expect(page.locator("[data-slot=popover-content]:visible button[data-value]")).toHaveCount(0, { timeout: 10_000 });
     },
   );
 });
@@ -413,15 +478,11 @@ fcTest.describe("PR — Submit — FC permission denial", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const submitBtn = pr.submitButton();
-      if ((await submitBtn.count()) === 0) {
-        // Submit not visible to FC — that itself is the negative result
-        expect(true).toBe(true);
-        return;
-      }
-      await submitBtn.click({ timeout: 5_000 }).catch(() => {});
-      await expect(page.getByText(/insufficient|permission|not authorized/i).first()).toBeVisible({ timeout: 5_000 });
+      await pr.gotoAllDocuments();
+      const draftRow = page.locator("tbody tr").filter({ has: page.locator("[data-slot='status-chip']").filter({ hasText: /draft/i }) }).first();
+      await expect(draftRow, "No draft PR visible to FC — seed it via `bun run data:reset --yes` (pr.draft)").toBeVisible({ timeout: 10_000 });
+      await openRecordFromRow(draftRow);
+      await expectActionUnavailable(page, pr.submitButton());
     },
   );
 });
@@ -429,6 +490,31 @@ fcTest.describe("PR — Submit — FC permission denial", () => {
 // ─────────────────────────────────────────────────────────────────────────
 // TC-PR-900004 — View PR
 // ─────────────────────────────────────────────────────────────────────────
+budgetTest.describe("PR — View — Permission denial", () => {
+  budgetTest(
+    "TC-PR-040002 Attempt to view PR with no permissions",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น Budget (ไม่มีสิทธิ์ purchase_request ใดเลย — ตรวจจาก /api/user/profile)" },
+        {
+          type: "steps",
+          description:
+            "1. ไปที่ /procurement/purchase-request\n2. ดูหน้า",
+        },
+        { type: "expected", description: "แสดงหน้า 'Permission Denied' แทน list; ไม่มีปุ่ม New Purchase Request และไม่มีแถว PR" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      await page.goto(LIST_PATH);
+      await expect(page.getByRole("heading", { name: "Permission Denied" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("button", { name: /new purchase request/i })).toHaveCount(0);
+      await expect(recordRows(page)).toHaveCount(0);
+    },
+  );
+});
+
 requestorTest.describe("PR — View — Requestor", () => {
   requestorTest(
     "TC-PR-040001 View own pending PR as Requestor",
@@ -448,39 +534,14 @@ requestorTest.describe("PR — View — Requestor", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const pendingRow = page.locator("tbody").getByRole("row").filter({ hasText: /in.progress|pending/i }).first();
-      if ((await pendingRow.count()) === 0) {
-        requestorTest.skip(true, "No pending PR available in this environment");
-        return;
-      }
+      const pendingRow = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(pendingRow, "No pending PR available in this environment — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(pendingRow);
       await expect(pr.statusBadge()).toBeVisible({ timeout: 10_000 });
     },
   );
 
-  requestorTest(
-    "TC-PR-040002 Attempt to view PR with no permissions",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เข้าระบบแล้วแต่ไม่มีสิทธิ์ในการดู PR" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกหมายเลขอ้างอิงของ PR\n3. ตรวจสอบว่าระบบ redirect ไปยังหน้า error หรือ access denied",
-        },
-        { type: "expected", description: "ผู้ใช้ไม่สามารถดูหน้ารายละเอียด PR ได้และได้รับข้อความ error ที่เหมาะสม" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      // Approximated as "view-as-requestor of someone else's PR" — best-effort.
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      // Look for any PR not authored by current user; permission-denial UI varies.
-      expect(page.url()).toMatch(/purchase-request/);
-    },
-  );
+
 });
 
 hodTest.describe("PR — View — Approver perspective", () => {
@@ -501,49 +562,14 @@ hodTest.describe("PR — View — Approver perspective", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const approvedRow = page.locator("tbody").getByRole("row").filter({ hasText: /^approved$/i }).first();
-      if ((await approvedRow.count()) === 0) {
-        hodTest.skip(true, "No fully-approved PR available in this environment");
-        return;
-      }
+      await pr.gotoAllDocuments();
+      const approvedRow = pr.rowWithStatus(/^approved$/i).first();
+      await expect(approvedRow, "No fully-approved PR available in this environment — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(approvedRow);
       await expect(pr.statusBadge()).toBeVisible({ timeout: 10_000 });
     },
   );
 
-  // Not in this build — do not restore the silent version.
-  // The PR detail renders no attachments section at all: the word "attach" does
-  // not appear anywhere on the page, and there are no tabs. Restore this when the
-  // feature lands, against whatever markup it ships with.
-  hodTest.fixme(
-    "TC-PR-040004 View PR with missing attachments",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Approver (HOD) และมี PR ที่ขาด attachment" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกหมายเลขอ้างอิงของ PR ที่ขาด attachments\n3. ตรวจสอบว่ารายการ 'Attachments' แสดงไฟล์ที่ขาดหาย",
-        },
-        { type: "expected", description: "หน้ารายละเอียด PR แสดงข้อมูล attachment ที่ขาดหาย" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      // Best-effort: open any PR and verify attachments section renders
-      const anyRow = page.getByRole("row").nth(1);
-      if ((await anyRow.count()) === 0) {
-        hodTest.skip(true, "No PR available in this environment");
-        return;
-      }
-      await openRecordFromRow(anyRow);
-      await expect(page.getByText(/attachment/i).first()).toBeVisible({ timeout: 10_000 });
-    },
-  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -554,58 +580,34 @@ hodTest.describe("PR — Approve", () => {
     "TC-PR-050001 Approve Purchase Request - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "Department Manager ได้รับ PR สำหรับการ approve และมีสิทธิ์ที่จำเป็น" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกลิงก์ 'View' ของ purchase request\n3. ตรวจสอบรายละเอียด PR\n4. กรอก comments ถ้ามี\n5. กด 'Approve'\n6. ตรวจสอบว่าระบบ validate สิทธิ์ approver\n7. รอระบบอัปเดต approval record\n8. ตรวจสอบว่าสถานะ PR อัปเดตเป็น 'Approved'\n9. ตรวจสอบว่าส่งการแจ้งเตือนถึงผู้สร้าง PR และพนักงาน purchasing",
-        },
-        { type: "expected", description: "Purchase request ถูก approve และส่งการแจ้งเตือนที่เกี่ยวข้องทั้งหมด" },
+        { type: "preconditions", description: "Requestor ส่ง PR ใบใหม่เข้าขั้น HOD; HOD มีสิทธิ์ approve" },
+        { type: "steps", description: "1. HOD เปิด PR ใบนั้น\n2. กด Edit เลือกบรรทัด กด Approve (ทำเครื่องหมาย)\n3. กด Approve ท้ายฟอร์มและยืนยัน\n4. เปิด PR ใบนั้นอีกครั้ง" },
+        { type: "expected", description: "การ approve สองขั้น (toolbar Approve แล้วปุ่ม Approve ท้ายฟอร์ม) ยิง PATCH .../approve สำเร็จ; PR ออกจากขั้น HOD (stage ใน backend เปลี่ยน) และ HOD ไม่มีปุ่ม Edit กับใบนั้นอีก" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const pendingRow = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await pendingRow.count()) === 0) {
-        hodTest.skip(true, "No PR pending approval for HOD in this environment");
-        return;
-      }
-      await openRecordFromRow(pendingRow);
-      await pr.approveButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.confirmDialogButton(/approve|confirm|ok/i).click({ timeout: 5_000 });
-      await pr.expectSavedToast();
+    async ({ page, browser }) => {
+      const created = await approveOwnPRAsHod(page, browser);
+      expect((await prDoc(created.ref)).purchase_request_detail).toHaveLength(1);
     },
   );
 
   hodTest(
-    "TC-PR-050003 Approve Purchase Request - No Additional Approvals Needed",
+    "TC-PR-050003 Approve Purchase Request - HOD approval hands the PR to the next stage (no further HOD approval)",
     {
       annotation: [
-        { type: "preconditions", description: "ระบบตั้งค่าให้ต้องการ approval จาก department manager เท่านั้นสำหรับ PR นี้" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกลิงก์ 'View' ของ purchase request\n3. ตรวจสอบรายละเอียด PR\n4. กรอก comments ถ้ามี\n5. กด 'Approve'\n6. ตรวจสอบว่าระบบอัปเดตสถานะ PR เป็น 'Approved'",
-        },
-        { type: "expected", description: "Purchase request ถูก approve โดยไม่ต้องการการ approve เพิ่มเติม" },
+        { type: "preconditions", description: "Requestor ส่ง PR ใบใหม่เข้าขั้น HOD (ขั้น HOD เป็นขั้นอนุมัติเดียวของแผนกใน workflow ทดสอบ)" },
+        { type: "steps", description: "1. HOD approve PR ใบนั้นสองขั้น (ทำเครื่องหมาย + Approve ท้ายฟอร์ม)\n2. เปิด PR ใบนั้นอีกครั้ง" },
+        { type: "expected", description: "หลัง HOD approve ใบนั้นไม่รอ HOD อีก: stage ใน backend เปลี่ยนไปขั้นถัดไป (Purchase) และ HOD ไม่มีปุ่ม Edit" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR for HOD-only approval");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.approveButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+    async ({ page, browser }) => {
+      const created = await approveOwnPRAsHod(page, browser);
+      const detail = (await prDoc(created.ref)).purchase_request_detail;
+      expect(detail.length, "approved PR lost its lines").toBeGreaterThan(0);
     },
   );
 
@@ -627,13 +629,10 @@ hodTest.describe("PR — Approve", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR with multi-stage approval available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No pending PR with multi-stage approval available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
-      await pr.approveButton().click({ timeout: 5_000 }).catch(() => {});
+      await approveOpenPR(page);
     },
   );
 });
@@ -658,19 +657,11 @@ fcTest.describe("PR — Approve — FC permission denial", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) {
-        fcTest.skip(true, "No PR available in this environment");
-        return;
-      }
+      await expect(row, "No PR available in this environment — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       const approve = pr.approveButton();
       // Either button is hidden (correct) or click yields permission error
-      if ((await approve.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await approve.click().catch(() => {});
-        await expect(page.getByText(/insufficient|denied|not authorized/i).first()).toBeVisible({ timeout: 5_000 });
-      }
+      await expectActionUnavailable(page, approve, /insufficient|denied|not authorized/i);
     },
   );
 });
@@ -697,11 +688,8 @@ hodTest.describe("PR — Reject", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR available to reject");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No pending PR available to reject — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       // Approve/Reject/Send for Review render only in edit mode — the PR view
       // page offers just Edit and More. Edit itself only appears when the current
@@ -709,15 +697,10 @@ hodTest.describe("PR — Reject", () => {
       // filter above matches any in-progress PR, including ones parked at someone
       // else's stage. Say so rather than timing out on a button this role will
       // never be shown.
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "PR is not at this role's approval stage — no Edit available");
-        return;
-      }
-      await pr.enterEditMode();
-      await pr.rejectButton().click({ timeout: 10_000 });
-      await pr.reasonInput().fill(VALID_REASON).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
-      await pr.expectSavedToast();
+      await enterApproverEditMode(page);
+      // Reject is two steps: the toolbar Reject marks the rows (reason dialog), then the footer's
+      // document-level Reject confirms and sends PATCH .../reject (resolves Voided).
+      await bulkReject(page, VALID_REASON);
     },
   );
 
@@ -739,11 +722,8 @@ hodTest.describe("PR — Reject", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No pending PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       // Approve/Reject/Send for Review render only in edit mode — the PR view
       // page offers just Edit and More. Edit itself only appears when the current
@@ -751,13 +731,10 @@ hodTest.describe("PR — Reject", () => {
       // filter above matches any in-progress PR, including ones parked at someone
       // else's stage. Say so rather than timing out on a button this role will
       // never be shown.
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "PR is not at this role's approval stage — no Edit available");
-        return;
-      }
+      await expect(pr.editModeButton(), "PR is not at this role's approval stage — no Edit available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       await pr.rejectButton().click({ timeout: 10_000 });
-      await pr.reasonInput().fill(SHORT_REASON).catch(() => {});
+      await pr.reasonInput().fill(SHORT_REASON);
       await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
       await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
@@ -781,11 +758,8 @@ hodTest.describe("PR — Reject", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No pending PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       // Approve/Reject/Send for Review render only in edit mode — the PR view
       // page offers just Edit and More. Edit itself only appears when the current
@@ -793,10 +767,7 @@ hodTest.describe("PR — Reject", () => {
       // filter above matches any in-progress PR, including ones parked at someone
       // else's stage. Say so rather than timing out on a button this role will
       // never be shown.
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "PR is not at this role's approval stage — no Edit available");
-        return;
-      }
+      await expect(pr.editModeButton(), "PR is not at this role's approval stage — no Edit available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       await pr.rejectButton().click({ timeout: 10_000 });
       await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
@@ -825,18 +796,10 @@ fcTest.describe("PR — Reject — Permission denial", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) {
-        fcTest.skip(true, "No PR available");
-        return;
-      }
+      await expect(row, "No PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       const reject = pr.rejectButton();
-      if ((await reject.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await reject.click().catch(() => {});
-        await expect(page.getByText(/insufficient|permission|denied/i).first()).toBeVisible({ timeout: 5_000 });
-      }
+      await expectActionUnavailable(page, reject, /insufficient|permission|denied/i);
     },
   );
 });
@@ -860,11 +823,8 @@ gmTest.describe("PR — Reject — High-value GM scope", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        gmTest.skip(true, "No high-value pending PR for GM");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No high-value pending PR for GM — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       // Approve/Reject/Send for Review render only in edit mode — the PR view
       // page offers just Edit and More. Edit itself only appears when the current
@@ -872,13 +832,10 @@ gmTest.describe("PR — Reject — High-value GM scope", () => {
       // filter above matches any in-progress PR, including ones parked at someone
       // else's stage. Say so rather than timing out on a button this role will
       // never be shown.
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "PR is not at this role's approval stage — no Edit available");
-        return;
-      }
+      await expect(pr.editModeButton(), "PR is not at this role's approval stage — no Edit available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       await pr.rejectButton().click({ timeout: 10_000 });
-      await pr.reasonInput().fill(VALID_REASON).catch(() => {});
+      await pr.reasonInput().fill(VALID_REASON);
       await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
     },
   );
@@ -966,254 +923,6 @@ requestorTest.describe("PR — Recall — Feature pending", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// TC-PR-900008 — Cancel PR
-// ─────────────────────────────────────────────────────────────────────────
-requestorTest.describe("PR — Cancel — Requestor", () => {
-  // No such action exists — do not restore the silent version.
-  // A PR offers Edit / Delete / Submit plus More (Duplicate, Comment, Activity,
-  // Print). Nothing is called "Cancel", so `cancelPRButton()` matched nothing and
-  // the swallowed click meant the confirm dialog never opened. Delete is the
-  // nearest real equivalent; re-point this once the intent is decided.
-  requestorTest.fixme(
-    "TC-PR-080001 Cancel PR - Happy Path",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor; มี PR ที่ active อยู่ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Open' บน PR ที่จะยกเลิก\n3. กด 'Cancel PR'\n4. กรอกเหตุผลการยกเลิก: 'Incorrect item description'\n5. ยืนยันการยกเลิก",
-        },
-        { type: "expected", description: "สถานะ PR เปลี่ยนเป็น 'Cancelled', ยกเลิก approvals ทั้งหมด, คืน budget ถ้ามีการ reserve, ส่งการแจ้งเตือน และแสดงข้อความยืนยัน" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /draft|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        requestorTest.skip(true, "No active PR available to cancel");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.cancelPRButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.reasonInput().fill("Incorrect item description").catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
-      await pr.expectSavedToast();
-    },
-  );
-
-  requestorTest(
-    "TC-PR-080003 Cancel PR - PR is Completed",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor; มี PR ที่มีสถานะ 'Completed'" },
-        { type: "steps", description: "1. ไปที่ /procurement/purchase-request\n2. กด 'Open' บน PR ที่ completed" },
-        { type: "expected", description: "ระบบแสดงข้อความ error ว่า 'PR cannot be cancelled as it is in the Completed status.'" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /completed/i }).first();
-      if ((await row.count()) === 0) {
-        requestorTest.skip(true, "No completed PR available");
-        return;
-      }
-      await openRecordFromRow(row);
-      const cancel = pr.cancelPRButton();
-      // Cancel should be disabled or absent for completed PRs
-      if ((await cancel.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(cancel).toBeDisabled({ timeout: 5_000 });
-      }
-    },
-  );
-});
-
-fcTest.describe("PR — Cancel — Permission denial", () => {
-  fcTest(
-    "TC-PR-080002 Cancel PR - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Budget Manager (FC); มี PR ที่ active" },
-        { type: "steps", description: "1. ไปที่ /procurement/purchase-request\n2. กด 'Open' บน PR ที่จะยกเลิก" },
-        { type: "expected", description: "ระบบแสดงข้อความ error ว่า 'Insufficient permissions to cancel this PR.'" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoAllDocuments();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) {
-        fcTest.skip(true, "No PR available");
-        return;
-      }
-      await openRecordFromRow(row);
-      const cancel = pr.cancelPRButton();
-      if ((await cancel.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await cancel.click().catch(() => {});
-        await expect(page.getByText(/insufficient|permission/i).first()).toBeVisible({ timeout: 5_000 });
-      }
-    },
-  );
-});
-
-hodTest.describe("PR — Cancel — Department manager", () => {
-  hodTest(
-    "TC-PR-080004 Cancel PR - PR with Pending Approvals",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Department Manager (HOD); มี PR ที่มี pending approvals" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Open' บน PR ที่มี pending approvals\n3. กด 'Cancel PR'\n4. กรอกเหตุผลการยกเลิก: 'Change in requirement'\n5. ยืนยันการยกเลิก",
-        },
-        { type: "expected", description: "ระบบยกเลิก approvals ที่ pending ทั้งหมด, สถานะ PR เปลี่ยนเป็น 'Cancelled', คืน budget ถ้ามีการ reserve, ส่งการแจ้งเตือน และแสดงข้อความยืนยัน" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending-approval PR available for cancellation");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.cancelPRButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.reasonInput().fill("Change in requirement").catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
-    },
-  );
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// TC-PR-900009 — Attachments
-// ─────────────────────────────────────────────────────────────────────────
-requestorTest.describe("PR — Attachments", () => {
-  requestorTest(
-    "TC-PR-090001 Happy Path - Add Valid Attachment",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor และมี PR ที่เปิดอยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกส่วน 'Attachments'\n3. กด 'Add Attachment'\n4. คลิก file picker\n5. เลือกไฟล์ที่ถูกต้อง\n6. ตรวจสอบว่าขนาดและประเภทไฟล์ถูก validate\n7. กรอกฟิลด์ 'Description'\n8. เลือก 'Quote' เป็นประเภท attachment\n9. กด 'Upload'\n10. ตรวจสอบ upload progress\n11. ตรวจสอบว่าไฟล์ถูก upload ไปที่ storage\n12. ตรวจสอบว่าสร้าง attachment record ในฐานข้อมูล\n13. ตรวจสอบว่า activity ถูกบันทึก\n14. ตรวจสอบว่าแสดงข้อความสำเร็จ\n15. ตรวจสอบรายการ attachments ที่อัปเดตแล้ว",
-        },
-        { type: "expected", description: "Attachment ถูกเพิ่มและแสดงผลสำเร็จ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /draft|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        requestorTest.skip(true, "No PR available for attachment upload");
-        return;
-      }
-      await openRecordFromRow(row);
-      const tab = page.getByRole("tab", { name: /attachment/i }).first();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
-      const addBtn = page.getByRole("button", { name: /add attachment|upload/i }).first();
-      if ((await addBtn.count()) === 0) {
-        requestorTest.skip(true, "Attachment UI not exposed for this PR");
-        return;
-      }
-      await addBtn.click().catch(() => {});
-    },
-  );
-
-  requestorTest(
-    "TC-PR-090002 Negative - Invalid File Type",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor และมี PR ที่เปิดอยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกส่วน 'Attachments'\n3. กด 'Add Attachment'\n4. คลิก file picker\n5. เลือกประเภทไฟล์ที่ไม่ถูกต้อง (เช่น .exe)\n6. ตรวจสอบข้อความ error จาก validation ของระบบ\n7. ปิด file picker",
-        },
-        { type: "expected", description: "ประเภทไฟล์ที่ไม่ถูกต้องถูกปฏิเสธพร้อมข้อความ error" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async () => {
-      // Best-effort placeholder — rely on server-side validation; verifies via UI on real env.
-    },
-  );
-
-  requestorTest(
-    "TC-PR-090003 Edge Case - Maximum File Size Exceeded",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor และมี PR ที่เปิดอยู่ ทราบขีดจำกัดขนาดไฟล์สูงสุด" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกส่วน 'Attachments'\n3. กด 'Add Attachment'\n4. คลิก file picker\n5. เลือกไฟล์ที่เกินขีดจำกัดขนาดสูงสุด\n6. ตรวจสอบข้อความ error จาก validation ของระบบ\n7. ปิด file picker",
-        },
-        { type: "expected", description: "ขนาดไฟล์เกินขีดจำกัดสูงสุดและถูกปฏิเสธพร้อมข้อความ error" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async () => {
-      // Best-effort placeholder — needs an oversize file fixture.
-    },
-  );
-});
-
-hodTest.describe("PR — Attachments — Permission denial", () => {
-  hodTest(
-    "TC-PR-090004 Negative - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Department Manager และมี PR ที่เปิดอยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกส่วน 'Attachments'\n3. กด 'Add Attachment'\n4. คลิก file picker\n5. เลือกไฟล์ที่ถูกต้อง\n6. ตรวจสอบข้อความ error จาก validation เกี่ยวกับการไม่มีสิทธิ์",
-        },
-        { type: "expected", description: "Department Manager ไม่มีสิทธิ์ในการเพิ่ม attachments" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const addBtn = page.getByRole("button", { name: /add attachment/i }).first();
-      // Either button is hidden (correct) or click yields permission error
-      if ((await addBtn.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await addBtn.click().catch(() => {});
-      }
-    },
-  );
-});
-
-// ─────────────────────────────────────────────────────────────────────────
 // TC-PR-900010 — Comments
 // ─────────────────────────────────────────────────────────────────────────
 requestorTest.describe("PR — Comments", () => {
@@ -1239,10 +948,11 @@ requestorTest.describe("PR — Comments", () => {
       // Header action bar (DocActions): the Comment button renders once the detail has loaded.
       const addComment = pr.commentButton();
       await expect(addComment).toBeVisible({ timeout: 10_000 });
-      await addComment.click().catch(() => {});
-      const post = page.getByRole("button", { name: /post comment/i }).first();
-      if ((await post.count()) > 0) await post.click().catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      await addComment.click();
+      // CommentSheet: an empty message cannot be posted — the send button is disabled
+      // (components/ui/comment-sheet.tsx `disabled={...}` on the send button).
+      await expect(page.getByRole("textbox").last()).toHaveValue("");
+      await expect(page.getByRole("button", { name: /^send comment$|send/i }).last()).toBeDisabled({ timeout: 5_000 });
     },
   );
 
@@ -1268,12 +978,13 @@ requestorTest.describe("PR — Comments", () => {
       // Header action bar (DocActions): the Comment button renders once the detail has loaded.
       const addComment = pr.commentButton();
       await expect(addComment).toBeVisible({ timeout: 10_000 });
-      await addComment.click().catch(() => {});
+      await addComment.click();
+      // The composer caps input at 256 characters (maxLength=256 in comment-sheet.tsx), so an
+      // over-long comment is truncated rather than rejected with an error message.
       const ta = page.getByRole("textbox").last();
-      if ((await ta.count()) > 0) await ta.fill(LONG_TEXT_2001).catch(() => {});
-      const post = page.getByRole("button", { name: /post comment/i }).first();
-      if ((await post.count()) > 0) await post.click().catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      await expect(ta).toBeVisible({ timeout: 10_000 });
+      await ta.fill(LONG_TEXT_2001);
+      await expect(ta).toHaveValue("a".repeat(256));
     },
   );
 });
@@ -1294,135 +1005,11 @@ fcTest.describe("PR — Comments — Permission denial", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
+      await expect(row, "required record/element missing — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       const addComment = page.getByRole("button", { name: /add comment/i }).first();
       // Either button is hidden (correct) or click yields permission error
-      if ((await addComment.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await addComment.click().catch(() => {});
-      }
-    },
-  );
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// TC-PR-900011 — Convert PR to PO (Purchase Staff)
-// ─────────────────────────────────────────────────────────────────────────
-purchaseTest.describe("PR — Convert to PO — Purchase Staff", () => {
-  purchaseTest(
-    "TC-PR-410001 Happy Path: Convert Approved PR to PO",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี PR ที่ approved อยู่ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Convert to PO'\n3. กรอกฟิลด์ 'Vendor'\n4. ปรับ 'Delivery Date'\n5. กด 'Create PO'",
-        },
-        { type: "expected", description: "PO ถูกสร้างด้วยข้อมูลจาก PR, สถานะ PR เปลี่ยนเป็น 'Completed', ส่งการแจ้งเตือนถึงผู้สร้าง, แสดงข้อความสำเร็จ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /^approved$/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No approved PR available to convert to PO");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.convertToPOButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.expectSavedToast();
-    },
-  );
-
-  purchaseTest(
-    "TC-PR-410002 Negative: Invalid Vendor",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี PR ที่ approved อยู่ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Convert to PO'\n3. กรอกฟิลด์ 'Vendor' ด้วยข้อมูลที่ไม่ถูกต้อง\n4. กด 'Create PO'",
-        },
-        { type: "expected", description: "แสดงข้อความ error, ไม่สร้าง PO, สถานะ PR ไม่เปลี่ยนแปลง, ไม่ส่งการแจ้งเตือน" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /^approved$/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No approved PR available");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.convertToPOButton().click({ timeout: 5_000 }).catch(() => {});
-      const vendor = page.getByLabel(/vendor/i).first();
-      if ((await vendor.count()) > 0) await vendor.fill("INVALID_VENDOR_XYZ");
-      const create = page.getByRole("button", { name: /create po/i }).first();
-      if ((await create.count()) > 0) await create.click().catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
-    },
-  );
-
-  purchaseTest(
-    "TC-PR-410003 Edge Case: PR with No Delivery Date",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี PR ที่ approved อยู่ในระบบโดยไม่มี delivery date" },
-        { type: "steps", description: "1. ไปที่ /procurement/purchase-request\n2. กด 'Convert to PO'\n3. กด 'Create PO'" },
-        { type: "expected", description: "PO ถูกสร้างด้วย delivery date default จาก PR, สถานะ PR เปลี่ยนเป็น 'Completed', ส่งการแจ้งเตือนถึงผู้สร้าง, แสดงข้อความสำเร็จ" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /^approved$/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No approved PR with missing delivery date");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.convertToPOButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-});
-
-requestorTest.describe("PR — Convert to PO — Permission denial", () => {
-  requestorTest(
-    "TC-PR-410004 Negative: No Permission to Convert PR",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี PR ที่ approved; เฉพาะ purchasing staff เท่านั้นที่สามารถแปลง PR ได้" },
-        { type: "steps", description: "1. ไปที่ /procurement/purchase-request\n2. กด 'Convert to PO'" },
-        { type: "expected", description: "แสดงข้อความ access denied, สถานะ PR ไม่เปลี่ยนแปลง, ไม่สร้าง PO, ไม่ส่งการแจ้งเตือน" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /^approved$/i }).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const convert = pr.convertToPOButton();
-      // Either button is hidden (correct) or click yields permission error
-      if ((await convert.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await convert.click().catch(() => {});
-      }
+      await expectActionUnavailable(page, addComment);
     },
   );
 });
@@ -1441,7 +1028,7 @@ requestorTest.describe("PR — Inventory snapshot", () => {
           description:
             "1. ไปที่ /procurement/purchase-request\n2. กด 'New Purchase Request'\n3. กด 'Add Line Item'\n4. ค้นหา 'Chicken Breast'\n5. ตรวจสอบว่า inventory panel แสดง quantities และ prices ที่ถูกต้อง\n6. กรอก quantity ที่ต้องการ: 20 kg\n7. กด 'Save'",
         },
-        { type: "expected", description: "Line item ถูกเพิ่มพร้อม inventory snapshot ที่ถูกต้องและราคาที่แนะนำ" },
+        { type: "expected", description: "Line item ถูกเพิ่มและเมื่อกดปุ่ม Inventory Information ของแถว เห็นข้อมูล On Hand / On Order ของสินค้าที่เลือก — FE แสดงตัวเลขสต๊อกเท่านั้น ไม่มีราคาแนะนำ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -1451,6 +1038,10 @@ requestorTest.describe("PR — Inventory snapshot", () => {
       await pr.gotoList();
       await pr.openCreateDialog();
       await pr.addLineItem({ product: "Chicken Breast", quantity: 20, uom: "kg" });
+      await page.locator("tbody tr").first().getByRole("button", { name: "Inventory Information" }).click();
+      const info = page.locator("[data-slot=popover-content]:visible, [role=dialog]:visible, [data-slot=tooltip-content]:visible").last();
+      await expect(info).toContainText(/on hand/i, { timeout: 10_000 });
+      await expect(info).toContainText(/on order/i);
     },
   );
 
@@ -1464,7 +1055,7 @@ requestorTest.describe("PR — Inventory snapshot", () => {
           description:
             "1. ไปที่ /procurement/purchase-request\n2. กด 'New Purchase Request'\n3. กด 'Add Line Item'\n4. ค้นหา 'Nonexistent Product'\n5. ตรวจสอบว่าไม่มี inventory panel แสดงผล",
         },
-        { type: "expected", description: "Inventory panel ไม่แสดงข้อมูลหรือคำเตือนสำหรับ product ที่ไม่มีอยู่" },
+        { type: "expected", description: "กดปุ่ม Inventory Information ของแถวที่ยังไม่เลือกสินค้า แล้วแผงที่เปิดไม่มีตัวเลขสต๊อก (ไม่มีข้อมูลให้แสดง)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
@@ -1473,34 +1064,15 @@ requestorTest.describe("PR — Inventory snapshot", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
       await pr.openCreateDialog();
-      await pr.addItemButton().click({ timeout: 5_000 }).catch(() => {});
-      const productInput = page.getByLabel(/product|item/i).first();
-      if ((await productInput.count()) > 0) await productInput.fill("NONEXISTENT_PRODUCT_XYZ");
+      await pr.addItemButton().click({ timeout: 5_000 });
+      // a new row has no product yet, so there is nothing to show stock for
+      await page.locator("tbody tr").first().getByRole("button", { name: "Inventory Information" }).click();
+      const info = page.locator("[data-slot=popover-content]:visible, [role=dialog]:visible, [data-slot=tooltip-content]:visible").last();
+      await expect(info).toBeVisible({ timeout: 10_000 });
+      await expect(info).not.toContainText(/\d/);
     },
   );
 
-  requestorTest(
-    "TC-PR-420003 Edge Case - Below Reorder Point",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor ที่มีสิทธิ์สร้าง purchase requests" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'New Purchase Request'\n3. กด 'Add Line Item'\n4. ค้นหา 'Beef'\n5. ตรวจสอบว่า inventory panel แสดง '⚠️ Below reorder point'\n6. กรอก quantity ที่ต้องการ: 50 kg",
-        },
-        { type: "expected", description: "ระบบแจ้งเตือนผู้ใช้ว่า quantity ที่ขอต่ำกว่า reorder point และแนะนำ reorder quantity" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      await pr.openCreateDialog();
-      await pr.addLineItem({ product: "Beef", quantity: 50, uom: "kg" });
-    },
-  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1640,6 +1212,10 @@ requestorTest.describe("PR — Pricing visibility", () => {
       // toast ever appears.
       await pr.confirmDialogButton(/^submit$|confirm|ok|yes/i).click({ timeout: 10_000 });
       await pr.expectSavedToast();
+      // a submitted PR returns to the list; it is now In progress at the first approval stage
+      await expect(page).toHaveURL(/\/procurement\/purchase-request(\?|$)/, { timeout: 15_000 });
+      await pr.gotoAllDocuments();
+      await expect(pr.rowWithStatus(/in progress/i).first()).toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -1648,49 +1224,19 @@ requestorTest.describe("PR — Pricing visibility", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Requestor; ระบบ PR พร้อมใช้งาน; Inventory API พร้อมใช้งาน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'New Purchase Request'\n3. กรอก 'Department' (auto-fill)\n4. ตั้ง 'Delivery Date' เป็นวันที่ในอดีต\n5. กรอก 'Description'\n6. กรอก 'Justification'\n7. กด 'Add Item'\n8. ค้นหาและเลือก 'Product'\n9. ตรวจสอบว่า 'On-Hand' และ 'On-Order' quantities แสดงผล\n10. กรอก 'Quantity', 'Unit of Measure', 'Vendor Name'\n11. กรอก 'Unit Price', 'Discount', 'Tax Rate'\n12. กด 'Save'\n13. ทำซ้ำขั้นตอน 7-12 สำหรับรายการเพิ่มเติม\n14. พยายาม submit PR",
-        },
-        { type: "expected", description: "ระบบแสดง validation error สำหรับฟิลด์ 'Delivery Date', PR ไม่สามารถ submit ด้วยวันที่ในอดีต" },
+        { type: "steps", description: "1. เปิดฟอร์ม PR ใหม่ เลือก workflow\n2. เพิ่มรายการ\n3. เปิดปฏิทิน delivery date ของรายการ\n4. คลิกวันที่ที่ผ่านมาแล้ว" },
+        { type: "expected", description: "ปฏิทินวันส่งของของรายการเลือกวันในอดีตไม่ได้ (วันก่อนวันนี้ disabled) และคลิกแล้วค่าวันที่ไม่เปลี่ยน — จึงบันทึก PR ด้วยวันที่ในอดีตไม่ได้" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      await pr.openCreateDialog();
-      await pr.fillHeader({ deliveryDate: PAST_DATE });
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const kept = await expectPastDeliveryDateBlocked(pr, page);
+      expect(kept, "the line keeps its default (today or later) delivery date").toMatch(/\d{4}-\d{2}-\d{2}/);
     },
   );
 
-  requestorTest(
-    "TC-PR-440004 Negative Case - Hide Price with Invalid Toggle",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor; ระบบ PR พร้อมใช้งาน; Inventory API พร้อมใช้งาน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'New Purchase Request'\n3. กรอก 'Department' (auto-fill)\n4. ตั้ง 'Delivery Date' เป็นวันที่ในอนาคต\n5. กรอก 'Description'\n6. กรอก 'Justification'\n7. Toggle 'Hide Price' เป็น 'true'\n8. กด 'Add Item'\n9. ค้นหาและเลือก 'Product'\n10. ตรวจสอบว่า 'On-Hand' และ 'On-Order' quantities แสดงผล\n11. กรอก 'Quantity', 'Unit of Measure', 'Vendor Name'\n12. พยายามกรอก 'Unit Price', 'Discount', 'Tax Rate'\n13. submit PR",
-        },
-        { type: "expected", description: "ระบบแสดง validation error สำหรับฟิลด์ 'Unit Price', 'Discount', 'Tax Rate', PR ไม่สามารถ submit ด้วยราคาที่ซ่อน" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      await pr.openCreateDialog();
-      await pr.fillHeader({ deliveryDate: FUTURE_DATE, hidePrice: true });
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -1707,7 +1253,7 @@ requestorTest.describe("PR — Delivery details", () => {
           description:
             "1. ไปที่ /procurement/purchase-request\n2. กด 'Create New'\n3. กรอก header fields (Department, Delivery Date, Description, Justification)\n4. กด 'Add Item'\n5. กรอก item fields (Product, Quantity, UOM, Vendor, Pricing)\n6. ขยายส่วน 'Item Details'\n7. กรอก comment: 'Deliver to back kitchen entrance, handle with care, keep refrigerated'\n8. เลือก required date: 2025-02-15\n9. เลือก delivery point: DOCK-A - Main Kitchen Loading Dock\n10. ตรวจสอบรายการทั้งหมดพร้อมสรุป delivery details\n11. submit PR",
         },
-        { type: "expected", description: "PR ถูกสร้างพร้อม delivery details ทั้งหมดและบันทึกด้วยสถานะ = 'Pending Approval'" },
+        { type: "expected", description: "PR ถูกบันทึกร่าง (Save) พร้อม delivery details: backend เก็บ description, delivery point และ delivery date ของรายการ (การ submit ทดสอบที่ 440001 / 302)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -1718,7 +1264,14 @@ requestorTest.describe("PR — Delivery details", () => {
       await pr.openCreateDialog();
       await pr.fillHeader({ deliveryDate: FUTURE_DATE, description: "Delivery details PR", justification: "E2E" });
       await pr.addLineItem({ product: "Item", quantity: 1, uom: "ea", vendor: "Vendor", unitPrice: 100 });
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
+      await pr.saveDraftButton().click({ timeout: 5_000 });
+      await pr.expectSavedToast();
+      await expect(page).toHaveURL(/purchase-request\/[0-9a-f-]{36}/, { timeout: 15_000 });
+      const rec = (await buGet("Requestor", `/purchase-requests/${page.url().match(/[0-9a-f-]{36}/)![0]}`)).body.data;
+      expect(rec.description).toBe("Delivery details PR");
+      expect(rec.purchase_request_detail).toHaveLength(1);
+      expect(rec.purchase_request_detail[0].delivery_point?.id).toBeTruthy();
+      expect(rec.purchase_request_detail[0].delivery_date).toBeTruthy();
     },
   );
 
@@ -1727,23 +1280,16 @@ requestorTest.describe("PR — Delivery details", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Requestor ที่มีสิทธิ์สร้าง PR" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Create New'\n3. กรอก header fields\n4. กด 'Add Item'\n5. กรอก item fields\n6. ขยายส่วน 'Item Details'\n7. กรอก comment\n8. เลือก required date: 2024-02-15 (วันที่ในอดีต)\n9. พยายามเลือก delivery point\n10. submit PR",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความ error: 'Required date must be on or after today'" },
+        { type: "steps", description: "1. เปิดฟอร์ม PR ใหม่ เลือก workflow\n2. เพิ่มรายการ\n3. เปิดปฏิทิน delivery date ของรายการ\n4. คลิกวันที่ที่ผ่านมาแล้ว" },
+        { type: "expected", description: "ปฏิทินวันส่งของของรายการเลือกวันในอดีตไม่ได้ (วันก่อนวันนี้ disabled) และคลิกแล้วค่าวันที่ไม่เปลี่ยน — จึงบันทึก PR ด้วยวันที่ในอดีตไม่ได้" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      await pr.openCreateDialog();
-      await pr.fillHeader({ deliveryDate: PAST_DATE });
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const kept = await expectPastDeliveryDateBlocked(pr, page);
+      expect(kept, "the line keeps its default (today or later) delivery date").toMatch(/\d{4}-\d{2}-\d{2}/);
     },
   );
 
@@ -1757,7 +1303,7 @@ requestorTest.describe("PR — Delivery details", () => {
           description:
             "1. ไปที่ /procurement/purchase-request\n2. กด 'Create New'\n3. กรอก header fields\n4. กด 'Add Item'\n5. กรอก item fields\n6. ขยายส่วน 'Item Details'\n7. กรอก comment: 'a' ซ้ำ 500 ครั้ง\n8. ตรวจสอบตัวนับตัวอักษร: '500/500'\n9. เลือก required date\n10. submit PR",
         },
-        { type: "expected", description: "PR ถูกสร้างพร้อม comment ที่ยาวและบันทึกด้วยสถานะ = 'Pending Approval'" },
+        { type: "expected", description: "ช่อง Description รับข้อความ 500 ตัวอักษรได้ตามเพดานของช่อง (maxlength) และ PR ถูกบันทึกร่างด้วยความยาวนั้นใน backend" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
@@ -1767,7 +1313,14 @@ requestorTest.describe("PR — Delivery details", () => {
       await pr.gotoList();
       await pr.openCreateDialog();
       await pr.fillHeader({ deliveryDate: FUTURE_DATE, description: LONG_TEXT_500 });
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
+      await pr.addLineItem({ product: "Test Item", quantity: 1, uom: "ea", unitPrice: 100 });
+      const max = Number(await pr.descriptionInput().getAttribute("maxlength")) || 500;
+      expect((await pr.descriptionInput().inputValue()).length).toBe(Math.min(500, max));
+      await pr.saveDraftButton().click({ timeout: 5_000 });
+      await pr.expectSavedToast();
+      await expect(page).toHaveURL(/purchase-request\/[0-9a-f-]{36}/, { timeout: 15_000 });
+      const rec = (await buGet("Requestor", `/purchase-requests/${page.url().match(/[0-9a-f-]{36}/)![0]}`)).body.data;
+      expect(String(rec.description).length).toBe(Math.min(500, max));
     },
   );
 });
@@ -1812,28 +1365,17 @@ hodTest.describe("PR — Approve detail review", () => {
     "TC-PR-460001 Approve PR with FOC and full pricing visibility",
     {
       annotation: [
-        { type: "preconditions", description: "มี PR ที่มี FOC และข้อมูล pricing ครบถ้วนถูกสร้างและรอ approval" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-requests/my-approvals\n2. คลิก PR-2501-0001\n3. ตรวจสอบว่า header fields ทั้งหมด visible\n4. ตรวจสอบว่า FOC quantities visible\n5. ตรวจสอบว่าชื่อ vendor visible\n6. ตรวจสอบว่าการคำนวณ net amount ถูกต้อง\n7. ตรวจสอบว่า tax rates และ amounts คำนวณถูกต้อง\n8. ตรวจสอบว่า delivery details visible\n9. ตรวจสอบว่า override amounts ถูก highlight\n10. กดปุ่ม 'Approve'\n11. กรอก approval comment (ไม่บังคับ)\n12. ยืนยันการ approve\n13. ตรวจสอบว่าสถานะ PR เปลี่ยนเป็น 'Approved'",
-        },
-        { type: "expected", description: "PR ถูก approve และสถานะเปลี่ยนเป็น 'Approved'" },
+        { type: "preconditions", description: "Requestor ส่ง PR ใบใหม่ที่มีบรรทัด FOC (foc_qty > 0) เข้าขั้น HOD" },
+        { type: "steps", description: "1. HOD เปิด PR ใบนั้น\n2. กด Edit เลือกบรรทัด กด Approve (ทำเครื่องหมาย)\n3. กด Approve ท้ายฟอร์มและยืนยัน" },
+        { type: "expected", description: "PR ที่มีบรรทัด FOC ถูก approve จริงสองขั้น: ออกจากขั้น HOD และ backend ยังเก็บ foc_qty > 0 ของบรรทัดนั้น" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR for approval review");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.approveButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+    async ({ page, browser }) => {
+      const created = await approveOwnPRAsHod(page, browser, { foc: true });
+      const detail = (await prDoc(created.ref)).purchase_request_detail;
+      expect(Number(detail[0].foc_qty), "the approved PR does not carry its FOC quantity").toBeGreaterThan(0);
     },
   );
 
@@ -1855,73 +1397,68 @@ hodTest.describe("PR — Approve detail review", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR for return-for-revision");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No pending PR for return-for-revision — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
-      await pr.sendBackButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.reasonInput().fill("Please update vendor and resubmit").catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+      const dialog = await openSendBackDialog(page);
+      await dialog.locator("textarea, input[type=\'text\']").first().fill("Please update vendor and resubmit");
+      const written = page.waitForResponse(
+        (r) => /\/purchase-requests\/[^/?]+/.test(r.url()) && ["PATCH", "PUT", "POST"].includes(r.request().method()),
+        { timeout: 20_000 },
+      );
+      await dialog.getByRole("button", { name: /^send back$|confirm|send|ok|yes/i }).last().click({ timeout: 10_000 });
+      expect((await written).ok(), "Send Back was refused").toBe(true);
     },
   );
 
   hodTest(
-    "TC-PR-460004 Approve PR with hidden prices",
+    "TC-PR-460004 Approve PR keeps the line price unchanged (the approver does not reprice)",
     {
       annotation: [
-        { type: "preconditions", description: "มี PR ที่มี FOC และ pricing ครบถ้วน พร้อม hide_price=true ถูกสร้างและรอ approval" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-requests/my-approvals\n2. คลิก PR-2501-0001\n3. ตรวจสอบว่า badge 'Requestor chose to hide prices' visible\n4. ตรวจสอบว่าชื่อ vendor visible\n5. ตรวจสอบว่าการคำนวณ net amount ถูกต้อง\n6. ตรวจสอบว่า tax rates และ amounts คำนวณถูกต้อง\n7. ตรวจสอบว่า delivery details visible\n8. กดปุ่ม 'Approve'\n9. กรอก approval comment (ไม่บังคับ)\n10. ยืนยันการ approve\n11. ตรวจสอบว่าสถานะ PR เปลี่ยนเป็น 'Approved'",
-        },
-        { type: "expected", description: "PR ถูก approve และสถานะเปลี่ยนเป็น 'Approved' แม้ราคาจะถูกซ่อน" },
+        { type: "preconditions", description: "Requestor ส่ง PR ใบใหม่ (1 บรรทัด ราคา 100) เข้าขั้น HOD; HOD มีสิทธิ์ approve" },
+        { type: "steps", description: "1. HOD เปิด PR ใบนั้น\n2. กด Edit เลือกบรรทัด กด Approve (ทำเครื่องหมาย)\n3. กด Approve ที่ท้ายฟอร์มและยืนยัน\n4. อ่านบรรทัดของ PR จาก backend" },
+        { type: "expected", description: "PR ออกจากขั้น HOD (approve สองขั้นสำเร็จ) และบรรทัดยังมี pricelist_price 100 / discount_rate 0 เท่าเดิม — ผู้อนุมัติไม่ได้ตั้งราคาใหม่ (เงื่อนไข 'ซ่อนราคา' เป็นค่า hide_fields ของ workflow ที่ชุดข้อมูลทดสอบไม่ได้เปิด จึงไม่ครอบคลุมในเคสนี้)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No PR with hidden prices to approve");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.approveButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+    async ({ page, browser }) => {
+      const created = await approveOwnPRAsHod(page, browser);
+      const line = (await prDoc(created.ref)).purchase_request_detail[0];
+      expect(Number(line.pricelist_price), "approving changed the line price").toBe(100);
+      expect(Number(line.discount_rate)).toBe(0);
     },
   );
 
-  hodTest(
-    "TC-PR-460005 Approve PR with override amounts over 20%",
+  purchaseTest(
+    "TC-PR-460005 Approve PR at the Purchase stage with a discount above 20%",
     {
       annotation: [
-        { type: "preconditions", description: "มี PR ที่มี FOC, pricing ครบถ้วนและ override amounts >20% ถูกสร้างและรอ approval" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-requests/my-approvals\n2. คลิก PR-2501-0001\n3. ตรวจสอบว่า header fields ทั้งหมด visible\n4. ตรวจสอบว่า FOC quantities visible\n5. ตรวจสอบว่าชื่อ vendor visible\n6. ตรวจสอบว่าการคำนวณ net amount ถูกต้อง\n7. ตรวจสอบว่า tax rates และ amounts คำนวณถูกต้อง\n8. ตรวจสอบว่า override amounts ถูก highlight\n9. ตรวจสอบว่า override amounts เกิน 20%\n10. กดปุ่ม 'Approve'\n11. กรอก approval comment (ไม่บังคับ)\n12. ยืนยันการ approve\n13. ตรวจสอบว่าสถานะ PR เปลี่ยนเป็น 'Approved'",
-        },
-        { type: "expected", description: "PR ถูก approve และสถานะเปลี่ยนเป็น 'Approved' แม้ override amounts จะเกิน 20%" },
+        { type: "preconditions", description: "Requestor ส่ง PR → HOD approve → PR อยู่ขั้น Purchase (Purchase เป็นขั้นเดียวที่ตั้งราคา/ส่วนลดได้)" },
+        { type: "steps", description: "1. Purchase เปิด PR กด Edit\n2. เลือก vendor ตั้งราคา 1000 และ tax profile\n3. ตั้ง discount rate 30% แล้ว Save\n4. เลือกบรรทัด Approve และกด Approve ท้ายฟอร์ม" },
+        { type: "expected", description: "Save เก็บ discount_rate 30 และ discount_amount 300 (เกิน 20%) ไม่ถูกปฏิเสธ; การ approve ผ่านและ PR ออกจากขั้น Purchase" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No high-override PR to approve");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.approveButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+    async ({ page, browser }) => {
+      purchaseTest.setTimeout(240_000);
+      const created = await submitPRAsRequestor(browser);
+      await approveAsHOD(browser, created.ref);
+      await gotoPRDetail(page, created.ref);
+      const pr = await enterApproverEditMode(page);
+      await pr.allocateVendorPriceTax(0, 1000);
+      const disc = page.locator('input[name="items.0.discount_rate"]');
+      await expect(disc, "discount rate input not present at the Purchase stage").toBeVisible({ timeout: 10_000 });
+      await pr.setAmount(disc, 30);
+      await pr.saveEditMode();
+      const saved = (await prDoc(created.ref)).purchase_request_detail[0];
+      expect(Number(saved.discount_rate), "30% discount was not saved").toBe(30);
+      expect(Number(saved.discount_amount)).toBe(300);
+      const before = await prStage(created.ref);
+      await pr.enterEditMode();
+      await bulkApprove(page, /purchase approve|^approve$/i);
+      await expect.poll(() => prStage(created.ref), { message: "PR stage did not advance after the Purchase approve", timeout: 15_000 }).not.toBe(before);
     },
   );
 });
@@ -1934,28 +1471,22 @@ purchaseTest.describe("PR — Edit pricing", () => {
     "TC-PR-470001 Happy Path - Valid Input",
     {
       annotation: [
-        { type: "preconditions", description: "Purchasing Staff มี role ที่จำเป็น; PR ถูกสร้างและแสดงรายละเอียด item แล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Edit' บนหน้ารายละเอียด PR\n3. เลือก vendor ที่ถูกต้องจาก dropdown\n4. เลือก currency ที่ถูกต้อง\n5. กรอก unit price ที่ถูกต้อง\n6. เลือก tax profile ที่ใช้งาน\n7. กรอก discount rate ที่ถูกต้อง\n8. กด 'Save'",
-        },
-        { type: "expected", description: "ข้อมูล pricing ของ PR item อัปเดตสำเร็จ, ระบบคำนวณและอัปเดตยอดเงินทั้งหมด, บันทึกการเปลี่ยนแปลง และแสดงข้อความสำเร็จ" },
+        { type: "preconditions", description: "Purchasing Staff; PR ใหม่ของ test ที่ผ่านขั้น HOD แล้วอยู่ที่ขั้น Purchase (1 บรรทัด)" },
+        { type: "steps", description: "1. เปิด PR ที่ขั้น Purchase กด Edit\n2. เลือก vendor ตั้ง unit price 1234 และเลือก tax profile\n3. กด Save" },
+        { type: "expected", description: "Save สำเร็จ; backend เก็บ vendor และ tax profile ที่เลือก, pricelist_price 1234 และ net_amount 1234" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /in.progress|pending/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No in-progress PR available for pricing edit");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.editButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
+    async ({ page, browser }) => {
+      const { pr, id } = await openAtPurchaseStage(page, browser);
+      await pr.allocateVendorPriceTax(0, 1234);
+      await pr.saveEditMode();
+      const line = await firstLineOf(id);
+      expect(line.vendor?.id, "the chosen vendor was not saved").toBeTruthy();
+      expect(line.tax_profile?.id, "the chosen tax profile was not saved").toBeTruthy();
+      expect(Number(line.pricelist_price)).toBe(1234);
+      expect(Number(line.net_amount)).toBe(1234);
     },
   );
 
@@ -1963,55 +1494,44 @@ purchaseTest.describe("PR — Edit pricing", () => {
     "TC-PR-470003 Edge Case - Empty Discount Rate",
     {
       annotation: [
-        { type: "preconditions", description: "Purchasing Staff มี role ที่จำเป็น; PR ถูกสร้างและแสดงรายละเอียด item แล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Edit' บนหน้ารายละเอียด PR\n3. กรอก vendor, currency และ unit price ที่ถูกต้อง\n4. ปล่อย discount rate ว่างไว้\n5. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบคำนวณยอดเงินโดยไม่มี discount โดยใช้ unit price และ tax override ถ้ามี, ไม่แสดงข้อความ error และบันทึก PR พร้อมข้อมูล pricing ที่ถูกต้อง" },
+        { type: "preconditions", description: "Purchasing Staff; PR ใหม่ของ test ที่ผ่านขั้น HOD แล้วอยู่ที่ขั้น Purchase (1 บรรทัด)" },
+        { type: "steps", description: "1. เปิด PR ที่ขั้น Purchase กด Edit\n2. เลือก vendor, unit price 500 และ tax profile\n3. ปล่อย discount rate ไว้ตามค่าเริ่มต้น\n4. กด Save" },
+        { type: "expected", description: "บันทึกได้โดยไม่มี error; backend เก็บ discount_rate 0 / discount_amount 0 และ net_amount เท่ากับราคา 500" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /in.progress|pending/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No PR available for pricing edit");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.editButton().click({ timeout: 5_000 }).catch(() => {});
+    async ({ page, browser }) => {
+      const { pr, id } = await openAtPurchaseStage(page, browser);
+      await pr.allocateVendorPriceTax(0, 500);
+      await pr.saveEditMode();
+      const line = await firstLineOf(id);
+      expect(Number(line.discount_rate)).toBe(0);
+      expect(Number(line.discount_amount)).toBe(0);
+      expect(Number(line.pricelist_price)).toBe(500);
+      expect(Number(line.net_amount), "net amount should equal price with no discount").toBe(500);
     },
   );
 
   purchaseTest(
-    "TC-PR-470005 Edge Case - No Tax Profile",
+    "TC-PR-470005 Edge Case - Tax profile left unselected falls back to the vendor default",
     {
       annotation: [
-        { type: "preconditions", description: "Purchasing Staff มี role ที่จำเป็น; PR ถูกสร้างและแสดงรายละเอียด item แล้ว; ไม่มีการกำหนด tax profile" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Edit' บนหน้ารายละเอียด PR\n3. กรอก vendor, currency และ unit price ที่ถูกต้อง\n4. ปล่อยการเลือก tax profile ว่างไว้\n5. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบคำนวณยอดเงินโดยไม่มี tax โดยใช้ unit price และ discount override ถ้ามี, ไม่แสดงข้อความ error และบันทึก PR พร้อมข้อมูล pricing ที่ถูกต้อง" },
+        { type: "preconditions", description: "Purchasing Staff; PR ใหม่ของ test ที่ผ่านขั้น HOD แล้วอยู่ที่ขั้น Purchase (1 บรรทัด)" },
+        { type: "steps", description: "1. เปิด PR ที่ขั้น Purchase กด Edit\n2. เลือก vendor และ unit price 500 โดยไม่แตะช่อง tax profile\n3. กด Save" },
+        { type: "expected", description: "บันทึกได้โดยไม่มี error; ระบบกำหนด tax profile เริ่มต้นจาก vendor ให้เอง (ไม่ปล่อยว่าง) และ total_price เท่ากับราคา 500 บวก tax_amount" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /in.progress|pending/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No PR available for pricing edit");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.editButton().click({ timeout: 5_000 }).catch(() => {});
+    async ({ page, browser }) => {
+      const { pr, id } = await openAtPurchaseStage(page, browser);
+      await pr.allocateVendorPriceTax(0, 500, false);
+      await pr.saveEditMode();
+      const line = await firstLineOf(id);
+      expect(line.tax_profile?.id, "choosing a vendor should default the tax profile").toBeTruthy();
+      expect(Number(line.pricelist_price)).toBe(500);
+      expect(Number(line.total_price), "total should be price plus the defaulted tax").toBeCloseTo(500 + Number(line.tax_amount), 2);
     },
   );
 });
@@ -2038,15 +1558,17 @@ hodTest.describe("PR — Return for revision", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR available to return");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No pending PR available to return — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
-      await pr.sendBackButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.reasonInput().fill("Please revise vendor").catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+      const dialog = await openSendBackDialog(page);
+      await dialog.locator("textarea, input[type=\'text\']").first().fill("Please revise vendor");
+      const written = page.waitForResponse(
+        (r) => /\/purchase-requests\/[^/?]+/.test(r.url()) && ["PATCH", "PUT", "POST"].includes(r.request().method()),
+        { timeout: 20_000 },
+      );
+      await dialog.getByRole("button", { name: /^send back$|confirm|send|ok|yes/i }).last().click({ timeout: 10_000 });
+      expect((await written).ok(), "Send Back was refused").toBe(true);
     },
   );
 
@@ -2068,14 +1590,11 @@ hodTest.describe("PR — Return for revision", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No pending PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
-      await pr.sendBackButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+      const dialog = await openSendBackDialog(page);
+      await dialog.getByRole("button", { name: /^send back$|confirm|send|ok|yes/i }).last().click({ timeout: 10_000 });
       await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
   );
@@ -2098,15 +1617,17 @@ hodTest.describe("PR — Return for revision", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No pending PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
-      await pr.sendBackButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.reasonInput().fill("ten char re").catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+      const dialog = await openSendBackDialog(page);
+      await dialog.locator("textarea, input[type=\'text\']").first().fill("ten char re");
+      const written = page.waitForResponse(
+        (r) => /\/purchase-requests\/[^/?]+/.test(r.url()) && ["PATCH", "PUT", "POST"].includes(r.request().method()),
+        { timeout: 20_000 },
+      );
+      await dialog.getByRole("button", { name: /^send back$|confirm|send|ok|yes/i }).last().click({ timeout: 10_000 });
+      expect((await written).ok(), "Send Back was refused").toBe(true);
     },
   );
 });
@@ -2131,15 +1652,11 @@ fcTest.describe("PR — Return for revision — Permission denial", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
+      await expect(row, "required record/element missing — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       const sendBack = pr.sendBackButton();
       // Either button is hidden (correct) or click yields permission error
-      if ((await sendBack.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await sendBack.click().catch(() => {});
-      }
+      await expectActionUnavailable(page, sendBack);
     },
   );
 });
@@ -2166,14 +1683,19 @@ purchaseTest.describe("PR — Submit after vendor allocation", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No PR available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      // Purchase stage: the stage's decision is bulk Approve in edit mode (there is no
+      // "Submit" button). The STD purchase-stage PRs have no price / vendor yet, so approving
+      // them must be refused with a validation warning.
+      await enterApproverEditMode(page);
+      await pr.bulkApproveInEditMode().click({ timeout: 10_000 });
+      await pr.saveDraftButton().click({ timeout: 10_000 });
+      await expect(
+        page.locator('[data-sonner-toast]').filter({ hasText: /fields aren't filled in correctly|still incomplete|missing|required/i }).first(),
+        "approving a purchase-stage PR without price/vendor was not refused",
+      ).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -2195,14 +1717,19 @@ purchaseTest.describe("PR — Submit after vendor allocation", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No PR available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
+      // Purchase stage: the stage's decision is bulk Approve in edit mode (there is no
+      // "Submit" button). The STD purchase-stage PRs have no price / vendor yet, so approving
+      // them must be refused with a validation warning.
+      await enterApproverEditMode(page);
+      await pr.bulkApproveInEditMode().click({ timeout: 10_000 });
+      await pr.saveDraftButton().click({ timeout: 10_000 });
+      await expect(
+        page.locator('[data-sonner-toast]').filter({ hasText: /fields aren't filled in correctly|still incomplete|missing|required/i }).first(),
+        "approving a purchase-stage PR without price/vendor was not refused",
+      ).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -2221,49 +1748,51 @@ purchaseTest.describe("PR — Submit after vendor allocation", () => {
         { type: "testType", description: "Edge Case" },
       ],
     },
-    async ({ page }) => {
+    async ({ page, browser }) => {
+      // Own PR, taken to the Purchase stage through the requestor and HOD contexts (the STD
+      // purchase-stage rows are shared with other cases and must not be consumed here).
+      purchaseTest.setTimeout(240_000);
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No high-value PR available");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
+      const created = await submitPRAsRequestor(browser);
+      await approveAsHOD(browser, created.ref);
+      await gotoPRDetail(page, created.ref);
+      await enterApproverEditMode(page);
+      // Only the Purchase stage can price an item (FE use-pr-item-table.tsx: pricing editable when role === PURCHASE).
+      await pr.allocateVendorPriceTax(0, 99_999_999);
+      await bulkApprove(page, /purchase approve|^approve$/i);
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.editModeButton(), "PR is still at the Purchase stage after Approve").toHaveCount(0, { timeout: 10_000 });
     },
   );
 });
 
 requestorTest.describe("PR — Submit after vendor allocation — Permission denial", () => {
   requestorTest(
-    "TC-PR-490005 Submit PR with no permission",
+    "TC-PR-490005 Submit is not offered on a PR that already left the Create stage",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้ไม่ใช่ purchasing staff" },
+        { type: "preconditions", description: "มี PR ที่อยู่ระหว่างดำเนินการ (In progress) อยู่ในชุดข้อมูลทดสอบ" },
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/purchase-request\n2. กดปุ่ม 'Submit'\n3. ตรวจสอบข้อความ error ว่าสิทธิ์ไม่เพียงพอ",
+            "1. ไปที่ /procurement/purchase-request\n2. เปิด All Documents แล้วเลือก PR สถานะ In progress\n3. ตรวจสอบปุ่ม Submit",
         },
-        { type: "expected", description: "แสดงข้อความ error, PR record ไม่ถูกอัปเดต, ไม่ส่งการแจ้งเตือน, ไม่บันทึก activity ในหน้า PR detail" },
+        { type: "expected", description: "ไม่มีปุ่ม Submit บนหน้า PR ที่เลยขั้น Create ไปแล้ว (Submit เป็นของขั้น Create เท่านั้น)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) return;
+      await pr.gotoAllDocuments();
+      // Submit belongs to the Create stage. A PR that is already in progress (past Create) must not
+      // offer it to anyone, the requestor included.
+      // not "Create Request": a returned PR is In progress too and sits at the Create stage, where Submit is right
+      const row = pr.rowWithStatus(/in progress/i).filter({ hasNotText: /create request/i }).first();
+      await expect(row, "No in-progress PR past the Create stage — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
-      const submit = pr.submitButton();
-      // Either button is hidden (correct) or click yields permission error
-      if ((await submit.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await submit.click().catch(() => {});
-      }
+      await expect(pr.tabWorkflowHistory(), "PR detail did not load").toBeVisible({ timeout: 15_000 });
+      await expect(pr.submitButton(), "Submit is offered on a PR that is already in progress").toHaveCount(0);
     },
   );
 });
@@ -2290,11 +1819,8 @@ purchaseTest.describe("PR — Reject by Purchase Staff", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No PR available to reject");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No PR available to reject — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       // Approve/Reject/Send for Review render only in edit mode — the PR view
       // page offers just Edit and More. Edit itself only appears when the current
@@ -2302,14 +1828,10 @@ purchaseTest.describe("PR — Reject by Purchase Staff", () => {
       // filter above matches any in-progress PR, including ones parked at someone
       // else's stage. Say so rather than timing out on a button this role will
       // never be shown.
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "PR is not at this role's approval stage — no Edit available");
-        return;
-      }
-      await pr.enterEditMode();
-      await pr.rejectButton().click({ timeout: 10_000 });
-      await pr.reasonInput().fill("Items discontinued", { timeout: 10_000 }).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+      await enterApproverEditMode(page);
+      // Reject is two steps: the toolbar Reject marks the rows (reason dialog), then the footer's
+      // document-level Reject confirms and sends PATCH .../reject (resolves Voided).
+      await bulkReject(page, "Items discontinued");
     },
   );
 
@@ -2331,11 +1853,8 @@ purchaseTest.describe("PR — Reject by Purchase Staff", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No PR available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       // Approve/Reject/Send for Review render only in edit mode — the PR view
       // page offers just Edit and More. Edit itself only appears when the current
@@ -2343,13 +1862,9 @@ purchaseTest.describe("PR — Reject by Purchase Staff", () => {
       // filter above matches any in-progress PR, including ones parked at someone
       // else's stage. Say so rather than timing out on a button this role will
       // never be shown.
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "PR is not at this role's approval stage — no Edit available");
-        return;
-      }
-      await pr.enterEditMode();
-      await pr.rejectButton().click({ timeout: 10_000 });
-      await pr.reasonInput().fill(SHORT_REASON).catch(() => {});
+      await enterApproverEditMode(page);
+      await pr.bulkRejectInEditMode().click({ timeout: 10_000 });
+      await pr.reasonInput().fill(SHORT_REASON);
       await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
       await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
@@ -2373,11 +1888,8 @@ purchaseTest.describe("PR — Reject by Purchase Staff", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No PR available");
-        return;
-      }
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "No PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       // Approve/Reject/Send for Review render only in edit mode — the PR view
       // page offers just Edit and More. Edit itself only appears when the current
@@ -2385,12 +1897,8 @@ purchaseTest.describe("PR — Reject by Purchase Staff", () => {
       // filter above matches any in-progress PR, including ones parked at someone
       // else's stage. Say so rather than timing out on a button this role will
       // never be shown.
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "PR is not at this role's approval stage — no Edit available");
-        return;
-      }
-      await pr.enterEditMode();
-      await pr.rejectButton().click({ timeout: 10_000 });
+      await enterApproverEditMode(page);
+      await pr.bulkRejectInEditMode().click({ timeout: 10_000 });
       await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
       await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
@@ -2413,20 +1921,13 @@ purchaseTest.describe("PR — Reject by Purchase Staff", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /void|rejected/i }).first();
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No previously-rejected PR available");
-        return;
-      }
+      await pr.gotoAllDocuments();
+      const row = pr.rowWithStatus(/voided/i).first();
+      await expect(row, "No previously-rejected PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       const reject = pr.rejectButton();
       // Either button is hidden (correct) or click yields error
-      if ((await reject.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await reject.click().catch(() => {});
-      }
+      await expectActionUnavailable(page, reject);
     },
   );
 });
@@ -2450,16 +1951,12 @@ requestorTest.describe("PR — Reject by Purchase Staff — Permission denial", 
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) return;
+      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(row, "required record/element missing — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       const reject = pr.rejectButton();
       // Either button is hidden (correct) or click yields permission error
-      if ((await reject.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await reject.click().catch(() => {});
-      }
+      await expectActionUnavailable(page, reject);
     },
   );
 });
@@ -2468,331 +1965,10 @@ requestorTest.describe("PR — Reject by Purchase Staff — Permission denial", 
 // TC-PR-900021 — Bulk actions (Department Manager)
 // ─────────────────────────────────────────────────────────────────────────
 hodTest.describe("PR — Bulk actions", () => {
-  hodTest(
-    "TC-PR-610001 Approve Multiple Line Items",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Department Manager ที่มีสิทธิ์ approve; มี PR line items หลายรายการที่มีสถานะต่างกัน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. เลือก line items หลายรายการโดยใช้ checkbox\n3. คลิก dropdown 'Bulk Actions'\n4. เลือก 'Approve'\n5. ยืนยันการ approve",
-        },
-        { type: "expected", description: "Line items ที่เลือกทั้งหมดถูก approve และอัปเดตในระบบ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const checkboxes = page.getByRole("checkbox");
-      if ((await checkboxes.count()) < 2) {
-        hodTest.skip(true, "Not enough PR line items for bulk approve");
-        return;
-      }
-      await checkboxes.nth(1).check({ force: true }).catch(() => {});
-      await checkboxes.nth(2).check({ force: true }).catch(() => {});
-      const trigger = pr.bulkActionsTrigger();
-      if ((await trigger.count()) === 0) {
-        hodTest.skip(true, "Bulk actions UI not exposed");
-        return;
-      }
-      await trigger.click().catch(() => {});
-      await pr.bulkActionItem(/approve/i).click().catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
-    },
-  );
 
-  hodTest(
-    "TC-PR-610002 Reject Multiple Line Items",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Department Manager ที่มีสิทธิ์ reject; มี PR line items หลายรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. เลือก line items หลายรายการโดยใช้ checkbox\n3. คลิก dropdown 'Bulk Actions'\n4. เลือก 'Reject'\n5. กรอกเหตุผลการ reject\n6. ยืนยันการ reject",
-        },
-        { type: "expected", description: "Line items ที่เลือกทั้งหมดถูก reject และอัปเดตในระบบพร้อมเหตุผลที่ระบุ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const checkboxes = page.getByRole("checkbox");
-      if ((await checkboxes.count()) < 2) {
-        hodTest.skip(true, "Not enough items");
-        return;
-      }
-      await checkboxes.nth(1).check({ force: true }).catch(() => {});
-      const trigger = pr.bulkActionsTrigger();
-      if ((await trigger.count()) === 0) {
-        hodTest.skip(true, "Bulk actions UI not exposed");
-        return;
-      }
-      await trigger.click().catch(() => {});
-      await pr.bulkActionItem(/reject/i).click().catch(() => {});
-      await pr.reasonInput().fill(VALID_REASON).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
-    },
-  );
 
-  hodTest(
-    "TC-PR-610003 Return Multiple Line Items to Requestor",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Department Manager ที่มีสิทธิ์ return; มี PR line items หลายรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. เลือก line items หลายรายการโดยใช้ checkbox\n3. คลิก dropdown 'Bulk Actions'\n4. เลือก 'Return to Requestor'\n5. ยืนยันการส่งคืน",
-        },
-        { type: "expected", description: "Line items ที่เลือกทั้งหมดถูกส่งคืน requestor และอัปเดตในระบบ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const checkboxes = page.getByRole("checkbox");
-      if ((await checkboxes.count()) < 2) {
-        hodTest.skip(true, "Not enough items");
-        return;
-      }
-      await checkboxes.nth(1).check({ force: true }).catch(() => {});
-      const trigger = pr.bulkActionsTrigger();
-      if ((await trigger.count()) === 0) {
-        hodTest.skip(true, "Bulk actions UI not exposed");
-        return;
-      }
-      await trigger.click().catch(() => {});
-      await pr.bulkActionItem(/return/i).click().catch(() => {});
-    },
-  );
 
-  hodTest(
-    "TC-PR-610004 Split Multiple Line Items",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Department Manager ที่มีสิทธิ์ split; มี PR line items หลายรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. เลือก line items หลายรายการโดยใช้ checkbox\n3. คลิก dropdown 'Bulk Actions'\n4. เลือก 'Split'\n5. กรอกค่า split ใหม่\n6. ยืนยันการ split",
-        },
-        { type: "expected", description: "Line items ที่เลือกทั้งหมดถูก split ตามค่าที่กำหนดและอัปเดตในระบบ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const checkboxes = page.getByRole("checkbox");
-      if ((await checkboxes.count()) < 2) {
-        hodTest.skip(true, "Not enough items");
-        return;
-      }
-      await checkboxes.nth(1).check({ force: true }).catch(() => {});
-      const trigger = pr.bulkActionsTrigger();
-      if ((await trigger.count()) === 0) {
-        hodTest.skip(true, "Bulk actions UI not exposed");
-        return;
-      }
-      await trigger.click().catch(() => {});
-      await pr.bulkActionItem(/split/i).click().catch(() => {});
-    },
-  );
 
-  hodTest(
-    "TC-PR-610005 Set Date Required for Multiple Line Items",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Department Manager ที่มีสิทธิ์ตั้งค่า date required; มี PR line items หลายรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. เลือก line items หลายรายการโดยใช้ checkbox\n3. คลิก dropdown 'Bulk Actions'\n4. เลือก 'Set Date Required'\n5. กรอก date required ใหม่\n6. ยืนยันการอัปเดต",
-        },
-        { type: "expected", description: "Line items ที่เลือกทั้งหมดมีฟิลด์ 'Date Required' อัปเดตและแสดงผลในระบบ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const checkboxes = page.getByRole("checkbox");
-      if ((await checkboxes.count()) < 2) {
-        hodTest.skip(true, "Not enough items");
-        return;
-      }
-      await checkboxes.nth(1).check({ force: true }).catch(() => {});
-      const trigger = pr.bulkActionsTrigger();
-      if ((await trigger.count()) === 0) {
-        hodTest.skip(true, "Bulk actions UI not exposed");
-        return;
-      }
-      await trigger.click().catch(() => {});
-      await pr.bulkActionItem(/date required|required date/i).click().catch(() => {});
-    },
-  );
-});
-
-// ─────────────────────────────────────────────────────────────────────────
-// TC-PR-900022 — Budget allocation (Finance Manager)
-// ─────────────────────────────────────────────────────────────────────────
-fcTest.describe("PR — Budget allocation", () => {
-  fcTest(
-    "TC-PR-620001 Add a new budget allocation",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Finance Manager และมี PR ในแท็บ budget" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. กด 'Edit Budget'\n3. กรอกฟิลด์ 'Amount' ด้วยค่าที่ต้องการ\n4. กรอกฟิลด์ 'Description' ด้วยคำอธิบายสั้น\n5. กด 'Add Allocation'",
-        },
-        { type: "expected", description: "เพิ่ม budget allocation ใหม่ในรายการและอัปเดต total budget" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        fcTest.skip(true, "No PR available for budget allocation");
-        return;
-      }
-      await openRecordFromRow(row);
-      const editBudget = page.getByRole("button", { name: /edit budget/i }).first();
-      if ((await editBudget.count()) === 0) {
-        fcTest.skip(true, "Budget UI not exposed");
-        return;
-      }
-      await editBudget.click().catch(() => {});
-    },
-  );
-
-  fcTest(
-    "TC-PR-620002 Edit an existing budget allocation",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Finance Manager และมี budget allocation ที่มีอยู่แล้วอย่างน้อยหนึ่งรายการใน PR" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกไอคอนดินสอถัดจาก budget allocation ที่มีอยู่\n3. เปลี่ยนค่า 'Amount'\n4. กด 'Save Changes'",
-        },
-        { type: "expected", description: "Budget allocation ที่มีอยู่ถูกอัปเดตด้วยจำนวนเงินใหม่และคำนวณ total budget ใหม่" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        fcTest.skip(true, "No PR available");
-        return;
-      }
-      await openRecordFromRow(row);
-    },
-  );
-
-  fcTest(
-    "TC-PR-620003 Delete a budget allocation",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Finance Manager และมี budget allocation ที่มีอยู่แล้วอย่างน้อยหนึ่งรายการใน PR" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกไอคอนถังขยะถัดจาก budget allocation ที่มีอยู่\n3. ยืนยันการลบ",
-        },
-        { type: "expected", description: "Budget allocation ที่เลือกถูกลบออกจากรายการและคำนวณ total budget ใหม่" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        fcTest.skip(true, "No PR available");
-        return;
-      }
-      await openRecordFromRow(row);
-    },
-  );
-
-  fcTest(
-    "TC-PR-620005 Attempt to delete a required allocation",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Finance Manager และมี PR ที่มี budget allocation ที่จำเป็น" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกไอคอนถังขยะถัดจาก budget allocation ที่จำเป็น\n3. ยืนยันการลบ",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความ error ว่า required allocation ไม่สามารถลบได้" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        fcTest.skip(true, "No PR available");
-        return;
-      }
-      await openRecordFromRow(row);
-    },
-  );
-});
-
-purchaseTest.describe("PR — Budget allocation — Permission denial", () => {
-  purchaseTest(
-    "TC-PR-620004 Attempt to edit an allocation without permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น Purchasing Staff และมี PR ในแท็บ budget" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกไอคอนดินสอถัดจาก budget allocation ที่มีอยู่\n3. เปลี่ยนค่า 'Amount'\n4. กด 'Save Changes'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความ error ว่าผู้ใช้ไม่มีสิทธิ์แก้ไข allocation นี้" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const editBudget = page.getByRole("button", { name: /edit budget/i }).first();
-      // Either button is hidden (correct) or click yields permission error
-      if ((await editBudget.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await editBudget.click().catch(() => {});
-      }
-    },
-  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -2803,27 +1979,27 @@ hodTest.describe("PR — Split", () => {
     "TC-PR-630001 Happy Path - Split PR with Valid Inputs",
     {
       annotation: [
-        { type: "preconditions", description: "มี PR ที่มีอย่างน้อยสอง items ที่ต้องการ approve" },
+        { type: "preconditions", description: "HOD มี PR ที่อยู่ขั้น HOD และมีอย่างน้อยสอง items (seed ผ่าน submitPRAsRequestor)" },
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกหน้ารายละเอียด PR\n3. ตรวจสอบรายการและระบุรายการที่จะ approve และส่งคืน\n4. เลือกสองรายการขึ้นไปเพื่อ split\n5. กดปุ่ม 'Split'\n6. เลือก split option 'By Approval Status'\n7. มอบหมายรายการให้กลุ่ม 'Approved' และ 'Return for Revision'\n8. กรอกเหตุผลการส่งคืนสำหรับรายการที่ถูกส่งคืน (อย่างน้อย 10 ตัวอักษร)\n9. ตรวจสอบ split preview\n10. กด 'Confirm Split'",
+            "1. เข้าโหมดแก้ไขบน PR ที่มี 2 รายการ\n2. ติ๊กแถวแรกแถวเดียว\n3. กดปุ่ม 'Split'",
         },
-        { type: "expected", description: "ระบบประมวลผลการ split, สร้าง PR ใหม่สำหรับรายการที่ถูกส่งคืน, อัปเดต PR เดิมด้วยเฉพาะรายการที่ approved, ตั้งสถานะที่เหมาะสม, บันทึก activity และส่งการแจ้งเตือนถึง requestor" },
+        { type: "expected", description: "POST .../split สำเร็จ (200) — รายการที่ติ๊กถูกย้ายไป PR ใหม่ รายการที่เหลืออยู่ใน PR เดิม" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
-    async ({ page }) => {
+    async ({ page, browser }) => {
+      hodTest.setTimeout(150_000);
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No pending PR available to split");
-        return;
-      }
-      await openRecordFromRow(row);
-      await pr.splitButton().click({ timeout: 5_000 }).catch(() => {});
+      // Own two-line PR: Split moves the ticked line to a new PR, and ticking every line is refused (400).
+      const created = await submitPRAsRequestor(browser, { items: 2 });
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
+      await pr.enterEditMode();
+      const res = await splitFirstItem(page);
+      expect(res.ok(), `POST .../split was refused (${res.status()})`).toBe(true);
     },
   );
 
@@ -2831,30 +2007,24 @@ hodTest.describe("PR — Split", () => {
     "TC-PR-630002 Negative - Insufficient Items for Split",
     {
       annotation: [
-        { type: "preconditions", description: "มี PR ที่มีน้อยกว่าสอง items ที่ต้องการ approve" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกหน้ารายละเอียด PR\n3. ตรวจสอบรายการและระบุรายการที่จะ approve และส่งคืน\n4. พยายามเลือกน้อยกว่าสองรายการเพื่อ split",
-        },
-        { type: "expected", description: "ระบบไม่เปิดใช้งานปุ่ม Split และแสดงข้อความ error ว่าต้องการอย่างน้อยสองรายการในการ split" },
+        { type: "preconditions", description: "PR ใหม่ของ test ที่มี 1 บรรทัด อยู่ที่ขั้น HOD" },
+        { type: "steps", description: "1. Requestor ส่ง PR ที่มี 1 บรรทัดเข้าขั้น HOD\n2. HOD เปิด PR กด Edit\n3. ติ๊กบรรทัดเดียวนั้นแล้วกด Split" },
+        { type: "expected", description: "PR ที่มีบรรทัดเดียว: เลือกบรรทัดนั้นแล้วปุ่ม Split ยังถูกปิดใช้งาน (disabled) และ PR ไม่เปลี่ยน (ยังมี 1 บรรทัด)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
-    async ({ page }) => {
+    async ({ page, browser }) => {
+      hodTest.setTimeout(240_000);
+      const created = await submitPRAsRequestor(browser, { items: 1 });
+      await gotoPRDetail(page, created.ref);
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const split = pr.splitButton();
-      // Either button is disabled (correct) or absent
-      if ((await split.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(split).toBeDisabled({ timeout: 5_000 });
-      }
+      await expect(pr.editModeButton(), "PR is not at the HOD stage").toBeVisible({ timeout: 15_000 });
+      await pr.enterEditMode();
+      // The only line is the whole document: the toolbar keeps Split disabled (a split must leave lines behind).
+      await page.locator("tbody tr").first().getByRole("checkbox").first().click({ timeout: 10_000 });
+      await expect(pr.bulkSplitInEditMode(), "Split is offered for a one-line PR").toBeDisabled({ timeout: 10_000 });
+      expect((await prDoc(created.ref)).purchase_request_detail, "the PR lost its line").toHaveLength(1);
     },
   );
 
@@ -2863,55 +2033,24 @@ hodTest.describe("PR — Split", () => {
     {
       annotation: [
         { type: "preconditions", description: "มี PR ที่ทุก items ถูก approve แล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกหน้ารายละเอียด PR\n3. ตรวจสอบรายการและพบว่าไม่มีรายการที่จะ approve หรือส่งคืน",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความว่าไม่มีรายการที่สามารถ split ได้และกลับไปยังหน้ารายละเอียด PR โดยไม่มีการดำเนินการ" },
+        { type: "steps", description: "1. เปิด All Documents เลือก PR ที่ Approved\n2. ตรวจปุ่ม Edit และ Split" },
+        { type: "expected", description: "PR ที่ Approved ครบแล้วเปิดดูได้ แต่ไม่มีปุ่ม Edit และไม่มีปุ่ม Split (ไม่มีรายการให้ split)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /^approved$/i }).first();
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "No fully-approved PR available");
-        return;
-      }
+      await pr.gotoAllDocuments();
+      const row = pr.rowWithStatus(/^approved$/i).first();
+      await expect(row, "No fully-approved PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
+      await expect(page.getByRole("button", { name: /^comment/i }).first(), "PR detail did not load").toBeVisible({ timeout: 15_000 });
+      await expect(pr.editModeButton(), "an approved PR offers Edit").toHaveCount(0);
+      await expect(pr.splitButton(), "an approved PR offers Split").toHaveCount(0);
     },
   );
 
-  hodTest(
-    "TC-PR-630004 Negative - Invalid Reason for Return",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี PR ที่มีอย่างน้อยสองรายการที่ต้องการ approval" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-request\n2. คลิกหน้ารายละเอียด PR\n3. ตรวจสอบรายการและระบุรายการที่จะ approve และส่งคืน\n4. เลือกสองรายการขึ้นไปเพื่อ split\n5. คลิกปุ่ม 'Split'\n6. เลือกตัวเลือก split 'By Approval Status'\n7. กำหนดรายการไปยังกลุ่ม 'Approved' และ 'Return for Revision'\n8. กรอกเหตุผลการส่งคืนที่มีความยาวน้อยกว่า 10 ตัวอักษร\n9. พยายาม confirm split",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความผิดพลาดว่าเหตุผลการส่งคืนต้องมีความยาวอย่างน้อย 10 ตัวอักษร และไม่อนุญาตให้ดำเนินการ split ต่อ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoApprovals();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      await pr.splitButton().click({ timeout: 5_000 }).catch(() => {});
-      await pr.reasonInput().fill(SHORT_REASON).catch(() => {});
-      await pr.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
-      await expect(pr.anyError().first()).toBeVisible({ timeout: 5_000 });
-    },
-  );
 });
 
 // ═════════════════════════════════════════════════════════════════════════

@@ -4,7 +4,7 @@ import { BasePage } from "./base.page";
 
 export const LIST_PATH = "/procurement/purchase-request";
 export const NEW_PATH = "/procurement/purchase-request/new";
-export const APPROVALS_PATH = "/procurement/purchase-requests/my-approvals";
+export const APPROVALS_PATH = "/procurement/my-approval";
 
 export type PRType = "general" | "asset" | "service";
 
@@ -39,9 +39,19 @@ export class PurchaseRequestPage extends BasePage {
 
   /** List opens on "My pending" (`?view=my-pending`); this opens "All Documents". */
   async gotoAllDocuments() {
-    await this.page.goto(`${LIST_PATH}?view=all-document`);
-    await this.page.waitForLoadState("networkidle");
+    await this.page.goto(`${LIST_PATH}?view=all-document&perpage=100`);
+    // No networkidle: the shell polls notifications, so the network never settles (a 100-row page
+    // made that wait eat the whole test budget). Rows (or the empty state) are the readiness signal.
     await this.waitForListRows();
+  }
+
+  /**
+   * A returned PR. There is no "Returned" status: when an approver sends a PR back it stays
+   * In progress and its workflow stage moves back to "Create Request" (the STD dataset's
+   * pr.returned row is verified the same way — verify-dataset.ts: stage "Create Request").
+   */
+  returnedPRRow(): Locator {
+    return this.rowWithStatus(/in progress/i).filter({ hasText: /create request/i });
   }
 
   async gotoNew() {
@@ -107,21 +117,36 @@ export class PurchaseRequestPage extends BasePage {
     await this.page.waitForLoadState("networkidle").catch(() => {});
   }
 
-  async applyFilter(opts: { status?: string }) {
+  /**
+   * Filter menu -> Status -> tick `status` (a multi-select inside the menu, FE
+   * use-pr-filter-fields.tsx). There is no Apply button: ticking applies. Resolves once the
+   * option is checked; callers assert the effect on the list.
+   */
+  async applyFilter(status = "In progress") {
     await this.filterButton().click();
-    if (opts.status) {
-      const trigger = this.page
-        .getByRole("dialog")
-        .getByLabel(/status/i)
-        .first()
-        .or(this.page.getByLabel(/status/i).first());
-      if ((await trigger.count()) > 0) {
-        await trigger.click();
-        await this.page.getByRole("option", { name: new RegExp(opts.status, "i") }).first().click();
-      }
-    }
-    const apply = this.page.getByRole("button", { name: /^apply$|^ok$/i }).first();
-    if ((await apply.count()) > 0) await apply.click({ timeout: 5_000 }).catch(() => {});
+    const menu = this.page.getByRole("dialog");
+    await expect(menu, "filter menu did not open").toBeVisible({ timeout: 10_000 });
+    await menu.getByRole("button", { name: /^status$/i }).first().click({ timeout: 5_000 });
+    // The options open in a flyout next to the menu (not inside it), labelled in upper case; each
+    // row is a clickable label around a presentational checkbox (tabIndex -1), not a role=checkbox.
+    const option = this.page
+      .locator("div, label, button")
+      .filter({ has: this.page.getByRole("checkbox"), hasText: new RegExp(`^${status}$`, "i") })
+      .last();
+    await expect(option, `Status filter offers no "${status}" option`).toBeVisible({ timeout: 5_000 });
+    await option.click();
+  }
+
+  /**
+   * After a Status filter: every list row's status chip reads `status`. Rows can carry extra badges
+   * (e.g. "Send back"), which are not a status and are ignored.
+   */
+  async expectEveryRowStatus(status: RegExp) {
+    const chips = this.page.locator("tbody tr").locator("[data-slot='status-chip'], [data-slot='badge']");
+    await expect(chips.first(), "filtered list shows no status chip").toBeVisible({ timeout: 10_000 });
+    const texts = (await chips.allInnerTexts()).map((t) => t.trim()).filter((t) => t && !/^send back$/i.test(t));
+    expect(texts.length, "no status chips to check").toBeGreaterThan(0);
+    for (const t of texts) expect(t, `a row outside the filter: "${t}"`).toMatch(status);
   }
 
   async sortBy(column: string) {
@@ -161,13 +186,18 @@ export class PurchaseRequestPage extends BasePage {
   }
 
   async openCreateDialog() {
-    await this.newButton().click();
-    // Dialog may auto-open or navigate directly to /new — handle both
-    const dialog = this.page.getByRole("dialog");
-    if ((await dialog.count()) > 0) {
-      await this.createDialogBlankOption().click({ timeout: 5_000 }).catch(() => {});
+    await this.newButton().click({ timeout: 10_000 });
+    // The button either opens a picker dialog (Blank / From template) or goes straight
+    // to /new; settle on whichever happened, then require the form route.
+    const dialog = this.page.getByRole("dialog").last();
+    const opened = await dialog
+      .waitFor({ state: "visible", timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (opened) {
+      await this.createDialogBlankOption().click({ timeout: 5_000 });
     }
-    await this.page.waitForURL(/purchase-request\/new/, { timeout: 10_000 }).catch(() => {});
+    await expect(this.page, "create did not reach /purchase-request/new").toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
   }
 
   // ── Form (header) ─────────────────────────────────────────────────────
@@ -216,7 +246,7 @@ export class PurchaseRequestPage extends BasePage {
 
   /** Open a lookup trigger (button/combobox) and pick the first option. Capped
    *  wait so a still-disabled cascading trigger doesn't eat the whole timeout. */
-  private async pickFirstInCombobox(trigger: Locator): Promise<boolean> {
+  async pickFirstInCombobox(trigger: Locator): Promise<boolean> {
     // No early count-check: cascading triggers mount/enable after the prior
     // selection re-renders, so let click() auto-wait for it (then catch absence).
     try {
@@ -243,6 +273,38 @@ export class PurchaseRequestPage extends BasePage {
    * until a workflow is chosen). On the blank create form it is the only/first
    * combobox. Picks the first workflow option.
    */
+  /** Open a lookup trigger and pick its first option; throws (naming `what`) when it cannot. */
+  async pickFirstOption(trigger: Locator, what: string) {
+    if (!(await this.pickFirstInCombobox(trigger))) {
+      throw new Error(`could not pick a ${what} — the trigger was absent or its list was empty`);
+    }
+  }
+
+  /**
+   * Replace the value of an amount input. The masked InputAmount appends to whatever it already
+   * holds on a plain fill() (a price-listed item starts at 100 and fill("125") gave "100125"), so
+   * select the content first and type over it.
+   */
+  async setAmount(input: Locator, value: number) {
+    await input.click();
+    await input.press("ControlOrMeta+a");
+    await input.pressSequentially(String(value));
+    await input.blur();
+  }
+
+  /**
+   * Purchase stage: give item `index` the three things Approve demands (FE pr-footer-action.tsx
+   * allItemsReadyForPurchase): a vendor, a unit price > 0 and a tax profile.
+   */
+  async allocateVendorPriceTax(index: number, price: number, withTax = true) {
+    await this.expandItem(index);
+    await this.pickFirstOption(this.vendorInput(index), "vendor");
+    const priceInput = this.unitPriceInput(index);
+    await expect(priceInput, "Unit Price input missing for the purchaser").toBeVisible({ timeout: 10_000 });
+    await this.setAmount(priceInput, price);
+    if (withTax) await this.pickFirstOption(this.taxProfileSelect(index), "tax profile");
+  }
+
   async selectFirstWorkflow(): Promise<boolean> {
     const trigger = this.page.getByRole("combobox").first();
     return await this.pickFirstInCombobox(trigger);
@@ -250,10 +312,13 @@ export class PurchaseRequestPage extends BasePage {
 
   async fillHeader(data: PRHeaderInput) {
     // Redesigned create form header is just: workflow (required) + description.
-    await this.selectFirstWorkflow().catch(() => {});
+    if (!(await this.selectFirstWorkflow())) {
+      throw new Error("fillHeader: could not pick a workflow — the workflow combobox was absent or its list empty");
+    }
     if (data.description !== undefined) {
       const d = this.descriptionInput();
-      if ((await d.count()) > 0) await d.fill(data.description);
+      await expect(d, "PR description input (#pr-description) not present").toBeVisible({ timeout: 10_000 });
+      await d.fill(data.description);
     }
   }
 
@@ -294,7 +359,15 @@ export class PurchaseRequestPage extends BasePage {
     // matches nothing here, even though the control's own text reads exactly
     // that. Selecting before Add Item keeps `.first()` unambiguous: the item row
     // adds comboboxes of its own.
-    await this.selectFirstWorkflow().catch(() => {});
+    // Only pick it when none is chosen yet: a second line item must not re-open the
+    // workflow combobox (the first combobox on the form) and change the choice.
+    const workflow = this.page.getByRole("combobox").first();
+    await workflow.waitFor({ state: "visible", timeout: 10_000 });
+    if (/select workflow/i.test((await workflow.textContent()) ?? "")) {
+      if (!(await this.selectFirstWorkflow())) {
+        throw new Error("addLineItem: could not pick a workflow — Add Item is gated on it");
+      }
+    }
 
     await this.addItemButton().click({ timeout: 10_000 });
     // Anchor on position, not on content: every cascade step replaces the trigger
@@ -309,8 +382,22 @@ export class PurchaseRequestPage extends BasePage {
     // so a location or product that could not be picked only surfaced later as
     // "qty input never became visible" — which points at the wrong step entirely
     // (qty simply does not exist until a product is set).
-    if (!(await this.pickFirstInCombobox(row.getByRole("button", { name: /select location/i }).first()))) {
-      throw new Error("addLineItem: could not pick a location — the row's Select Location trigger was absent or its list was empty");
+    // A second line inherits the location of the previous one (the trigger is then already
+    // labelled with it), so "Select Location" is only there for the first row of a form.
+    const locationTrigger = row.getByRole("button", { name: /select location/i }).first();
+    const needsLocation = await locationTrigger.waitFor({ state: "visible", timeout: 4_000 }).then(
+      () => true,
+      () => false,
+    );
+    if (needsLocation) {
+      if (!(await this.pickFirstInCombobox(locationTrigger))) {
+        throw new Error("addLineItem: could not pick a location — the row's Select Location trigger's list was empty");
+      }
+    } else {
+      await expect(
+        row.getByRole("button", { name: /select product/i }).first(),
+        "addLineItem: new row has neither a Select Location trigger nor the product picker",
+      ).toBeVisible({ timeout: 10_000 });
     }
     if (data.product !== undefined) {
       if (!(await this.pickFirstInCombobox(row.getByRole("button", { name: /select product/i }).first()))) {
@@ -324,11 +411,16 @@ export class PurchaseRequestPage extends BasePage {
       await qtyInput.waitFor({ state: "visible", timeout: 10_000 });
       await qtyInput.fill(String(data.quantity));
     }
-    await this.pickFirstInCombobox(row.getByRole("button", { name: /select unit/i }).first()).catch(() => {});
-    await this.pickFirstInCombobox(row.getByRole("button", { name: /select delivery point/i }).first()).catch(() => {});
+    // Unit auto-fills from the product and the delivery point may already be defaulted, so
+    // these two triggers are legitimately absent on some rows (pickFirstInCombobox then
+    // returns false without throwing).
+    await this.pickFirstInCombobox(row.getByRole("button", { name: /select unit/i }).first());
+    await this.pickFirstInCombobox(row.getByRole("button", { name: /select delivery point/i }).first());
     if (data.isFOC) {
-      const foc = row.getByRole("checkbox", { name: /foc/i }).first();
-      if ((await foc.count()) > 0) await foc.check({ force: true }).catch(() => {});
+      // FE foc-cell.tsx: FOC is a quantity input (items.N.foc_qty), not a checkbox.
+      const foc = row.locator('input[name$=".foc_qty"]').first();
+      await expect(foc, "FOC qty input not present on the new row").toBeVisible({ timeout: 5_000 });
+      await foc.fill(String(data.quantity ?? 1));
     }
     // No per-item Save in the inline datagrid — the row persists with the form.
   }
@@ -417,8 +509,14 @@ export class PurchaseRequestPage extends BasePage {
     return this.page.getByRole("tab", { name: /^items$/i }).first();
   }
 
+  /** The workflow stepper is the history trigger (aria-label "See who has handled this document"); it opens the history sheet. */
   tabWorkflowHistory(): Locator {
-    return this.page.getByRole("tab", { name: /workflow history|workflow/i }).first();
+    return this.page.getByRole("button", { name: /see who has handled this document|^workflow history$/i }).first();
+  }
+
+  /** The history sheet opened by the trigger above. */
+  workflowHistorySheet(): Locator {
+    return this.page.getByRole("dialog").filter({ hasText: /workflow history/i }).last();
   }
 
   // ── Price Comparison dialog (Purchase / Approve stage) ───────────────
@@ -456,11 +554,10 @@ export class PurchaseRequestPage extends BasePage {
     // networkidle — the detail page polls notifications, so the network never
     // goes idle and waitForLoadState("networkidle") would eat the whole test
     // budget and time out.
-    await this.saveDraftButton()
-      .or(this.cancelFormButton())
-      .first()
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .catch(() => {});
+    await expect(
+      this.saveDraftButton().or(this.cancelFormButton()).first(),
+      "edit mode did not open (no Save/Cancel after pressing Edit)",
+    ).toBeVisible({ timeout: 10_000 });
   }
 
   /**
@@ -489,40 +586,45 @@ export class PurchaseRequestPage extends BasePage {
    */
   async saveEditMode() {
     const save = this.saveDraftButton();
-    if (!(await save.isVisible().catch(() => false))) return;
-    await save.click({ timeout: 5_000 }).catch(() => {});
-    await this.page
-      .locator('[data-sonner-toast], [role="status"], [role="alert"]')
-      .filter({ hasText: /updated successfully|saved|success|สำเร็จ/i })
-      .first()
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .catch(() => {});
+    await expect(save, "Save not visible in edit mode").toBeVisible({ timeout: 10_000 });
+    const written = this.page
+      .waitForResponse((r) => /\/purchase-requests\/[^/?]+(\/save)?(\?|$)/.test(r.url()) && ["PATCH", "PUT", "POST"].includes(r.request().method()), { timeout: 15_000 })
+      .catch(() => null);
+    await save.click({ timeout: 10_000 });
+    const res = await written;
+    const shown = (await this.page.locator("[data-sonner-toast]").allInnerTexts()).join(" | ");
+    expect(res, `Save sent no write request (toasts: ${shown || "none"})`).not.toBeNull();
+    expect(res!.ok(), `Save was refused ${res!.status()} ${res!.ok() ? "" : (await res!.text()).slice(0, 400)} (toasts: ${shown || "none"})`).toBe(true);
+    await expect(
+      this.page
+        .locator('[data-sonner-toast], [role="status"], [role="alert"]')
+        .filter({ hasText: /updated successfully|saved|success|สำเร็จ/i })
+        .first(),
+      "no success toast after Save in edit mode",
+    ).toBeVisible({ timeout: 15_000 });
   }
 
   // ── Line item mutation ───────────────────────────────────────────────
-  async removeLineItem(index: number) {
-    const row = this.itemRow(index);
-    const remove = row.getByRole("button", { name: /remove|delete|trash/i }).first();
-    if ((await remove.count()) > 0) await remove.click();
+  /** Requested-qty inputs of the item grid — one per row that has a product (count = rows with a chosen product). */
+  requestedQtyInputs(): Locator {
+    return this.page.locator('input[name^="items."][name$=".requested_qty"]');
   }
 
+  /** Remove item row `index` with its trash button (FE pr-item-cells/delete-cell.tsx, aria-label "Remove"). */
+  async removeLineItem(index: number) {
+    const remove = this.page.locator("tbody tr").nth(index).getByRole("button", { name: /^remove$/i });
+    await expect(remove, `row ${index} has no Remove button`).toBeVisible({ timeout: 10_000 });
+    await remove.click();
+    // Removing a row asks for confirmation first (FE pr-item-fields.tsx DeleteDialog, "Remove product").
+    await this.page.getByRole("alertdialog").getByRole("button", { name: /delete|remove|confirm|yes/i }).last().click({ timeout: 10_000 });
+  }
+
+  /** Edit the requested quantity of field-array item `index` in place (the grid cells are inputs in edit mode). */
   async editLineItem(index: number, fields: PRLineItemInput) {
-    const row = this.itemRow(index);
-    const editBtn = row.getByRole("button", { name: /edit/i }).first();
-    if ((await editBtn.count()) > 0) {
-      await editBtn.click();
-      await this.page.waitForLoadState("domcontentloaded").catch(() => {});
-    }
-    if (fields.quantity !== undefined) {
-      const q = this.page.getByLabel(/^quantity$|^qty$/i).first();
-      if ((await q.count()) > 0) await q.fill(String(fields.quantity));
-    }
-    if (fields.description !== undefined) {
-      const d = this.page.getByLabel(/item description/i).first();
-      if ((await d.count()) > 0) await d.fill(fields.description);
-    }
-    const save = this.page.getByRole("button", { name: /^save$|^update$/i }).last();
-    if ((await save.count()) > 0) await save.click({ timeout: 5_000 }).catch(() => {});
+    if (fields.quantity === undefined) throw new Error("editLineItem: only quantity is editable in place");
+    const q = this.page.locator(`input[name="items.${index}.requested_qty"]`);
+    await expect(q, `requested qty input of item ${index} missing`).toBeVisible({ timeout: 10_000 });
+    await q.fill(String(fields.quantity));
   }
 
   // ── Template picker (Step 3) ─────────────────────────────────────────
@@ -591,10 +693,12 @@ export class PurchaseRequestPage extends BasePage {
   }
 
   async selectAllInEditMode() {
-    // Idempotent: if the bulk actions are already showing, rows are selected.
-    if (await this.bulkActionToolbar().isVisible().catch(() => false)) return;
+    // Idempotent: the bulk toolbar (Approve / Send for Review / Reject / Split) is always
+    // rendered in edit mode and only *enabled* once rows are selected, so "visible" proves
+    // nothing — test the Approve button's enabled state instead.
+    if (await this.bulkApproveInEditMode().isEnabled().catch(() => false)) return;
     const cb = this.selectAllCheckboxInEditMode();
-    if ((await cb.count()) === 0) return;
+    await expect(cb, "select-all checkbox missing in edit mode").toBeVisible({ timeout: 10_000 });
     await cb.click();
     // Clicking "Select all" opens a "Select Items" dialog; choose "All items".
     const dialog = this.page.getByRole("dialog", { name: /select items/i });
@@ -602,6 +706,7 @@ export class PurchaseRequestPage extends BasePage {
       await dialog.getByRole("button", { name: /all items/i }).first().click().catch(() => {});
       await dialog.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
     }
+    await expect(this.bulkApproveInEditMode(), "selecting all rows did not enable the bulk actions").toBeEnabled({ timeout: 10_000 });
   }
 
   bulkApproveInEditMode(): Locator {
@@ -620,60 +725,92 @@ export class PurchaseRequestPage extends BasePage {
     return this.page.getByRole("button", { name: /^split$/i }).first();
   }
 
+  // Document-level decision buttons. They are a second button of the same name: the first
+  // ("Approve" / "Reject" in the item toolbar) only MARKS the selected rows, and once every
+  // row carries that mark the summary footer grows a document button (FE
+  // workflow/pr-footer-action.tsx: showApprove / showReject) that opens a confirm dialog and
+  // sends PATCH .../approve | .../reject. The footer sits after the toolbar in the DOM, hence
+  // `.last()`; callers must have marked the rows first, otherwise `.last()` is the toolbar button.
+  documentApproveButton(): Locator {
+    return this.page.getByRole("button", { name: /^approve$/i }).last();
+  }
+
+  documentRejectButton(): Locator {
+    return this.page.getByRole("button", { name: /^reject$/i }).last();
+  }
+
   // ── Edit-mode editable fields (Approver Edit Mode per FR-PR-011A) ─────
+  // The edit-mode cells are bare react-hook-form inputs (no label), so they are addressed by
+  // field-array name: FE pr-item-cells/approved-cell.tsx, foc-cell.tsx, pr-item-fields comment row.
   approvedQtyInput(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/approved.*(qty|quantity)/i).first();
+    return this.page.locator(`input[name="items.${rowIndex}.approved_qty"]`);
+  }
+
+  focQtyInput(rowIndex: number): Locator {
+    return this.page.locator(`input[name="items.${rowIndex}.foc_qty"]`);
   }
 
   itemNoteInput(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/item note|note/i).first();
+    return this.page.locator(`input[name="items.${rowIndex}.comment"], textarea[name="items.${rowIndex}.comment"]`);
   }
 
+  /** The delivery-point lookup trigger of an existing row (a popover button; absent when the row is read-only text). */
   deliveryPointInput(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/delivery point/i).first();
+    return this.page.locator("tbody tr").nth(rowIndex).locator('button[aria-haspopup="dialog"]:not([disabled])').first();
+  }
+
+  // ── Expanded row panel (pricing) ──────────────────────────────────────
+  // FE pr-item-expand.tsx: pricing fields are editable controls only for the stage that owns them
+  // (Purchase); for everyone else the same labels render as plain text with no control.
+  /** The panel that expand-row reveals — identified by its Pricelist and Unit Price labels. */
+  expandedPanel(): Locator {
+    return this.page.getByRole("row").filter({ hasText: /pricelist/i }).filter({ hasText: /unit price/i }).last();
+  }
+
+  /** Expand item `index` if it is collapsed, so its pricing panel is rendered. */
+  async expandItem(index = 0) {
+    const collapse = this.page.getByRole("button", { name: /^collapse row$/i }).nth(index);
+    if ((await collapse.count()) === 0) await this.expandItemButton(index).click();
+    await expect(this.expandedPanel(), "expanding the row did not reveal the pricing panel").toBeVisible({ timeout: 10_000 });
   }
 
   // ── Edit-mode read-only fields (Approver cannot edit per FR-PR-011A) ──
-  // Returns the cell/input element; tests assert it has [disabled], [readonly],
-  // or is a non-input element (e.g. a span).
+  // Assert with expect(...).toHaveCount(0) after expandItem(): no control = read-only text.
   vendorReadOnlyCell(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/vendor/i).first();
+    return this.expandedPanel().locator('button[aria-haspopup="dialog"]');
   }
 
   unitPriceReadOnlyCell(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/unit price/i).first();
+    return this.page.locator(`#items-${rowIndex}-pricelist-price`);
   }
 
   discountReadOnlyCell(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/discount/i).first();
+    return this.page.locator(`#items-${rowIndex}-discount-rate`);
   }
 
-  taxReadOnlyCell(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/tax/i).first();
+  taxReadOnlyCell(_rowIndex: number): Locator {
+    return this.expandedPanel().locator('button[aria-haspopup="dialog"]');
   }
 
   focQtyReadOnlyCell(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/foc.*qty|free.*charge/i).first();
+    return this.focQtyInput(rowIndex);
   }
 
   // ── Edit-mode editable fields (Purchaser scope per FR-PR-011A) ────────
-  // Purchaser allocates vendor + pricing in Edit Mode. These locators
-  // target the SAME DOM cells as the *ReadOnlyCell methods above; tests
-  // assert toBeEditable() here vs toBeDisabled() on the read-only ones.
-  vendorInput(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/vendor/i).first();
+  vendorInput(_rowIndex: number): Locator {
+    return this.expandedPanel().locator('button[aria-haspopup="dialog"]').first();
   }
 
   unitPriceInput(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/unit price/i).first();
+    return this.page.locator(`#items-${rowIndex}-pricelist-price`);
   }
 
   discountInput(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/discount/i).first();
+    return this.page.locator(`#items-${rowIndex}-discount-rate`);
   }
 
-  taxProfileSelect(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/tax/i).first();
+  taxProfileSelect(_rowIndex: number): Locator {
+    return this.expandedPanel().locator('button[aria-haspopup="dialog"]').nth(1);
   }
 
   autoAllocateButton(): Locator {
@@ -682,6 +819,6 @@ export class PurchaseRequestPage extends BasePage {
 
   // ── Read-only verification (Purchaser cannot edit Approved Qty) ───────
   approvedQtyReadOnlyCell(rowIndex: number): Locator {
-    return this.itemRow(rowIndex).getByLabel(/approved.*(qty|quantity)/i).first();
+    return this.approvedQtyInput(rowIndex);
   }
 }

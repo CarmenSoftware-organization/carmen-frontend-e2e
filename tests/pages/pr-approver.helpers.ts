@@ -1,4 +1,4 @@
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import type { Browser, BrowserContext, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { PurchaseRequestPage, LIST_PATH } from "./purchase-request.page";
 import { createDraftPR, type CreatedPR } from "./pr-creator.helpers";
@@ -46,12 +46,14 @@ async function withRoleContext<T>(
  */
 export async function submitPRAsRequestor(
   browser: Browser,
-  opts?: { items?: number; description?: string },
+  opts?: { items?: number; description?: string; quantity?: number; foc?: boolean },
 ): Promise<CreatedPR> {
   return withRoleContext(browser, "carmensoftware.dev+requestor@gmail.com", async (page) => {
     const created = await createDraftPR(page, {
       items: opts?.items ?? 1,
       description: opts?.description ?? "approver-fixture",
+      quantity: opts?.quantity,
+      foc: opts?.foc,
     });
 
     const pr = new PurchaseRequestPage(page);
@@ -67,111 +69,120 @@ export async function submitPRAsRequestor(
   });
 }
 
-/**
- * Edit Mode → select all rows → click Approve in bulk toolbar → confirm.
- * Caller must already be in Edit Mode on a PR detail page.
- */
-export async function bulkApprove(page: Page): Promise<void> {
-  const pr = new PurchaseRequestPage(page);
-  await pr.selectAllInEditMode();
-  // "Approve" only marks the selected items' decision (PENDING -> APPROVED) in
-  // the edit form — there is NO confirm dialog. Save persists the decision.
-  await pr.bulkApproveInEditMode().click({ timeout: 5_000 });
-  await pr.saveEditMode();
+/** Wait for the PATCH that a document-level decision sends: `.../purchase-requests/<id>/<action>`. */
+function waitForDecision(page: Page, action: "approve" | "reject" | "review") {
+  return page.waitForResponse(
+    (r) =>
+      new RegExp(`/purchase-requests/[^/?]+/${action}(\\?|$)`).test(r.url()) &&
+      r.request().method() === "PATCH",
+    { timeout: 20_000 },
+  );
 }
 
 /**
- * Edit Mode → select all rows → click Reject → enter reason → confirm.
+ * Edit Mode → select all rows → Approve (marks the rows) → document-level Approve → confirm.
+ * Caller must already be in Edit Mode on a PR detail page. Resolves once PATCH .../approve was
+ * accepted and the app is back on the list (the document moved to the next stage).
+ *
+ * The toolbar "Approve" only marks rows; Save alone persists the marks but leaves the document
+ * at the approver's own stage. The decision is the footer's second "Approve" button.
+ */
+export async function bulkApprove(page: Page, confirm: RegExp = /^approve$/i): Promise<void> {
+  const pr = new PurchaseRequestPage(page);
+  await pr.selectAllInEditMode();
+  await pr.bulkApproveInEditMode().click({ timeout: 5_000 });
+  const decided = waitForDecision(page, "approve");
+  await pr.documentApproveButton().click({ timeout: 10_000 });
+  await pr.confirmDialogButton(confirm).click({ timeout: 10_000 });
+  const res = await decided;
+  expect(res.ok(), `document Approve was refused (${res.status()})`).toBe(true);
+  await page.waitForURL(/\/procurement\/purchase-request(\?|$)/, { timeout: 15_000 });
+}
+
+/**
+ * Edit Mode → select all rows → Reject (reason dialog marks the rows) → document-level Reject →
+ * confirm. Resolves once PATCH .../reject was accepted and the app is back on the list.
  */
 export async function bulkReject(page: Page, reason: string): Promise<void> {
   const pr = new PurchaseRequestPage(page);
   await pr.selectAllInEditMode();
   await pr.bulkRejectInEditMode().click({ timeout: 5_000 });
-  const input = pr.reasonInput();
-  if ((await input.count()) > 0) await input.fill(reason);
-  await pr.confirmDialogButton(/confirm|reject|ok|yes/i).click({ timeout: 5_000 });
-  // Persist the decision (Reject marks the item; Save commits it).
-  await pr.saveEditMode();
+  await pr.reasonInput().fill(reason, { timeout: 10_000 });
+  await pr.confirmDialogButton(/^reject$/i).click({ timeout: 10_000 });
+  // Let the row-level dialog finish closing: `actionDialog()` takes the first dialog in the DOM, so
+  // a still-closing one would swallow the document-level confirm below (seen once in a full run).
+  await expect(pr.actionDialog(), "row Reject dialog did not close").toBeHidden({ timeout: 10_000 });
+  // Every row now carries the Reject mark; only then does the footer offer the document Reject.
+  const decided = waitForDecision(page, "reject");
+  await pr.documentRejectButton().click({ timeout: 10_000 });
+  await expect(pr.actionDialog(), "document Reject confirm did not open").toBeVisible({ timeout: 10_000 });
+  await pr.confirmDialogButton(/^reject$/i).click({ timeout: 10_000 });
+  const res = await decided;
+  expect(res.ok(), `document Reject was refused (${res.status()})`).toBe(true);
+  await page.waitForURL(/\/procurement\/purchase-request(\?|$)/, { timeout: 15_000 });
 }
 
 /**
- * Edit Mode → select all rows → click Send for Review → enter reason + stage → confirm.
+ * Edit Mode → select all rows → Send for Review (marks the rows) → footer "Send Back" → stage
+ * radio + reason → confirm. Resolves once PATCH .../review was accepted.
+ *
+ * Two separate actions, exactly like PO: "Send for Review" opens **no dialog** (each row picks up
+ * `aria-label="REVIEW"`); returning the *document* is the footer's **Send Back** button, which
+ * only appears once something is marked and carries the stage + reason dialog. Save alone just
+ * persists the marks and leaves the document at the approver's own stage.
  */
 export async function bulkSendForReview(
   page: Page,
   reason: string,
-  stage: string,
+  stage: string = "",
 ): Promise<void> {
   const pr = new PurchaseRequestPage(page);
   await pr.selectAllInEditMode();
   await pr.bulkSendForReviewInEditMode().click({ timeout: 10_000 });
 
-  // Two separate actions, exactly like PO. "Send for Review" opens **no dialog**:
-  // it marks the selected rows there and then (each picks up
-  // `aria-label="REVIEW"`). Returning the *document* is the second step — a
-  // **Send Back** button that only appears once something is marked, carrying the
-  // stage + reason dialog.
-  //
-  // The old body did neither: it waited out a 5s timeout on a confirm button that
-  // never existed (which is what stopped this whole spec from seeding), then
-  // pressed Save. Save alone just persists the item decisions — "Purchase Request
-  // updated successfully" — and leaves the document IN PROGRESS at the approver's
-  // own stage, never returning it to the creator.
   const sendBack = page.getByRole("button", { name: /^send back$/i }).first();
-  await sendBack.waitFor({ state: "visible", timeout: 10_000 });
+  await expect(sendBack, "document Send Back did not appear after marking items for review").toBeVisible({ timeout: 10_000 });
   await sendBack.click({ timeout: 10_000 });
 
   const dialog = page.locator('[role="dialog"], [role="alertdialog"]').last();
-  await dialog.waitFor({ state: "visible", timeout: 10_000 });
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  // The dialog lists every stage this PR can go back to; pick the requested one by name
+  // (an empty `stage` = the first stage offered, the earliest one the PR can return to).
+  const target = dialog.getByRole("radio", { name: new RegExp(stage, "i") }).first();
+  await expect(target, `Send Back dialog offers no "${stage || "(any)"}" stage to return to`).toBeVisible({ timeout: 10_000 });
+  await target.check({ force: true, timeout: 10_000 });
+  await pr.reasonInput().fill(reason, { timeout: 10_000 });
 
-  const stageRadio = dialog.getByRole("radio").first();
-  if ((await stageRadio.count()) > 0) {
-    await stageRadio.check({ force: true, timeout: 10_000 });
-  } else {
-    const stageTrigger = page.getByLabel(/stage|return to/i).first();
-    if ((await stageTrigger.count()) > 0) {
-      await stageTrigger.click({ timeout: 10_000 });
-      await page
-        .getByRole("option", { name: new RegExp(stage, "i") })
-        .first()
-        .click({ timeout: 10_000 })
-        .catch(() => {});
-    }
-  }
-
-  const input = pr.reasonInput();
-  if ((await input.count()) > 0) await input.fill(reason, { timeout: 10_000 }).catch(() => {});
-
-  const confirm = pr.confirmDialogButton(/^send back$|confirm|send|ok|yes/i);
+  const confirm = pr.confirmDialogButton(/^send back$/i);
   await expect(confirm).toBeEnabled({ timeout: 10_000 });
+  const decided = waitForDecision(page, "review");
   await confirm.click({ timeout: 10_000 });
+  const res = await decided;
+  expect(res.ok(), `Send Back was refused (${res.status()})`).toBe(true);
 }
 
 /**
- * Cross-context helper: opens a fresh BrowserContext, logs in as HOD,
- * navigates to the PR detail at `ref`, enters Edit Mode, and bulk-approves
- * the PR — advancing it from HOD stage to Purchase stage. Closes the context
- * cleanly. Used by Purchaser tests to seed PRs at the Purchase stage.
+ * Cross-context helper: opens a fresh BrowserContext as HOD, opens the PR at `ref`, enters Edit
+ * Mode and approves every row plus the document — advancing it from HOD stage to Purchase stage.
+ * Used by Purchaser tests to seed PRs at the Purchase stage.
  */
 export async function approveAsHOD(browser: Browser, ref: string): Promise<void> {
   await withRoleContext(browser, "carmensoftware.dev+hod@gmail.com", async (page) => {
     await gotoPRDetail(page, ref);
     const pr = new PurchaseRequestPage(page);
-    if ((await pr.editModeButton().count()) === 0) {
-      throw new Error(`approveAsHOD: Edit button not found on PR ${ref} — HOD may not have edit permission`);
-    }
+    await expect(
+      pr.editModeButton(),
+      `approveAsHOD: no Edit button on PR ${ref} — it is not at the HOD stage`,
+    ).toBeVisible({ timeout: 15_000 });
     await pr.enterEditMode();
     await bulkApprove(page);
-    await page.waitForLoadState("networkidle").catch(() => {});
   });
 }
 
 /**
- * Cross-context helper: opens a fresh BrowserContext, logs in as HOD,
- * navigates to the PR detail at `ref`, enters Edit Mode, selects all rows,
- * and bulk-sends the PR for review with the given reason — routing the PR
- * back to the Requestor (Creator). Closes the context cleanly. Used by the
- * PR Returned Flow spec to seed PRs in the Returned status.
+ * Cross-context helper: opens a fresh BrowserContext as HOD, opens the PR at `ref`, enters Edit
+ * Mode and sends it back for review to the first stage the dialog offers (the creator's stage).
+ * Used by the PR Returned Flow spec to seed PRs the creator gets back.
  */
 export async function sendForReviewAsHOD(
   browser: Browser,
@@ -181,12 +192,12 @@ export async function sendForReviewAsHOD(
   await withRoleContext(browser, "carmensoftware.dev+hod@gmail.com", async (page) => {
     await gotoPRDetail(page, ref);
     const pr = new PurchaseRequestPage(page);
-    if ((await pr.editModeButton().count()) === 0) {
-      throw new Error(`sendForReviewAsHOD: Edit button not found on PR ${ref}`);
-    }
+    await expect(
+      pr.editModeButton(),
+      `sendForReviewAsHOD: no Edit button on PR ${ref} — it is not at the HOD stage`,
+    ).toBeVisible({ timeout: 15_000 });
     await pr.enterEditMode();
-    await bulkSendForReview(page, reason, "Requestor");
-    await page.waitForLoadState("networkidle").catch(() => {});
+    await bulkSendForReview(page, reason);
   });
 }
 
@@ -196,4 +207,72 @@ export async function sendForReviewAsHOD(
 export async function gotoPRDetail(page: Page, ref: string): Promise<void> {
   await page.goto(`${LIST_PATH}/${ref}`);
   await page.waitForLoadState("networkidle");
+}
+
+
+/**
+ * On an open PR detail page as the stage's approver: Edit -> select every item row.
+ * Approve / Reject / Send for Review / Split are *bulk item actions* of edit mode — the
+ * view page offers just Edit and More, and Edit itself only shows for the user whose stage
+ * the PR sits at. Fails with that reason instead of timing out on a button that never comes.
+ */
+export async function enterApproverEditMode(page: Page): Promise<PurchaseRequestPage> {
+  const pr = new PurchaseRequestPage(page);
+  await expect(
+    pr.editModeButton(),
+    "PR is not at this role's approval stage — no Edit available",
+  ).toBeVisible({ timeout: 15_000 });
+  await pr.enterEditMode();
+  await pr.selectAllInEditMode();
+  return pr;
+}
+
+/** Approve every item of the open PR (bulk Approve + Save) and wait for the write to be accepted. */
+export async function approveOpenPR(page: Page): Promise<void> {
+  const pr = await enterApproverEditMode(page);
+  await pr.bulkApproveInEditMode().click({ timeout: 10_000 });
+  const written = page.waitForResponse(
+    (r) => /\/purchase-requests\/[^/?]+/.test(r.url()) && ["PATCH", "PUT"].includes(r.request().method()),
+    { timeout: 20_000 },
+  );
+  await pr.saveEditMode();
+  const res = await written;
+  expect(res.ok(), `saving the approval was refused (${res.status()})`).toBe(true);
+}
+
+/**
+ * Open the document-level "Send Back" dialog: Edit -> select all -> bulk Review -> Send Back,
+ * with the first stage radio chosen. Returns the dialog so a case can fill / leave the reason
+ * and confirm.
+ */
+export async function openSendBackDialog(page: Page): Promise<Locator> {
+  const pr = await enterApproverEditMode(page);
+  await pr.bulkSendForReviewInEditMode().click({ timeout: 10_000 });
+  const sendBack = page.getByRole("button", { name: /^send back$/i }).first();
+  await expect(sendBack, "document Send Back did not appear after marking items for review").toBeVisible({ timeout: 10_000 });
+  await sendBack.click({ timeout: 10_000 });
+  const dialog = page.locator('[role="dialog"], [role="alertdialog"]').last();
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  const stage = dialog.getByRole("radio").first();
+  await expect(stage, "Send Back dialog offers no stage to return to").toBeVisible({ timeout: 10_000 });
+  await stage.check({ force: true, timeout: 10_000 });
+  return dialog;
+}
+
+/**
+ * Edit mode: tick the first item row only and press Split; resolves with the POST .../split response.
+ * Split moves the ticked saved lines to a new PR, so it needs a PR with at least two lines — ticking
+ * every line is refused with 400 (verified against dev, 2026-11-21).
+ */
+export async function splitFirstItem(page: Page) {
+  const pr = new PurchaseRequestPage(page);
+  await page.locator("tbody tr").first().getByRole("checkbox").first().click({ timeout: 10_000 });
+  const split = pr.bulkSplitInEditMode();
+  await expect(split, "Split stays disabled after ticking a row").toBeEnabled({ timeout: 10_000 });
+  const response = page.waitForResponse(
+    (r) => /\/purchase-requests\/[^/?]+\/split/.test(r.url()) && r.request().method() === "POST",
+    { timeout: 20_000 },
+  );
+  await split.click({ timeout: 5_000 });
+  return response;
 }

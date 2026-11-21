@@ -23,7 +23,7 @@ const FUTURE_DATE = "2099-12-31";
  */
 export async function createDraftPR(
   page: Page,
-  opts?: { items?: number; description?: string; deliveryDate?: string },
+  opts?: { items?: number; description?: string; deliveryDate?: string; quantity?: number; foc?: boolean },
 ): Promise<CreatedPR> {
   const pr = new PurchaseRequestPage(page);
   await pr.gotoList();
@@ -41,14 +41,17 @@ export async function createDraftPR(
     await pr.addLineItem({
       product: "Test Item",
       description: `E2E item ${i + 1}`,
-      quantity: 1,
+      quantity: opts?.quantity ?? 1,
       uom: "ea",
       unitPrice: 100,
+      isFOC: opts?.foc,
     });
   }
 
-  await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-  await page.waitForURL(/purchase-request\/(?!new$)[^\/?#]+$/, { timeout: 15_000 }).catch(() => {});
+  await pr.saveDraftButton().click({ timeout: 10_000 });
+  await page.waitForURL(/purchase-request\/(?!new$)[^\/?#]+$/, { timeout: 20_000 }).catch(() => {
+    // fall through: the URL check below reports what the page is actually on
+  });
 
   const url = page.url();
   if (url.endsWith("/new") || url.includes("/new?")) {
@@ -71,7 +74,7 @@ export async function submitDraftPR(page: Page, ref: string): Promise<void> {
     await page.goto(`${LIST_PATH}/${ref}`);
     await page.waitForLoadState("networkidle");
   }
-  await pr.submitButton().click({ timeout: 5_000 }).catch(() => {});
+  await pr.submitButton().click({ timeout: 10_000 });
   await pr.confirmDialogButton(/confirm|submit|ok|yes/i).click({ timeout: 5_000 });
   // A successful submit advances the PR to In Progress and redirects to the PR
   // list. Wait for that redirect rather than a success toast: the create-success
@@ -89,7 +92,7 @@ export async function deleteDraftPR(page: Page, ref: string): Promise<void> {
     await page.goto(`${LIST_PATH}/${ref}`);
     await page.waitForLoadState("networkidle");
   }
-  await pr.deleteButton().click({ timeout: 5_000 }).catch(() => {});
+  await pr.deleteButton().click({ timeout: 10_000 });
   await pr.confirmDialogButton(/confirm|delete|yes/i).click({ timeout: 5_000 });
   await page.waitForURL(/\/procurement\/purchase-request($|\?)/, { timeout: 10_000 }).catch(() => {});
 }

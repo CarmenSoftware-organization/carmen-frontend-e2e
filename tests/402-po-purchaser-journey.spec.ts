@@ -12,6 +12,7 @@ import {
 // Persona-journey spec — PO Purchaser. Runs alongside 401-po.spec.ts
 // (per-action multi-role) without modifying it. Source docs:
 // docs/persona-doc/Purchase Order/Purchaser/INDEX.md and step-01..05.md.
+// NOTE: TC-PO-060211 consumes an approved PR -> run `bun run data:reset --yes` before a full run.
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 
 const FUTURE_DATE = "2099-12-31";
@@ -65,8 +66,8 @@ purchaseTest.describe("Step 1 — PO List", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า list ของ PO" },
-        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือก status = DRAFT\n3. Apply" },
-        { type: "expected", description: "URL ยังคงอยู่ที่หน้า list ของ PO หลัง apply filter" },
+        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือกฟิลด์ Status แล้วติ๊ก Draft (ไม่มีปุ่ม Apply)" },
+        { type: "expected", description: "ทุกแถวที่แสดงในตารางมีสถานะ Draft (ชุดข้อมูลทดสอบมี PO Draft)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -75,12 +76,10 @@ purchaseTest.describe("Step 1 — PO List", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const fb = po.filterButton();
-      if ((await fb.count()) === 0) {
-        purchaseTest.skip(true, "Filter button not present in this build");
-        return;
-      }
-      await po.applyFilter({ status: "DRAFT" });
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 10_000 });
+      await expect(fb, "Filter button not present in this build").toBeVisible({ timeout: 10_000 });
+      await po.tabAllDocuments().click();
+      await po.applyFilter({ status: "Draft" });
+      await po.expectEveryRowStatus(/^draft$/i);
     },
   );
 
@@ -89,8 +88,8 @@ purchaseTest.describe("Step 1 — PO List", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า list ของ PO" },
-        { type: "steps", description: "1. พิมพ์ reference บางส่วนในช่องค้นหา" },
-        { type: "expected", description: "URL ยังคงอยู่ที่หน้า list ของ PO หลังพิมพ์ในช่องค้นหา" },
+        { type: "steps", description: "1. อ่านเลข PO ของแถวแรกใน All documents\n2. พิมพ์เลขนั้นในช่องค้นหา\n3. พิมพ์ข้อความที่ไม่มีอยู่" },
+        { type: "expected", description: "ค้นเลข PO ของแถวแรกแล้วทุกแถวที่เหลือมีเลข PO นั้น; ค้นข้อความที่ไม่มีอยู่แล้วไม่เหลือแถว" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -99,12 +98,18 @@ purchaseTest.describe("Step 1 — PO List", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const input = po.searchInput();
-      if ((await input.count()) === 0) {
-        purchaseTest.skip(true, "Search input not present in this build");
-        return;
-      }
-      await po.searchFor("PO");
-      await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      await expect(input, "Search input not present in this build").toBeVisible({ timeout: 10_000 });
+      await po.tabAllDocuments().click();
+      const rows = recordRows(page);
+      await expect(rows.first(), "PO list has no rows - data:reset seeds POs").toBeVisible({ timeout: 10_000 });
+      const ref = (await rows.first().innerText()).match(/PO\d{6,}/)?.[0];
+      expect(ref, "first row shows no PO number").toBeTruthy();
+      await po.searchFor(ref!);
+      await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+      await expect.poll(async () => (await rows.allInnerTexts()).filter((t) => !t.includes(ref!)), { message: "a row without the searched PO number", timeout: 10_000 }).toEqual([]);
+      await expect(rows.first()).toContainText(ref!);
+      await po.searchFor("zzzqqq999");
+      await expect(rows).toHaveCount(0, { timeout: 10_000 });
     },
   );
 
@@ -114,7 +119,7 @@ purchaseTest.describe("Step 1 — PO List", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า list ของ PO" },
         { type: "steps", description: "1. คลิกหัวคอลัมน์ Date เพื่อเรียงลำดับ\n2. ตรวจสอบว่ารายการเรียงลำดับใหม่" },
-        { type: "expected", description: "URL ยังคงอยู่ที่หน้า list ของ PO หลังคลิก sort" },
+        { type: "expected", description: "หลังคลิกหัวคอลัมน์ Date แถวแรกของตารางเปลี่ยน (list เรียงลำดับใหม่)" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Functional" },
       ],
@@ -122,8 +127,12 @@ purchaseTest.describe("Step 1 — PO List", () => {
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
+      await po.tabAllDocuments().click();
+      const rows = recordRows(page);
+      await expect(rows.first(), "PO list has no rows - data:reset seeds POs").toBeVisible({ timeout: 10_000 });
+      const before = await rows.first().innerText();
       await po.sortBy("date");
-      await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      await expect(rows.first(), "list did not re-sort").not.toHaveText(before, { timeout: 10_000 });
     },
   );
 });
@@ -145,10 +154,7 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       await po.gotoList();
       await po.newPODropdown().click();
       const blank = po.manualPOMenuItem();
-      if ((await blank.count()) === 0) {
-        purchaseTest.skip(true, "Manual/Blank PO menu item not present");
-        return;
-      }
+      await expect(blank, "Manual/Blank PO menu item not present").toBeVisible({ timeout: 10_000 });
       await blank.click();
       await expect(page).toHaveURL(/purchase-order\/new/, { timeout: 10_000 });
     },
@@ -169,13 +175,9 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       const po = new PurchaseOrderPage(page);
       await po.gotoNew();
       const desc = po.descriptionInput();
-      if ((await desc.count()) === 0) {
-        purchaseTest.skip(true, "Description input not present");
-        return;
-      }
+      await expect(desc, "Description input not present").toBeVisible({ timeout: 10_000 });
       await desc.fill("[E2E-POP] TC-PO-060202");
-      const date = po.deliveryDateInput();
-      if ((await date.count()) > 0) await date.fill(FUTURE_DATE);
+      // addItemToPO picks workflow, vendor and the delivery date on a blank form.
       await po.addItemToPO({ product: "Test Item", quantity: 1, uom: "ea", unitPrice: 100 });
       await expect(desc).toHaveValue(/E2E-POP/);
     },
@@ -196,22 +198,22 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       const po = new PurchaseOrderPage(page);
       await po.gotoNew();
       const desc = po.descriptionInput();
-      if ((await desc.count()) > 0) await desc.fill("[E2E-POP] TC-PO-060203 save draft");
-      const date = po.deliveryDateInput();
-      if ((await date.count()) > 0) await date.fill(FUTURE_DATE);
+      await expect(desc, "Description input not present").toBeVisible({ timeout: 10_000 });
+      await desc.fill("[E2E-POP] TC-PO-060203 save draft");
       await po.addItemToPO({ product: "Save Item", quantity: 1, uom: "ea", unitPrice: 100 });
       await po.saveButton().click({ timeout: 5_000 });
       await expect(page).toHaveURL(/purchase-order\/(?!new$)[^\/?#]+$/, { timeout: 15_000 });
+      await expect(page.getByText(/^PO\d{6,}$/).first()).toBeVisible({ timeout: 15_000 });
     },
   );
 
   purchaseTest(
-    "TC-PO-060204 Save without items → button disabled or stays on /new",
+    "TC-PO-060204 Save without items → refused, stays on /new",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่ form สร้าง PO พร้อม header แต่ยังไม่มีรายการ" },
+        { type: "preconditions", description: "อยู่ที่ form สร้าง PO (blank) ยังไม่ได้กรอกอะไรและไม่มีรายการ" },
         { type: "steps", description: "1. กดบันทึกโดยไม่เพิ่ม line item ใดๆ" },
-        { type: "expected", description: "ปุ่มบันทึกถูก disable หรือ form ไม่ navigate ออกจาก /new" },
+        { type: "expected", description: "ปุ่ม Save กดได้แต่ระบบไม่บันทึก: toast \"Some fields aren't filled in correctly\", ช่องที่ผิดถูกมาร์ก aria-invalid และ URL ยังเป็น /new" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Validation" },
       ],
@@ -219,14 +221,11 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoNew();
-      const save = po.saveButton();
-      const disabled = await save.isDisabled().catch(() => false);
-      if (disabled) {
-        await expect(save).toBeDisabled();
-        return;
-      }
-      await save.click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(/purchase-order\/new/, { timeout: 10_000 });
+      await po.selectFirstWorkflow();
+      await po.saveButton().click({ timeout: 10_000 });
+      await expect(page.getByText(/fields aren't filled in correctly/i).first()).toBeVisible({ timeout: 10_000 });
+      await expect(po.anyError().first()).toBeVisible();
+      await expect(page).toHaveURL(/purchase-order\/new/);
     },
   );
 
@@ -236,8 +235,8 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Purchaser; อยู่ที่หน้า list ของ PO" },
-        { type: "steps", description: "1. กดปุ่ม dropdown New PO\n2. เลือก From Price List" },
-        { type: "expected", description: "Wizard step 1 แสดง (URL เปลี่ยนหรือ dialog ปรากฏพร้อมการเลือก vendor)" },
+        { type: "steps", description: "1. กดปุ่ม 'New Purchase Order'\n2. เลือกการ์ด 'From Price List'" },
+        { type: "expected", description: "ไปที่หน้าเต็ม /procurement/purchase-order/from-price-list (ไม่ใช่ dialog) และ step rail แสดง 'Order & Vendor' กับ 'Select Items'" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Smoke" },
       ],
@@ -247,10 +246,7 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       await po.gotoList();
       await po.newPODropdown().click();
       const item = po.fromPriceListMenuItem();
-      if ((await item.count()) === 0) {
-        purchaseTest.skip(true, "From Price List menu item not present");
-        return;
-      }
+      await expect(item, "From Price List menu item not present").toBeVisible({ timeout: 10_000 });
       await item.click({ timeout: 10_000 });
       // The wizard is a full page, not a dialog, and its first step is labelled
       // "Order & Vendor" — neither "Select Vendor" nor "step 1" appears anywhere,
@@ -267,114 +263,72 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
     {
       annotation: [
         { type: "preconditions", description: "Wizard From Price List step 1 เปิดอยู่" },
-        { type: "steps", description: "1. เลือก vendor แรก\n2. กด Next/Continue" },
-        { type: "expected", description: "Wizard ไปยัง step 2 (หน้า review visible)" },
+        { type: "steps", description: "1. เปิด /procurement/purchase-order/from-price-list\n2. เลือก workflow, วันที่ส่งของ และ vendor แรก\n3. กด Next" },
+        { type: "expected", description: "Wizard ไป step 2 'Select Items' ซึ่งแสดงแถวรายการจาก price list (เลข PL) ของ vendor ที่เลือก" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      await po.newPODropdown().click();
-      const item = po.fromPriceListMenuItem();
-      if ((await item.count()) === 0) {
-        purchaseTest.skip(true, "From Price List menu item not present");
-        return;
-      }
-      await item.click();
-      // Select first vendor row/option
-      const vendorOption = page.getByRole("checkbox").or(page.getByRole("option")).first();
-      if ((await vendorOption.count()) === 0) {
-        purchaseTest.skip(true, "No selectable vendor in wizard step 1");
-        return;
-      }
-      await vendorOption.click({ timeout: 5_000 }).catch(() => {});
-      const next = page.getByRole("button", { name: /next|continue|review/i }).first();
-      if ((await next.count()) === 0) {
-        purchaseTest.skip(true, "Next/Continue button not present in wizard");
-        return;
-      }
-      await next.click({ timeout: 5_000 });
-      await expect(page.getByText(/review|step 2|items/i).first()).toBeVisible({ timeout: 10_000 });
+      await page.goto("/procurement/purchase-order/from-price-list");
+      await po.priceListWizardPickVendorAndNext();
+      // Step 2 lists the price-list lines of the chosen vendor.
+      await expect(page.getByRole("row").filter({ hasText: /PL\d+/ }).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
   purchaseTest(
-    "TC-PO-060207 Submit Price List wizard → POs created (URL changes from /new to detail)",
+    "TC-PO-060207 Confirm Price List wizard → PO created and opened",
     {
       annotation: [
         { type: "preconditions", description: "Wizard From Price List step 2 (Review) เปิดอยู่" },
-        { type: "steps", description: "1. กด Create/Submit บน step สุดท้ายของ wizard" },
-        { type: "expected", description: "URL เปลี่ยนออกจาก /new ไปยัง PO detail หรือ list ที่ถูกสร้าง" },
+        { type: "steps", description: "1. ไปจนถึง step 3 (Order details / summary)\n2. กด Confirm (ไม่มี dialog ยืนยันเพิ่ม)" },
+        { type: "expected", description: "ยิง POST purchase-orders สำเร็จ แล้ว navigate ไปที่ /procurement/purchase-order/<id> ของ PO ที่สร้าง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      await po.newPODropdown().click();
-      const item = po.fromPriceListMenuItem();
-      if ((await item.count()) === 0) {
-        purchaseTest.skip(true, "From Price List menu item not present");
-        return;
-      }
-      await item.click();
-      const vendorOption = page.getByRole("checkbox").or(page.getByRole("option")).first();
-      if ((await vendorOption.count()) === 0) {
-        purchaseTest.skip(true, "No selectable vendor in wizard step 1");
-        return;
-      }
-      await vendorOption.click({ timeout: 5_000 }).catch(() => {});
-      const next = page.getByRole("button", { name: /next|continue|review/i }).first();
-      if ((await next.count()) > 0) await next.click({ timeout: 5_000 }).catch(() => {});
-      const submit = po.priceListWizardSubmit();
-      if ((await submit.count()) === 0) {
-        purchaseTest.skip(true, "Wizard submit button not present");
-        return;
-      }
-      await submit.click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(/purchase-order\/(?!new$)/, { timeout: 15_000 });
-      // Fallback assertion: list page or detail page reached
-      await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      await page.goto("/procurement/purchase-order/from-price-list");
+      await po.priceListWizardPickVendorAndNext();
+      await po.priceListWizardPickItemAndNext();
+      // Step 3 summarises the order, then Confirm creates it.
+      await expect(page.getByText(/order details/i).first()).toBeVisible({ timeout: 10_000 });
+      const created = page.waitForResponse(
+        (r) => /purchase-orders/.test(r.url()) && r.request().method() === "POST",
+        { timeout: 20_000 },
+      );
+      await page.getByRole("button", { name: /^confirm$/i }).click({ timeout: 10_000 });
+      expect((await created).ok()).toBe(true);
+      // FE from-price-list-content.tsx onSuccess: navigate(`${PO_LIST_PATH}/${newId}`).
+      await expect(page).toHaveURL(/purchase-order\/(?!from-price-list)[^/?#]+$/, { timeout: 20_000 });
+      await expect(page.getByText(/^PO\d{6,}$/).first()).toBeVisible({ timeout: 15_000 });
     },
   );
 
   purchaseTest(
-    "TC-PO-060208 Skip dynamically if no price list / vendors available",
+    "TC-PO-060208 Wizard step 1 lists vendors that have an active price list on the delivery date",
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Purchaser; อยู่ที่หน้า list ของ PO" },
-        { type: "steps", description: "1. เปิด wizard From Price List\n2. ตรวจสอบรายการ vendor ใน step 1" },
-        { type: "expected", description: "หาก wizard แสดงรายการ vendor ว่างเปล่า การทดสอบ skip พร้อมเหตุผล ไม่เช่นนั้นตรวจสอบว่า wizard step 1 visible" },
+        { type: "steps", description: "1. เปิด wizard From Price List\n2. เลือก workflow และ delivery date\n3. ตรวจสอบรายการ vendor ใน step 1" },
+        { type: "expected", description: "หลังเลือก workflow + delivery date รายการ vendor (radio) ปรากฏจาก price list ที่ active วันนั้น" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Functional" },
-        { type: "note", description: "Dynamically skipped when DB lacks price list / vendor data." },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      await po.newPODropdown().click();
-      const item = po.fromPriceListMenuItem();
-      if ((await item.count()) === 0) {
-        purchaseTest.skip(true, "From Price List menu item not present");
-        return;
-      }
-      await item.click();
-      // Look for empty-state vs vendor list
-      const empty = page.getByText(/no vendor|no price list|empty/i).first();
-      const vendor = page.getByRole("checkbox").or(page.getByRole("option")).first();
-      if ((await empty.count()) > 0) {
-        await expect(empty).toBeVisible();
-        return;
-      }
-      if ((await vendor.count()) === 0) {
-        purchaseTest.skip(true, "Wizard renders without vendors and without empty-state");
-        return;
-      }
-      await expect(vendor).toBeVisible({ timeout: 5_000 });
+      await page.goto("/procurement/purchase-order/from-price-list");
+      await po.selectFirstWorkflow();
+      await po.selectDeliveryDate();
+      // Vendors come from the price lists active on the delivery date (STD pricing seed).
+      await expect(
+        page.getByRole("radio").first(),
+        "no vendor with an active price list — run `bun run data:reset --yes`",
+      ).toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -384,8 +338,8 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Purchaser; อยู่ที่หน้า list ของ PO" },
-        { type: "steps", description: "1. กดปุ่ม dropdown New PO\n2. เลือก From PR" },
-        { type: "expected", description: "Wizard step 1 แสดง (รายการเลือก PR visible หรือ dialog ปรากฏ)" },
+        { type: "steps", description: "1. กดปุ่ม 'New Purchase Order'\n2. เลือกการ์ด 'From Purchase Request'" },
+        { type: "expected", description: "ไปที่หน้าเต็ม /procurement/purchase-order/from-pr (ไม่ใช่ dialog) และแสดง step 1 พร้อมช่องเลือก workflow" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Smoke" },
       ],
@@ -395,18 +349,11 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       await po.gotoList();
       await po.newPODropdown().click();
       const item = po.fromPRMenuItem();
-      if ((await item.count()) === 0) {
-        purchaseTest.skip(true, "From PR menu item not present");
-        return;
-      }
+      await expect(item, "From PR menu item not present").toBeVisible({ timeout: 10_000 });
       await item.click();
-      await expect(
-        page
-          .locator('[role="dialog"], [role="alertdialog"]')
-          .last()
-          .or(page.getByText(/select.*pr|purchase request|step 1/i).first())
-          .first(),
-      ).toBeVisible({ timeout: 10_000 });
+      await expect(page).toHaveURL(/purchase-order\/from-pr/, { timeout: 15_000 });
+      await expect(po.workflowTrigger()).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText(/select a workflow first/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -415,43 +362,17 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
     {
       annotation: [
         { type: "preconditions", description: "Wizard From PR step 1 เปิดอยู่พร้อม PR ที่ approved อย่างน้อยหนึ่งรายการ" },
-        { type: "steps", description: "1. เลือก PR ที่ approved แรก\n2. กด Next/Continue" },
-        { type: "expected", description: "Wizard ไปยัง step 2 (review PO ที่จัดกลุ่มตาม vendor)" },
+        { type: "steps", description: "1. เปิด /procurement/purchase-order/from-pr แล้วเลือก workflow\n2. ติ๊ก PR ที่ approved แรก\n3. กด Next" },
+        { type: "expected", description: "Wizard ไป step 2 'Review POs' แสดงแถวของ PR ที่เลือก 1 แถว (PO จัดกลุ่มตาม vendor)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      await po.newPODropdown().click();
-      const item = po.fromPRMenuItem();
-      if ((await item.count()) === 0) {
-        purchaseTest.skip(true, "From PR menu item not present");
-        return;
-      }
-      await item.click({ timeout: 10_000 });
-
-      // Count real PR rows. `getByRole("row").or(getByRole("checkbox")).nth(1)`
-      // is a union that resolves against both roles at once and happily settles on
-      // the header row or a stray checkbox, so it never reported "no data" even
-      // when the wizard had none — the test then pressed Next with nothing
-      // selected and waited out its timeout. This BU holds no purchase requests
-      // at all (verified against /api/BLAVG/purchase-requests).
-      const prRows = recordRows(page).filter({ hasText: /PR\d{6,}/ });
-      if ((await prRows.count()) === 0) {
-        purchaseTest.skip(true, "No approved PR available in wizard step 1");
-        return;
-      }
-      await prRows.first().getByRole("checkbox").first().check({ force: true, timeout: 10_000 });
-
-      const next = page.getByRole("button", { name: /next|continue|review/i }).first();
-      if ((await next.count()) === 0) {
-        purchaseTest.skip(true, "Next button not present in From PR wizard");
-        return;
-      }
-      await next.click({ timeout: 10_000 });
-      await expect(page.getByText(/review|grouped|vendor|step 2/i).first()).toBeVisible({ timeout: 10_000 });
+      await po.fromPRWizardPickFirstPRAndNext();
+      // Step 2 lists the POs that will be generated (one per vendor) with their PR ref.
+      await expect(page.locator("tbody tr").filter({ hasText: /PR\d{6,}/ })).toHaveCount(1);
     },
   );
 
@@ -461,72 +382,44 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       annotation: [
         { type: "preconditions", description: "Wizard From PR step 2 เปิดอยู่" },
         { type: "steps", description: "1. กด Create/Submit บน step สุดท้ายของ wizard" },
-        { type: "expected", description: "URL เปลี่ยนออกจาก /new (PO ถูกสร้าง)" },
+        { type: "expected", description: "ยืนยัน 2 ชั้น (Confirm + alert dialog) แล้ว POST purchase-orders ตอบ ok และหน้าแสดง 'purchase orders created'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      await po.newPODropdown().click();
-      const item = po.fromPRMenuItem();
-      if ((await item.count()) === 0) {
-        purchaseTest.skip(true, "From PR menu item not present");
-        return;
-      }
-      await item.click();
-      const prRow = page.getByRole("row").or(page.getByRole("checkbox")).nth(1);
-      if ((await prRow.count()) === 0) {
-        purchaseTest.skip(true, "No approved PR available");
-        return;
-      }
-      await prRow.click({ timeout: 5_000 }).catch(() => {});
-      const next = page.getByRole("button", { name: /next|continue|review/i }).first();
-      if ((await next.count()) > 0) await next.click({ timeout: 5_000 }).catch(() => {});
-      const submit = po.fromPRWizardSubmit();
-      if ((await submit.count()) === 0) {
-        purchaseTest.skip(true, "Wizard submit button not present");
-        return;
-      }
-      await submit.click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 15_000 });
+      await po.fromPRWizardPickFirstPRAndNext();
+      await page.getByRole("button", { name: /^confirm$/i }).click({ timeout: 10_000 });
+      const created = page.waitForResponse(
+        (r) => /purchase-orders/.test(r.url()) && r.request().method() === "POST",
+        { timeout: 20_000 },
+      );
+      await page.getByRole("alertdialog").getByRole("button", { name: /^confirm$/i }).click({ timeout: 10_000 });
+      expect((await created).ok()).toBe(true);
+      await expect(page.getByText(/purchase orders created/i)).toBeVisible({ timeout: 20_000 });
     },
   );
 
   purchaseTest(
-    "TC-PO-060212 Skip dynamically if no approved PR available",
+    "TC-PO-060212 From PR wizard lists approved PRs once a workflow is chosen",
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Purchaser; อยู่ที่หน้า list ของ PO" },
-        { type: "steps", description: "1. เปิด wizard From PR\n2. ตรวจสอบรายการ PR ใน step 1" },
-        { type: "expected", description: "หาก wizard แสดงรายการ PR ว่างเปล่า การทดสอบ skip พร้อมเหตุผล ไม่เช่นนั้นตรวจสอบว่า wizard step 1 visible" },
+        { type: "steps", description: "1. เปิด wizard From PR\n2. เลือก workflow\n3. ตรวจสอบรายการ PR ใน step 1" },
+        { type: "expected", description: "หลังเลือก workflow ตาราง PR ที่ approved แล้วปรากฏ (เลข PR..)" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Functional" },
-        { type: "note", description: "Dynamically skipped when DB lacks approved PRs." },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      await po.newPODropdown().click();
-      const item = po.fromPRMenuItem();
-      if ((await item.count()) === 0) {
-        purchaseTest.skip(true, "From PR menu item not present");
-        return;
-      }
-      await item.click();
-      const empty = page.getByText(/no.*pr|no purchase request|no approved|empty/i).first();
-      const prRow = page.getByRole("row").or(page.getByRole("checkbox")).nth(1);
-      if ((await empty.count()) > 0) {
-        await expect(empty).toBeVisible();
-        return;
-      }
-      if ((await prRow.count()) === 0) {
-        purchaseTest.skip(true, "Wizard renders without PRs and without empty-state");
-        return;
-      }
-      await expect(prRow).toBeVisible({ timeout: 5_000 });
+      await page.goto("/procurement/purchase-order/from-pr");
+      await po.selectFirstWorkflow();
+      await expect(
+        page.locator("tbody tr").filter({ hasText: /PR\d{6,}/ }).first(),
+        "no approved PR in TEST BU — run `bun run data:reset --yes`",
+      ).toBeVisible({ timeout: 15_000 });
     },
   );
 });
@@ -537,8 +430,8 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
     {
       annotation: [
         { type: "preconditions", description: "มี Draft PO สำหรับ Purchaser นี้ (seeded ผ่าน submitPOAsPurchaser)" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ Draft PO\n2. ตรวจสอบว่า URL ตรงกับ PO ref" },
-        { type: "expected", description: "URL เป็น /procurement/purchase-order/<ref>" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ Draft PO\n2. ดู header และตารางรายการ" },
+        { type: "expected", description: "URL เป็น /procurement/purchase-order/<ref>; header แสดงเลข PO และสถานะ Draft; ตารางรายการมีอย่างน้อยหนึ่งแถว (มีปุ่ม Expand all)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -547,16 +440,19 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
       const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
+      await expect(page.locator("main")).toContainText(created.poNo);
+      await expect(new PurchaseOrderPage(page).headerStatus()).toHaveText(/draft/i, { timeout: 15_000 });
+      await expect(page.getByRole("button", { name: /expand all/i }), "items table has no rows").toBeVisible({ timeout: 15_000 });
     },
   );
 
   purchaseTest(
-    "TC-PO-060302 Item Details panel — Details / Quantity / Pricing tabs",
+    "TC-PO-060302 Item rows expand and collapse inline via Expand all (no tab panel)",
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า detail ของ Draft PO ที่มีอย่างน้อยหนึ่งรายการ" },
-        { type: "steps", description: "1. ค้นหาแท็บใน Item Details panel\n2. สลับระหว่างแท็บ Items / Quantity / Pricing ถ้ามี" },
-        { type: "expected", description: "แท็บแสดงและถูกเลือกเมื่อคลิก (skip ถ้าไม่มี)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ PO ที่มีรายการ\n2. กด 'Expand all'" },
+        { type: "expected", description: "ปุ่มสลับเป็น 'Collapse all' (รายการกางในแถว); ไม่มีแท็บ Items/Quantity/Pricing แล้ว" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -565,13 +461,14 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      const items = po.tabItems();
-      if ((await items.count()) === 0) {
-        purchaseTest.skip(true, "Item Details panel tabs not present in this build");
-        return;
-      }
-      await items.click();
-      await expect(items).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      // The PO detail has no Details/Quantity/Pricing tab panel (grep of FE
+      // routes/procurement/purchase-order: no Tabs); item rows expand inline via the
+      // "Expand all" / "Collapse all" toggle (po-item-fields.tsx).
+      const expand = page.getByRole("button", { name: /expand all/i });
+      await expect(expand).toBeVisible({ timeout: 15_000 });
+      await expand.click();
+      await expect(page.getByRole("button", { name: /collapse all/i })).toBeVisible({ timeout: 5_000 });
+      await expect(po.tabItems()).toHaveCount(0);
     },
   );
 
@@ -580,8 +477,8 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า detail ของ Draft PO" },
-        { type: "steps", description: "1. ตรวจสอบ action toolbar" },
-        { type: "expected", description: "ปุ่ม Edit visible (ความ visible ของปุ่ม Submit ขึ้นอยู่กับ UI variant)" },
+        { type: "steps", description: "1. ตรวจสอบ action toolbar\n2. กด Edit" },
+        { type: "expected", description: "ปุ่ม Edit และ Submit visible; หลังกด Edit ปุ่ม Delete ปรากฏ (Delete อยู่ใน edit mode เท่านั้น)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
@@ -595,40 +492,30 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
       await gotoPODetail(page, created.ref);
       await expect(po.editModeButton()).toBeVisible({ timeout: 10_000 });
       await expect(po.submitButton()).toBeVisible({ timeout: 10_000 });
+      await po.enterEditMode();
+      await expect(po.deleteButton(), "Delete is offered in edit mode of a Draft").toBeVisible({ timeout: 10_000 });
     },
   );
 
   purchaseTest(
-    "TC-PO-060304 Read-only state for SENT/COMPLETED status (best-effort)",
+    "TC-PO-060304 Read-only state for an APPROVED PO (no Edit button)",
     {
       annotation: [
-        { type: "preconditions", description: "มี PO ที่มี status SENT หรือ COMPLETED ใน DB (ที่ไม่ใช่ Draft หรือ In-Progress)" },
-        { type: "steps", description: "1. ไปที่หน้า list ของ PO\n2. ค้นหาแถว SENT/COMPLETED\n3. เปิดและตรวจสอบ toolbar" },
-        { type: "expected", description: "ปุ่ม Edit ไม่ visible หรือถูก disable Skip ถ้าไม่มี PO ที่มี status SENT/COMPLETED" },
+        { type: "preconditions", description: "Login เป็น Purchaser; seed PO จนถึง Approved (FC + GM)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ PO ที่ Approved\n2. ตรวจ toolbar" },
+        { type: "expected", description: "ไม่มีปุ่ม Edit; มีปุ่ม Send to vendor" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Authorization" },
-        { type: "note", description: "Dynamically skipped if no SENT/COMPLETED PO available." },
       ],
     },
-    async ({ page }) => {
+    async ({ page, browser }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      // Find a row with SENT or COMPLETED status
-      const sentRow = page.locator("tbody").getByRole("row").filter({ hasText: /sent|completed/i }).first();
-      if ((await sentRow.count()) === 0) {
-        purchaseTest.skip(true, "No SENT/COMPLETED PO available for read-only check");
-        return;
-      }
-      await sentRow.click({ timeout: 5_000 }).catch(() => {});
-      await page.waitForLoadState("networkidle").catch(() => {});
-      // Edit button absent or disabled
-      const edit = po.editModeButton();
-      if ((await edit.count()) === 0) {
-        await expect(edit).toHaveCount(0);
-        return;
-      }
-      const disabled = await edit.isDisabled().catch(() => false);
-      expect(disabled).toBeTruthy();
+      // Sent/Completed cannot be reached on TEST BU (Send needs an email profile), so
+      // the read-only state is checked on an Approved PO: no Edit, but Close/Send.
+      const created = await seedApprovedPO(browser, { description: "[E2E-POP] TC-PO-060304" });
+      await gotoPODetail(page, created.ref);
+      await expect(po.sendToVendorButton()).toBeVisible({ timeout: 15_000 });
+      await expect(po.editModeButton()).toHaveCount(0);
     },
   );
 });
@@ -649,10 +536,7 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       const po = new PurchaseOrderPage(page);
       const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await expect(po.saveButton()).toBeVisible({ timeout: 10_000 });
     },
@@ -664,7 +548,7 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       annotation: [
         { type: "preconditions", description: "edit mode active บน Draft PO ที่มีอย่างน้อยหนึ่งรายการ" },
         { type: "steps", description: "1. เข้าสู่ edit mode\n2. แก้ไข quantity input\n3. กดบันทึก" },
-        { type: "expected", description: "หลังบันทึก URL ยังคงอยู่ที่ /procurement/purchase-order/<ref>" },
+        { type: "expected", description: "หลังบันทึก URL ยังคงอยู่ที่ /procurement/purchase-order/<ref> และ backend ตอบ PATCH สำเร็จ; โหลดหน้าใหม่แล้วบรรทัดแรกแสดง quantity 5" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -673,15 +557,18 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       const po = new PurchaseOrderPage(page);
       const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
-      const qty = page.getByLabel(/^quantity$|^qty$/i).first();
-      if ((await qty.count()) > 0) await qty.fill("5").catch(() => {});
-      await po.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      const qty = page.locator('input[name$=".order_qty"]').first();
+      await expect(qty, "line quantity input not present in edit mode").toBeVisible({ timeout: 10_000 });
+      await qty.fill("5");
+      const write = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("purchase-orders"), { timeout: 15_000 });
+      await po.saveButton().click({ timeout: 5_000 });
+      expect((await write).ok(), "saving the quantity edit was refused").toBe(true);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await page.reload();
+      await po.enterEditMode();
+      await expect(page.locator('input[name$=".order_qty"]').first()).toHaveValue(/^5(\.0+)?$/, { timeout: 15_000 });
     },
   );
 
@@ -697,16 +584,18 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       ],
     },
     async ({ page, browser }) => {
+      purchaseTest.setTimeout(90_000);
       const po = new PurchaseOrderPage(page);
       const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
       await po.enterEditMode();
       await po.addItemToPO({ product: "Added in Edit", quantity: 2, uom: "ea", unitPrice: 50 });
-      await po.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      const saved = page.waitForResponse(
+        (r) => /\/purchase-orders\//.test(r.url()) && /PATCH|PUT|POST/.test(r.request().method()),
+        { timeout: 15_000 },
+      );
+      await po.saveButton().click({ timeout: 5_000 });
+      expect((await saved).ok()).toBe(true);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
     },
   );
@@ -726,10 +615,7 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       const po = new PurchaseOrderPage(page);
       const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       // The app prompts "Keep editing / Discard" even with nothing changed —
       // entering edit mode alone marks the form dirty. The old title promised
@@ -750,54 +636,58 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       annotation: [
         { type: "preconditions", description: "มี Draft PO ที่มี ≥1 รายการ" },
         { type: "steps", description: "1. เปิด Draft PO\n2. กด Submit\n3. ยืนยัน dialog" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PO ref; text ของ status badge อัปเดต (best effort)" },
+        { type: "expected", description: "URL ยังคงอยู่ที่ PO ref; chip สถานะใน header เปลี่ยนจาก Draft เป็น In progress" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
     async ({ page, browser }) => {
+      purchaseTest.setTimeout(90_000);
       const po = new PurchaseOrderPage(page);
       const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
       const submit = po.submitButton();
-      if ((await submit.count()) === 0) {
-        purchaseTest.skip(true, "Submit button not present (Draft may already be In Progress)");
-        return;
-      }
+      await expect(submit, "Submit button not present (Draft may already be In Progress)").toBeVisible({ timeout: 10_000 });
       await submit.click({ timeout: 5_000 });
+      await expect(po.headerStatus()).toHaveText(/draft/i, { timeout: 10_000 });
+      const submitted = page.waitForResponse(
+        (r) => /\/purchase-orders\/[^/]+\/submit/.test(r.url()) && r.request().method() === "PATCH",
+        { timeout: 30_000 },
+      );
       await po.confirmDialogButton(/confirm|submit|ok|yes/i).click({ timeout: 5_000 });
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 15_000 });
+      const res = await submitted;
+      expect(res.ok(), `PATCH .../submit was refused (${res.status()})`).toBe(true);
+      await gotoPODetail(page, created.ref);
+      await expect(po.headerStatus(), "status did not move to In progress").toHaveText(/in progress/i, { timeout: 20_000 });
     },
   );
 
   purchaseTest(
-    "TC-PO-060406 Delete IN PROGRESS PO via Edit Mode",
+    "TC-PO-060406 Delete DRAFT PO via Edit Mode",
     {
       annotation: [
-        { type: "preconditions", description: "มี PO ที่มี status IN PROGRESS (หลัง submit) DRAFT ก็ยอมรับได้เช่นกัน" },
+        { type: "preconditions", description: "มี PO สถานะ Draft ที่ Purchaser สร้างเอง (หลัง submit แล้วผู้สร้างเป็น view_only ลบไม่ได้)" },
         { type: "steps", description: "1. เปิด PO\n2. กด Edit\n3. กด Delete\n4. ยืนยัน" },
-        { type: "expected", description: "URL navigate กลับไปยัง list (PO ถูกลบ)" },
+        { type: "expected", description: "URL navigate กลับไปยัง list และค้นเลข PO นั้นใน All documents แล้วไม่พบ (PO ถูกลบ)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
     },
     async ({ page, browser }) => {
       const po = new PurchaseOrderPage(page);
-      const created = await submitPOAsPurchaser(browser);
+      // A submitted PO hands its creator role=view_only (no Edit/Delete), so only a
+      // Draft can be deleted through Edit mode.
+      const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
       await po.enterEditMode();
       const del = po.deleteButton();
-      if ((await del.count()) === 0) {
-        purchaseTest.skip(true, "Delete button not present in edit mode");
-        return;
-      }
+      await expect(del).toBeVisible({ timeout: 10_000 });
       await del.click({ timeout: 5_000 });
       await po.confirmDialogButton(/confirm|delete|yes/i).click({ timeout: 5_000 });
       await expect(page).toHaveURL(/\/procurement\/purchase-order($|\?)/, { timeout: 10_000 });
+      await po.gotoAllDocuments();
+      await po.searchFor(created.poNo);
+      await expect(recordRows(page).filter({ hasText: created.poNo }), `${created.poNo} is still in the list`).toHaveCount(0, { timeout: 10_000 });
     },
   );
 });
@@ -809,7 +699,7 @@ purchaseTest.describe("Step 5 — Post-approval", () => {
       annotation: [
         { type: "preconditions", description: "มี PO ที่ approved (seeded ผ่าน seedApprovedPO: submit + FC + GM)" },
         { type: "steps", description: "1. Seed Approved PO\n2. เปิดหน้า detail\n3. ตรวจสอบ action toolbar" },
-        { type: "expected", description: "ปุ่ม Send to Vendor visible ความ visible ของปุ่ม Close เป็นรอง (ไม่ assert hard ถ้าไม่มี)" },
+        { type: "expected", description: "ทั้งปุ่ม Send to Vendor และปุ่ม Close visible บน PO ที่ Approved (Close มีเฉพาะสถานะ approved/sent)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
@@ -818,22 +708,19 @@ purchaseTest.describe("Step 5 — Post-approval", () => {
       const po = new PurchaseOrderPage(page);
       const created = await seedApprovedPO(browser);
       await gotoPODetail(page, created.ref);
-      const send = po.sendToVendorButton();
-      if ((await send.count()) === 0) {
-        purchaseTest.skip(true, "Send to Vendor button not present — FC approval may not have completed");
-        return;
-      }
-      await expect(send).toBeVisible({ timeout: 10_000 });
+      await expect(po.headerStatus()).toHaveText(/approved/i, { timeout: 15_000 });
+      await expect(po.sendToVendorButton()).toBeVisible({ timeout: 15_000 });
+      await expect(po.closePOButton(), "Close is offered on an approved PO").toBeVisible({ timeout: 15_000 });
     },
   );
 
   purchaseTest(
-    "TC-PO-060502 Click Send to Vendor → status updates / toast",
+    "TC-PO-060502 Click Send to Vendor → compose dialog opens bound to the PO",
     {
       annotation: [
         { type: "preconditions", description: "มี PO ที่ approved อยู่ในระบบ" },
-        { type: "steps", description: "1. เปิด Approved PO\n2. กด Send to Vendor\n3. ยืนยัน" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PO ref; success toast หรือการอัปเดต status visible" },
+        { type: "steps", description: "1. เปิด Approved PO\n2. กด Send to Vendor\n3. ตรวจ dialog" },
+        { type: "expected", description: "dialog 'Send purchase order to vendor' เปิดพร้อมเลข PO; TEST BU ไม่มี email profile ที่เปิดใช้ จึงแสดง no-profile + ลิงก์ตั้งค่า (ไม่กดส่งจริง); URL ยังอยู่ที่ PO ref" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -843,75 +730,36 @@ purchaseTest.describe("Step 5 — Post-approval", () => {
       const created = await seedApprovedPO(browser);
       await gotoPODetail(page, created.ref);
       const send = po.sendToVendorButton();
-      if ((await send.count()) === 0) {
-        purchaseTest.skip(true, "Send to Vendor button not present");
-        return;
-      }
+      await expect(send).toBeVisible({ timeout: 15_000 });
       await send.click({ timeout: 5_000 });
-      await po.confirmDialogButton(/confirm|send|ok|yes/i).click({ timeout: 5_000 });
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await po.expectSendToVendorDialogOpen();
+      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
     },
   );
 
-  purchaseTest(
-    "TC-PO-060503 Close PO with items received → COMPLETED",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี SENT PO ที่มีรายการที่รับแล้ว (best-effort; เชื่อ DB)" },
-        { type: "steps", description: "1. ค้นหา SENT PO ที่มีรายการที่รับแล้วในรายการ\n2. เปิดหน้า detail\n3. กด Close\n4. ยืนยัน" },
-        { type: "expected", description: "text ของ status ตรงกับ /completed/i หลัง close Skip ถ้าไม่มี PO ที่เข้าเกณฑ์" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "CRUD" },
-        { type: "note", description: "Dynamically skipped when no SENT-with-items PO exists." },
-      ],
-    },
-    async ({ page }) => {
-      const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      const sentRow = page.locator("tbody").getByRole("row").filter({ hasText: /sent/i }).first();
-      if ((await sentRow.count()) === 0) {
-        purchaseTest.skip(true, "No SENT PO available for Close test");
-        return;
-      }
-      await sentRow.click({ timeout: 5_000 }).catch(() => {});
-      await page.waitForLoadState("networkidle").catch(() => {});
-      const close = po.closePOButton();
-      if ((await close.count()) === 0) {
-        purchaseTest.skip(true, "Close button not present on this PO (may not have items received)");
-        return;
-      }
-      await close.click({ timeout: 5_000 });
-      await po.confirmDialogButton(/confirm|close|complete|yes/i).click({ timeout: 5_000 });
-      await expect(
-        page
-          .locator("[data-slot='status'], [data-slot='badge'], [class*='badge']")
-          .filter({ hasText: /completed/i })
-          .first(),
-      ).toBeVisible({ timeout: 15_000 });
-    },
-  );
+  // TC-PO-060503 (Close a Sent PO with received items -> COMPLETED) DELETED: the app has no
+  // such transition. po-header.tsx offers Close only on approved / sent_or_print POs; once goods
+  // are received the PO becomes Partial/Completed and offers no Close (asserted by TC-PO-050002
+  // and TC-PO-050003 in 401, against the STD po.completed / po.partial rows).
 
   purchaseTest(
     "TC-PO-060504 Close PO without items received → CLOSED",
     {
       annotation: [
-        { type: "preconditions", description: "มี Approved/SENT PO ที่ยังไม่มีรายการที่รับ" },
-        { type: "steps", description: "1. ค้นหา PO ที่เข้าเกณฑ์\n2. กด Close\n3. ยืนยัน" },
-        { type: "expected", description: "text ของ status ตรงกับ /voided|cancelled/i หลัง close Skip ถ้าไม่มี PO ที่เข้าเกณฑ์" },
+        { type: "preconditions", description: "Login เป็น Purchaser; เคสสร้าง PO ที่ Approved เองผ่าน seedApprovedPO (ไม่พึ่งข้อมูลเดิม)" },
+        { type: "steps", description: "1. Seed PO ที่ Approved (submit + FC + GM)\n2. เปิดหน้า detail แล้วกด Close\n3. ยืนยันใน dialog" }, 
+        { type: "expected", description: "เปิด PO ใหม่แล้ว status chip เป็น Closed (PO ไม่มี voided/cancelled จากการ Close)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
-        { type: "note", description: "Dynamically skipped when no eligible PO exists." },
       ],
     },
     async ({ page, browser }) => {
+      purchaseTest.setTimeout(90_000);
       const po = new PurchaseOrderPage(page);
       const created = await seedApprovedPO(browser);
       await gotoPODetail(page, created.ref);
       const close = po.closePOButton();
-      if ((await close.count()) === 0) {
-        purchaseTest.skip(true, "Close button not present on this Approved PO");
-        return;
-      }
+      await expect(close, "Close button not present on this Approved PO").toBeVisible({ timeout: 10_000 });
       await close.click({ timeout: 10_000 });
       // "Close Purchase Order — …Please provide a reason." with an optional REASON
       // box; the button is labelled Close.
@@ -922,12 +770,7 @@ purchaseTest.describe("Step 5 — Post-approval", () => {
       // waited for a badge the app never renders). Re-open the record because
       // confirming routes back to the list.
       await gotoPODetail(page, created.ref);
-      await expect(
-        page
-          .locator("[data-slot='status'], [data-slot='badge'], [class*='badge']")
-          .filter({ hasText: /closed/i })
-          .first(),
-      ).toBeVisible({ timeout: 15_000 });
+      await expect(new PurchaseOrderPage(page).headerStatus()).toHaveText(/closed/i, { timeout: 15_000 });
     },
   );
 });
@@ -939,7 +782,7 @@ purchaseTest.describe.serial("Golden Journey", () => {
       annotation: [
         { type: "preconditions", description: "Login เป็น Purchaser" },
         { type: "steps", description: "1. สร้าง blank PO (header + 1 รายการ)\n2. บันทึก Draft\n3. Submit\n4. FC approve (cross-context)\n5. Reload หน้า detail\n6. กด Send to Vendor" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PO ref หลัง Send to Vendor (lifecycle ครบถ้วน end-to-end)" },
+        { type: "expected", description: "lifecycle ครบ (Create → Draft → Submit → FC → GM → Approved) แล้วกด Send to Vendor เปิด dialog ผูกกับเลข PO (ไม่มี email profile ใน TEST BU จึงไม่กดส่งจริง); URL ยังอยู่ที่ PO ref" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -955,16 +798,12 @@ purchaseTest.describe.serial("Golden Journey", () => {
       // Step 5: Reload as Purchaser and verify Approved state has Send button
       await gotoPODetail(page, created.ref);
       const send = po.sendToVendorButton();
-      if ((await send.count()) === 0) {
-        purchaseTest.skip(true, "Send to Vendor button not present after full approval");
-        return;
-      }
+      await expect(send).toBeVisible({ timeout: 15_000 });
 
-      // Step 6: Send to Vendor
+      // Step 6: Send to Vendor opens the compose dialog (no email profile in TEST BU)
       await send.click({ timeout: 5_000 });
-      await po.confirmDialogButton(/confirm|send|ok|yes/i).click({ timeout: 5_000 });
-
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 15_000 });
+      await po.expectSendToVendorDialogOpen();
+      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
     },
   );
 });
