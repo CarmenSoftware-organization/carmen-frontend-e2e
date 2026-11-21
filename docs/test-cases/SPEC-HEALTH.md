@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1283 |
-| **Running** | **1098** |
+| Cases declared | 1269 |
+| **Running** | **1085** |
 | Skipped | 183 |
-| Fixme | 2 |
+| Fixme | 1 |
 | **Dormant** (skipped + fixme) | **14%** |
 | Running cases asserting only through a page-object helper | 29 |
-| **Running cases asserting nothing at all** | **44** |
+| **Running cases asserting nothing at all** | **0** |
 | Running cases whose assertions are all trivial | 0 |
-| Running cases behind an in-body skip guard | 25 |
-| Assertions in running cases | 2629 |
+| Running cases behind an in-body skip guard | 22 |
+| Assertions in running cases | 2779 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -49,7 +49,6 @@ Sorted by dormant share, then by cases that assert nothing.
 | `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 141 | 0 |
 | `301-pr.spec.ts` | 59 | 47 | 0 | 44% | 0 | 0 | 0 | 0 | 120 | 0 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
-| `701-sr.spec.ts` | 46 | 0 | 1 | 2% | **44** | 0 | 0 | **3** | 2 | 14 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `010-department.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 57 | 2 |
 | `020-unit.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 32 | 0 |
@@ -89,6 +88,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |
 | `603-cn-doc-flow.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 20 | 1 |
+| `701-sr.spec.ts` | 33 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 152 | 0 |
 | `702-sr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
 | `710-wastage-reporting.spec.ts` | 18 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 67 | 0 |
 | `711-stock-replenishment.spec.ts` | 36 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 110 | 0 |
