@@ -39,9 +39,18 @@ export class PurchaseRequestPage extends BasePage {
 
   /** List opens on "My pending" (`?view=my-pending`); this opens "All Documents". */
   async gotoAllDocuments() {
-    await this.page.goto(`${LIST_PATH}?view=all-document`);
+    await this.page.goto(`${LIST_PATH}?view=all-document&perpage=100`);
     await this.page.waitForLoadState("networkidle");
     await this.waitForListRows();
+  }
+
+  /**
+   * A returned PR. There is no "Returned" status: when an approver sends a PR back it stays
+   * In progress and its workflow stage moves back to "Create Request" (the STD dataset's
+   * pr.returned row is verified the same way — verify-dataset.ts: stage "Create Request").
+   */
+  returnedPRRow(): Locator {
+    return this.rowWithStatus(/in progress/i).filter({ hasText: /create request/i });
   }
 
   async gotoNew() {
@@ -161,13 +170,18 @@ export class PurchaseRequestPage extends BasePage {
   }
 
   async openCreateDialog() {
-    await this.newButton().click();
-    // Dialog may auto-open or navigate directly to /new — handle both
-    const dialog = this.page.getByRole("dialog");
-    if ((await dialog.count()) > 0) {
-      await this.createDialogBlankOption().click({ timeout: 5_000 }).catch(() => {});
+    await this.newButton().click({ timeout: 10_000 });
+    // The button either opens a picker dialog (Blank / From template) or goes straight
+    // to /new; settle on whichever happened, then require the form route.
+    const dialog = this.page.getByRole("dialog").last();
+    const opened = await dialog
+      .waitFor({ state: "visible", timeout: 3_000 })
+      .then(() => true)
+      .catch(() => false);
+    if (opened) {
+      await this.createDialogBlankOption().click({ timeout: 5_000 });
     }
-    await this.page.waitForURL(/purchase-request\/new/, { timeout: 10_000 }).catch(() => {});
+    await expect(this.page, "create did not reach /purchase-request/new").toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
   }
 
   // ── Form (header) ─────────────────────────────────────────────────────
@@ -250,10 +264,13 @@ export class PurchaseRequestPage extends BasePage {
 
   async fillHeader(data: PRHeaderInput) {
     // Redesigned create form header is just: workflow (required) + description.
-    await this.selectFirstWorkflow().catch(() => {});
+    if (!(await this.selectFirstWorkflow())) {
+      throw new Error("fillHeader: could not pick a workflow — the workflow combobox was absent or its list empty");
+    }
     if (data.description !== undefined) {
       const d = this.descriptionInput();
-      if ((await d.count()) > 0) await d.fill(data.description);
+      await expect(d, "PR description input (#pr-description) not present").toBeVisible({ timeout: 10_000 });
+      await d.fill(data.description);
     }
   }
 
@@ -294,7 +311,15 @@ export class PurchaseRequestPage extends BasePage {
     // matches nothing here, even though the control's own text reads exactly
     // that. Selecting before Add Item keeps `.first()` unambiguous: the item row
     // adds comboboxes of its own.
-    await this.selectFirstWorkflow().catch(() => {});
+    // Only pick it when none is chosen yet: a second line item must not re-open the
+    // workflow combobox (the first combobox on the form) and change the choice.
+    const workflow = this.page.getByRole("combobox").first();
+    await workflow.waitFor({ state: "visible", timeout: 10_000 });
+    if (/select workflow/i.test((await workflow.textContent()) ?? "")) {
+      if (!(await this.selectFirstWorkflow())) {
+        throw new Error("addLineItem: could not pick a workflow — Add Item is gated on it");
+      }
+    }
 
     await this.addItemButton().click({ timeout: 10_000 });
     // Anchor on position, not on content: every cascade step replaces the trigger
@@ -324,11 +349,16 @@ export class PurchaseRequestPage extends BasePage {
       await qtyInput.waitFor({ state: "visible", timeout: 10_000 });
       await qtyInput.fill(String(data.quantity));
     }
-    await this.pickFirstInCombobox(row.getByRole("button", { name: /select unit/i }).first()).catch(() => {});
-    await this.pickFirstInCombobox(row.getByRole("button", { name: /select delivery point/i }).first()).catch(() => {});
+    // Unit auto-fills from the product and the delivery point may already be defaulted, so
+    // these two triggers are legitimately absent on some rows (pickFirstInCombobox then
+    // returns false without throwing).
+    await this.pickFirstInCombobox(row.getByRole("button", { name: /select unit/i }).first());
+    await this.pickFirstInCombobox(row.getByRole("button", { name: /select delivery point/i }).first());
     if (data.isFOC) {
-      const foc = row.getByRole("checkbox", { name: /foc/i }).first();
-      if ((await foc.count()) > 0) await foc.check({ force: true }).catch(() => {});
+      // FE foc-cell.tsx: FOC is a quantity input (items.N.foc_qty), not a checkbox.
+      const foc = row.locator('input[name$=".foc_qty"]').first();
+      await expect(foc, "FOC qty input not present on the new row").toBeVisible({ timeout: 5_000 });
+      await foc.fill(String(data.quantity ?? 1));
     }
     // No per-item Save in the inline datagrid — the row persists with the form.
   }
@@ -456,11 +486,10 @@ export class PurchaseRequestPage extends BasePage {
     // networkidle — the detail page polls notifications, so the network never
     // goes idle and waitForLoadState("networkidle") would eat the whole test
     // budget and time out.
-    await this.saveDraftButton()
-      .or(this.cancelFormButton())
-      .first()
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .catch(() => {});
+    await expect(
+      this.saveDraftButton().or(this.cancelFormButton()).first(),
+      "edit mode did not open (no Save/Cancel after pressing Edit)",
+    ).toBeVisible({ timeout: 10_000 });
   }
 
   /**
@@ -489,14 +518,15 @@ export class PurchaseRequestPage extends BasePage {
    */
   async saveEditMode() {
     const save = this.saveDraftButton();
-    if (!(await save.isVisible().catch(() => false))) return;
-    await save.click({ timeout: 5_000 }).catch(() => {});
-    await this.page
-      .locator('[data-sonner-toast], [role="status"], [role="alert"]')
-      .filter({ hasText: /updated successfully|saved|success|สำเร็จ/i })
-      .first()
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .catch(() => {});
+    await expect(save, "Save not visible in edit mode").toBeVisible({ timeout: 10_000 });
+    await save.click({ timeout: 10_000 });
+    await expect(
+      this.page
+        .locator('[data-sonner-toast], [role="status"], [role="alert"]')
+        .filter({ hasText: /updated successfully|saved|success|สำเร็จ/i })
+        .first(),
+      "no success toast after Save in edit mode",
+    ).toBeVisible({ timeout: 15_000 });
   }
 
   // ── Line item mutation ───────────────────────────────────────────────
@@ -591,10 +621,12 @@ export class PurchaseRequestPage extends BasePage {
   }
 
   async selectAllInEditMode() {
-    // Idempotent: if the bulk actions are already showing, rows are selected.
-    if (await this.bulkActionToolbar().isVisible().catch(() => false)) return;
+    // Idempotent: the bulk toolbar (Approve / Send for Review / Reject / Split) is always
+    // rendered in edit mode and only *enabled* once rows are selected, so "visible" proves
+    // nothing — test the Approve button's enabled state instead.
+    if (await this.bulkApproveInEditMode().isEnabled().catch(() => false)) return;
     const cb = this.selectAllCheckboxInEditMode();
-    if ((await cb.count()) === 0) return;
+    await expect(cb, "select-all checkbox missing in edit mode").toBeVisible({ timeout: 10_000 });
     await cb.click();
     // Clicking "Select all" opens a "Select Items" dialog; choose "All items".
     const dialog = this.page.getByRole("dialog", { name: /select items/i });
@@ -602,6 +634,7 @@ export class PurchaseRequestPage extends BasePage {
       await dialog.getByRole("button", { name: /all items/i }).first().click().catch(() => {});
       await dialog.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
     }
+    await expect(this.bulkApproveInEditMode(), "selecting all rows did not enable the bulk actions").toBeEnabled({ timeout: 10_000 });
   }
 
   bulkApproveInEditMode(): Locator {

@@ -28,7 +28,7 @@ export class PurchaseOrderPage extends BasePage {
 
   /** List opens on "My pending" (`?view=my-pending`); this opens "All Documents". */
   async gotoAllDocuments() {
-    await this.page.goto(`${LIST_PATH}?view=all-document`);
+    await this.page.goto(`${LIST_PATH}?view=all-document&perpage=100`);
     await this.page.waitForLoadState("networkidle");
     await this.waitForListRows();
   }

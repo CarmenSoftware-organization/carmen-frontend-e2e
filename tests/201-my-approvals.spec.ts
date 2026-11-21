@@ -5,6 +5,8 @@ import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
 import { openRecordFromRow } from "./helpers/list-row";
+import { enterApproverEditMode } from "./pages/pr-approver.helpers";
+import { expectActionUnavailable } from "./helpers/unavailable";
 
 
 
@@ -93,7 +95,7 @@ hodTest.describe("My Approvals — Queue", () => {
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/my-approval\n2. ตรวจสอบว่า queue ว่างเปล่าพร้อมข้อความแจ้งว่าไม่มี pending approvals",
+            "1. ไปที่ /procurement/my-approval\n2. ค้นหาเอกสารที่ไม่มีอยู่ (STD dataset มี PR รออนุมัติของ HOD เสมอ)\n3. ตรวจสอบว่า queue ว่างพร้อมข้อความ 'No pending approvals'",
         },
         { type: "expected", description: "ผู้ใช้เห็น queue ว่างเปล่าพร้อมข้อความแจ้งว่าไม่มี pending approvals" },
         { type: "priority", description: "Medium" },
@@ -103,7 +105,13 @@ hodTest.describe("My Approvals — Queue", () => {
     async ({ page }) => {
       const ma = new MyApprovalsPage(page);
       await ma.gotoList();
-      // Empty state may not be present if seeded data exists — best-effort
+      // HOD has pending PRs in the STD dataset, so the empty queue is reached by
+      // searching for a document that does not exist (approve-queue-list.tsx
+      // EmptyComponent "No pending approvals").
+      await ma.searchInput().fill("__NO_SUCH_DOC__");
+      await page.keyboard.press("Enter");
+      await expect(page.getByText(/no pending approvals/i).first()).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("row").filter({ hasText: /PR\d{6,}/ })).toHaveCount(0);
     },
   );
 
@@ -238,17 +246,19 @@ hodTest.describe("My Approvals — Reject from PR detail", () => {
     async ({ page }) => {
       const ma = new MyApprovalsPage(page);
       await ma.gotoPRList();
-      const pendingRow = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await pendingRow.count()) === 0) {
-        hodTest.skip(true, "No pending PR to reject");
-        return;
-      }
+      const pendingRow = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(pendingRow, "No pending PR to reject — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(pendingRow);
       // Approve/Reject live in edit mode only — the view page has just Edit/More.
-      await ma.enterEditMode();
-      await ma.rejectButton().click({ timeout: 10_000 });
-      await ma.reasonInput().fill("Rejected. Budget not available for this purchase.", { timeout: 10_000 }).catch(() => {});
+      const pr = await enterApproverEditMode(page);
+      await pr.bulkRejectInEditMode().click({ timeout: 10_000 });
+      await ma.reasonInput().fill("Rejected. Budget not available for this purchase.", { timeout: 10_000 });
+      const rejected = page.waitForResponse(
+        (r) => /purchase-requests\/[^/]+\/reject/.test(r.url()) && r.request().method() === "PATCH",
+        { timeout: 20_000 },
+      );
       await ma.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+      expect((await rejected).ok(), "PATCH .../reject was refused").toBe(true);
     },
   );
 
@@ -270,12 +280,12 @@ hodTest.describe("My Approvals — Reject from PR detail", () => {
     async ({ page }) => {
       const ma = new MyApprovalsPage(page);
       await ma.gotoPRList();
-      const pendingRow = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await pendingRow.count()) === 0) return;
+      const pendingRow = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(pendingRow, "required record/element missing — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(pendingRow);
       // Approve/Reject live in edit mode only — the view page has just Edit/More.
-      await ma.enterEditMode();
-      await ma.rejectButton().click({ timeout: 10_000 });
+      const pr = await enterApproverEditMode(page);
+      await pr.bulkRejectInEditMode().click({ timeout: 10_000 });
       await ma.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
       await expect(ma.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
@@ -299,14 +309,19 @@ hodTest.describe("My Approvals — Reject from PR detail", () => {
     async ({ page }) => {
       const ma = new MyApprovalsPage(page);
       await ma.gotoPRList();
-      const pendingRow = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await pendingRow.count()) === 0) return;
+      const pendingRow = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(pendingRow, "required record/element missing — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(pendingRow);
       // Approve/Reject live in edit mode only — the view page has just Edit/More.
-      await ma.enterEditMode();
-      await ma.rejectButton().click({ timeout: 10_000 });
-      await ma.reasonInput().fill("Rejected. Incorrect PO number - please check PO-123456789.", { timeout: 10_000 }).catch(() => {});
+      const pr = await enterApproverEditMode(page);
+      await pr.bulkRejectInEditMode().click({ timeout: 10_000 });
+      await ma.reasonInput().fill("Rejected. Incorrect PO number - please check PO-123456789.", { timeout: 10_000 });
+      const rejected = page.waitForResponse(
+        (r) => /purchase-requests\/[^/]+\/reject/.test(r.url()) && r.request().method() === "PATCH",
+        { timeout: 20_000 },
+      );
       await ma.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
+      expect((await rejected).ok(), "PATCH .../reject was refused").toBe(true);
     },
   );
 });
@@ -330,16 +345,12 @@ requestorTest.describe("My Approvals — Reject — Permission denial", () => {
     async ({ page }) => {
       const ma = new MyApprovalsPage(page);
       await ma.gotoPRList();
-      const pendingRow = page.locator("tbody").getByRole("row").filter({ hasText: /pending|in.progress/i }).first();
-      if ((await pendingRow.count()) === 0) return;
+      const pendingRow = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
+      await expect(pendingRow, "required record/element missing — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(pendingRow);
       const reject = ma.rejectButton();
       // Either button is hidden (correct) or click yields permission error
-      if ((await reject.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await reject.click().catch(() => {});
-      }
+      await expectActionUnavailable(page, reject);
     },
   );
 });

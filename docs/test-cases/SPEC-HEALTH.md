@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1394 |
-| **Running** | **1171** |
+| Cases declared | 1366 |
+| **Running** | **1157** |
 | Skipped | 201 |
-| Fixme | 22 |
-| **Dormant** (skipped + fixme) | **16%** |
-| Running cases asserting only through a page-object helper | 37 |
-| **Running cases asserting nothing at all** | **244** |
-| Running cases whose assertions are all trivial | 19 |
-| Running cases behind an in-body skip guard | 157 |
-| Assertions in running cases | 1814 |
+| Fixme | 8 |
+| **Dormant** (skipped + fixme) | **15%** |
+| Running cases asserting only through a page-object helper | 31 |
+| **Running cases asserting nothing at all** | **210** |
+| Running cases whose assertions are all trivial | 10 |
+| Running cases behind an in-body skip guard | 113 |
+| Assertions in running cases | 1903 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -44,16 +44,14 @@ Sorted by dormant share, then by cases that assert nothing.
 | Spec | Run | Skip | Fixme | Dormant | Asserts nothing | Helper only | Trivial only | Guarded | Assertions | Catch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `900-period-end.spec.ts` | 4 | 30 | 1 | 89% | 0 | 0 | 0 | **1** | 4 | 1 |
-| `401-po.spec.ts` | 17 | 32 | 10 | 71% | **1** | 1 | 0 | 0 | 33 | 1 |
 | `601-cn.spec.ts` | 45 | 79 | 0 | 64% | **33** | 0 | **2** | **3** | 16 | 22 |
-| `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | **3** | 0 | **1** | **1** | 6 | 3 |
-| `301-pr.spec.ts` | 83 | 47 | 2 | 37% | **36** | 7 | **8** | **49** | 50 | 87 |
+| `401-po.spec.ts` | 19 | 32 | 0 | 63% | 0 | 0 | 0 | **1** | 62 | 0 |
+| `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 13 | 0 |
+| `301-pr.spec.ts` | 66 | 47 | 0 | 42% | **6** | 2 | 0 | **5** | 85 | 0 |
 | `311-pr-returned-flow.spec.ts` | 10 | 0 | 2 | 17% | 0 | 0 | 0 | **9** | 14 | 6 |
 | `711-stock-replenishment.spec.ts` | 33 | 0 | 3 | 8% | 0 | 0 | 0 | 0 | 47 | 16 |
-| `403-po-approver-journey.spec.ts` | 18 | 0 | 1 | 5% | 0 | 0 | 0 | 0 | 60 | 2 |
 | `720-stock-issue.spec.ts` | 24 | 0 | 1 | 4% | **18** | 0 | 0 | **1** | 10 | 9 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
-| `402-po-purchaser-journey.spec.ts` | 31 | 0 | 1 | 3% | 0 | 0 | 0 | 0 | 57 | 2 |
 | `701-sr.spec.ts` | 46 | 0 | 1 | 2% | **44** | 0 | 0 | **3** | 2 | 14 |
 | `501-grn.spec.ts` | 76 | 0 | 0 | 0% | **57** | 0 | **4** | **6** | 26 | 49 |
 | `310-pr-template.spec.ts` | 61 | 0 | 0 | 0% | **51** | 0 | **4** | 0 | 13 | 11 |
@@ -87,6 +85,8 @@ Sorted by dormant share, then by cases that assert nothing.
 | `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | **21** | 41 | 10 |
 | `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | **24** | 53 | 9 |
 | `312-pr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
+| `402-po-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 65 | 0 |
+| `403-po-approver-journey.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 70 | 1 |
 | `404-po-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 17 | 1 |
 | `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |

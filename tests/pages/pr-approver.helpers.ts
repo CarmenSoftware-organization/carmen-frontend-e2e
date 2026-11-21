@@ -1,4 +1,4 @@
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import type { Browser, BrowserContext, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { PurchaseRequestPage, LIST_PATH } from "./purchase-request.page";
 import { createDraftPR, type CreatedPR } from "./pr-creator.helpers";
@@ -196,4 +196,54 @@ export async function sendForReviewAsHOD(
 export async function gotoPRDetail(page: Page, ref: string): Promise<void> {
   await page.goto(`${LIST_PATH}/${ref}`);
   await page.waitForLoadState("networkidle");
+}
+
+
+/**
+ * On an open PR detail page as the stage's approver: Edit -> select every item row.
+ * Approve / Reject / Send for Review / Split are *bulk item actions* of edit mode — the
+ * view page offers just Edit and More, and Edit itself only shows for the user whose stage
+ * the PR sits at. Fails with that reason instead of timing out on a button that never comes.
+ */
+export async function enterApproverEditMode(page: Page): Promise<PurchaseRequestPage> {
+  const pr = new PurchaseRequestPage(page);
+  await expect(
+    pr.editModeButton(),
+    "PR is not at this role's approval stage — no Edit available",
+  ).toBeVisible({ timeout: 15_000 });
+  await pr.enterEditMode();
+  await pr.selectAllInEditMode();
+  return pr;
+}
+
+/** Approve every item of the open PR (bulk Approve + Save) and wait for the write to be accepted. */
+export async function approveOpenPR(page: Page): Promise<void> {
+  const pr = await enterApproverEditMode(page);
+  await pr.bulkApproveInEditMode().click({ timeout: 10_000 });
+  const written = page.waitForResponse(
+    (r) => /\/purchase-requests\/[^/?]+/.test(r.url()) && ["PATCH", "PUT"].includes(r.request().method()),
+    { timeout: 20_000 },
+  );
+  await pr.saveEditMode();
+  const res = await written;
+  expect(res.ok(), `saving the approval was refused (${res.status()})`).toBe(true);
+}
+
+/**
+ * Open the document-level "Send Back" dialog: Edit -> select all -> bulk Review -> Send Back,
+ * with the first stage radio chosen. Returns the dialog so a case can fill / leave the reason
+ * and confirm.
+ */
+export async function openSendBackDialog(page: Page): Promise<Locator> {
+  const pr = await enterApproverEditMode(page);
+  await pr.bulkSendForReviewInEditMode().click({ timeout: 10_000 });
+  const sendBack = page.getByRole("button", { name: /^send back$/i }).first();
+  await expect(sendBack, "document Send Back did not appear after marking items for review").toBeVisible({ timeout: 10_000 });
+  await sendBack.click({ timeout: 10_000 });
+  const dialog = page.locator('[role="dialog"], [role="alertdialog"]').last();
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  const stage = dialog.getByRole("radio").first();
+  await expect(stage, "Send Back dialog offers no stage to return to").toBeVisible({ timeout: 10_000 });
+  await stage.check({ force: true, timeout: 10_000 });
+  return dialog;
 }

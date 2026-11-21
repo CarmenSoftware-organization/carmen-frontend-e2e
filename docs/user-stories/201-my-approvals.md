@@ -73,7 +73,8 @@ Login เป็นผู้ใช้ที่มีสิทธิ์ approver �
 **Steps**
 
 1. ไปที่ /procurement/my-approval
-2. ตรวจสอบว่า queue ว่างเปล่าพร้อมข้อความแจ้งว่าไม่มี pending approvals
+2. ค้นหาเอกสารที่ไม่มีอยู่ (STD dataset มี PR รออนุมัติของ HOD เสมอ)
+3. ตรวจสอบว่า queue ว่างพร้อมข้อความ 'No pending approvals'
 
 **Expected**
 
@@ -562,4 +563,4 @@ default business unit มี code === 'BLAVG'; trigger ของ BU switcher ใ
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>
+<sub>Last regenerated: 2026-11-21 · git 30cfbd8</sub>
