@@ -18,12 +18,18 @@ import { ensureActiveBu } from "./helpers/bu";
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 
-interface Sr { id: string; sr_no: string; doc_status: string; workflow_current_stage: string | null; department_name?: string | null; from_location_name?: string; to_location_name?: string; store_requisition_detail: { product: { name: string } }[] }
-async function loadSrs(): Promise<Sr[]> {
+interface Sr { id: string; description?: string | null; sr_no: string; doc_status: string; workflow_current_stage: string | null; department_name?: string | null; from_location_name?: string; to_location_name?: string; store_requisition_detail: { product: { name: string } }[] }
+async function loadAllSrs(): Promise<Sr[]> {
   const r = await rootGet("Purchase", `/store-requisitions?perpage=50&bu_code=${BU_CODE}`);
   expect(r.status, "store-requisitions list").toBe(200);
   return r.body.data.find((b: { bu_code: string }) => b.bu_code === BU_CODE).data as Sr[];
 }
+/** The data:reset SRs only - 701-sr.spec.ts leaves finished/voided SRs ("E2E 701 ..." / SRs it seeded) behind. */
+async function loadSrs(): Promise<Sr[]> {
+  return (await loadAllSrs()).filter((s) => !/^E2E 701/.test(s.description ?? ""));
+}
+/** An SR still waiting at the Issue stage (a voided SR keeps its last stage name). */
+const atIssue = (s: Sr) => s.workflow_current_stage === "Issue" && s.doc_status === "in_progress";
 /** Data precondition (API-checked): the SR the case needs exists. */
 async function needSr(pick: (s: Sr) => boolean, what: string): Promise<Sr> {
   const found = (await loadSrs()).find(pick);
@@ -55,7 +61,7 @@ purchaseTest.describe("Stock Issue — List", () => {
       const srs = await loadSrs();
       const si = new StockIssuePage(page);
       await page.setViewportSize({ width: 1920, height: 1080 });
-      await si.gotoAllDocuments();
+      await page.goto(`${LIST_PATH}?view=all-document&perpage=50`);
       await expect(page).toHaveURL(/store-requisition/);
       for (const h of ["SR No.", "Workflow", "Requester", "Status"]) await expect(page.getByRole("columnheader", { name: h })).toBeVisible();
       for (const s of srs) await expect(page.getByText(s.sr_no).first()).toBeVisible();
@@ -96,14 +102,14 @@ purchaseTest.describe("Stock Issue — List", () => {
       ],
     },
     async ({ page }) => {
-      const srs = await loadSrs();
+      const srs = await loadAllSrs();
       purchaseTest.skip(srs.length <= 5, `TEST BU has only ${srs.length} SR(s); pagination needs > 5 (API-checked)`);
       await page.goto(`${LIST_PATH}?view=all-document&perpage=5`);
       await expect(recordRows(page)).toHaveCount(5, { timeout: 20_000 });
       const first = await recordRows(page).allInnerTexts();
       await page.getByRole("button", { name: /next page/i }).click();
       await expect(page).toHaveURL(/page=2/);
-      await expect(recordRows(page)).toHaveCount(srs.length - 5);
+      await expect(recordRows(page)).toHaveCount(Math.min(5, srs.length - 5));
       const second = await recordRows(page).allInnerTexts();
       expect(second.some((t) => first.includes(t))).toBe(false);
     },
@@ -124,10 +130,9 @@ purchaseTest.describe("Stock Issue — View Detail", () => {
       ],
     },
     async ({ page }) => {
-      const sr = await needSr((s) => s.workflow_current_stage === "Issue", "at the Issue stage");
-      const si = new StockIssuePage(page);
-      await si.gotoAllDocuments();
+      const sr = await needSr(atIssue, "at the Issue stage");
       await page.setViewportSize({ width: 1920, height: 1080 });
+      await page.goto(`${LIST_PATH}?view=all-document&perpage=50`);
       await page.getByText(sr.sr_no).first().click();
       await expect(page).toHaveURL(new RegExp(detailPath(sr.id)));
       const main = page.locator("main");
@@ -242,7 +247,7 @@ purchaseTest.describe("Stock Issue — Search & Filter", () => {
       ],
     },
     async ({ page }) => {
-      const srs = await loadSrs();
+      const srs = await loadAllSrs();
       const si = new StockIssuePage(page);
       await si.gotoAllDocuments();
       const input = si.searchInput();
@@ -251,7 +256,7 @@ purchaseTest.describe("Stock Issue — Search & Filter", () => {
       await expect(recordRows(page)).toHaveCount(1);
       await input.fill("");
       await input.press("Enter");
-      await expect(recordRows(page)).toHaveCount(srs.length);
+      await expect(recordRows(page)).toHaveCount(Math.min(10, srs.length));
     },
   );
 
@@ -322,7 +327,7 @@ purchaseTest.describe("Stock Issue — Issue stage actions", () => {
       ],
     },
     async ({ page }) => {
-      const sr = await needSr((s) => s.workflow_current_stage === "Issue", "at the Issue stage");
+      const sr = await needSr(atIssue, "at the Issue stage");
       await goDetail(page, sr);
       for (const name of [/^issue$/i, /^approve$/i, /^reject$/i, /submit/i]) await expect(page.getByRole("button", { name })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /^Print$/ })).toBeVisible();
@@ -390,7 +395,7 @@ purchaseTest.describe("Stock Issue — Print", () => {
       ],
     },
     async ({ page }) => {
-      const sr = await needSr((s) => s.workflow_current_stage === "Issue", "at the Issue stage");
+      const sr = await needSr(atIssue, "at the Issue stage");
       await goDetail(page, sr);
       const viewer = page.waitForResponse((r) => r.url().includes(`/store-requisitions/${sr.id}/print-viewer`));
       const popup = page.waitForEvent("popup");
@@ -412,7 +417,7 @@ purchaseTest.describe("Stock Issue — Print", () => {
       ],
     },
     async ({ page }) => {
-      const sr = await needSr((s) => s.workflow_current_stage === "Issue", "at the Issue stage");
+      const sr = await needSr(atIssue, "at the Issue stage");
       await goDetail(page, sr);
       await page.getByRole("tab", { name: "Items" }).click();
       await expect(page.getByRole("columnheader", { name: /Issued/i })).toBeVisible();
@@ -477,7 +482,7 @@ requestorTest.describe("Stock Issue — Print — Permission denial", () => {
       ],
     },
     async ({ page }) => {
-      const sr = (await loadSrs()).find((s) => s.workflow_current_stage === "Issue")!;
+      const sr = (await loadSrs()).find(atIssue)!;
       await page.goto(detailPath(sr.id));
       await expect(errorState(page)).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole("button", { name: /^Print$/ })).toHaveCount(0);
