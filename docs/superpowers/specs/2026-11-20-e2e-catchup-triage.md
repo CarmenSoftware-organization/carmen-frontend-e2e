@@ -312,3 +312,13 @@ Evidence confidence: rows tagged "(unverified)" are classified from the error si
 | `921-period-close-count.spec.ts` | TC-PE-510001 | not in default run: !irreversibleAllowed(PERIOD) , "ต้องตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ก่อน — submit ใ | `env-data` | data/BU-type guard — keep with reason (not visibility) |
 | `924-period-close-close.spec.ts` | TC-PE-540001 | not in default run: !irreversibleAllowed(PERIOD) , "ต้องตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ก่อน — ปิดงวดย้ | `env-data` | data/BU-type guard — keep with reason (not visibility) |
 | `924-period-close-close.spec.ts` | TC-PE-540002 | not in default run: SCN.method !== "average" , "เฉพาะต้นทุนเฉลี่ย" ; (await currentPeriod(BU)) !== NEXT , "ยัง | `module` | visibility guard (unverified) |
+
+## Task 1 re-measure (2026-11-21, branch `fix/e2e-shared-ui-patterns`)
+
+`ui-pattern:*` rows after the shared page-object fixes (data:reset run first; `--project=chromium`).
+
+| Cluster | Rows before | Now | Outcome |
+|---|---|---|---|
+| `list-default-scope` | 13 | 0 | 10 rows pass (301 ×5, 401 ×2, 060101/060102 PO scope, TC-PR-400004 ...). TC-SI-040002/060002 moved to `env-data` (requestor sees no SR; STD seed creates SRs as purchase), now a reasoned data guard |
+| `list-toolbar` | 6 | 0 | TC-PO-060102, TC-PO-070102 pass (toggle buttons / chip with `aria-pressed`). TC-PR-060203, TC-PR-070103 now `test.fail` (`suspected-bug`: workflow-stages scoped to requestor). TC-PT-060004 deleted (no such UI in the SPA) |
+| `doc-header-card` | 13 | 5 | TC-PR-400002/3 pass (Comment button factory). TC-PO-200001 deleted (no QR on PO detail). Remaining are data or other modules, moved: 410003/460004/460005 `env-data`, 060207/060210/060211 `module` (PO vendor pick, Task 3), 070308/070315 `module`, TC-SR-050001/070001 `list-default-scope` guards owned by Task 4 |

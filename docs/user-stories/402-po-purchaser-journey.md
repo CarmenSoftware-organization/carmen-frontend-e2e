@@ -63,7 +63,7 @@ Login เป็น Purchaser (carmensoftware.dev+purchase@gmail.com)
 
 **Expected**
 
-URL อยู่ที่หน้า list ของ PO; แท็บ My Pending ถูกเลือกเมื่อมี
+URL อยู่ที่หน้า list ของ PO; ปุ่ม My Pending มองเห็นและถูกเลือก
 
 ---
 
@@ -741,4 +741,4 @@ URL ยังคงอยู่ที่ PO ref หลัง Send to Vendor (lif
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git c6e714b</sub>

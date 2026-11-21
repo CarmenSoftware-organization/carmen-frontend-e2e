@@ -10,6 +10,28 @@ export class StoreRequisitionPage extends BasePage {
     await this.page.waitForLoadState("networkidle");
   }
 
+  /**
+   * The list opens on "My pending" (`?view=my-pending`, the useURL default in the
+   * route component — empty for most roles). Specs that need to find a record by
+   * status open "All Documents" instead. FE: ViewModeToggle (components/share/
+   * view-mode-toggle.tsx), list pages 2f77b773 / 6802a125.
+   */
+  async gotoAllDocuments() {
+    await this.page.goto(`${LIST_PATH}?view=all-document`);
+    await this.page.waitForLoadState("networkidle");
+    await this.waitForListRows();
+  }
+
+  /** Scope toggle: "My pending" (<button>, not a Radix tab). */
+  tabMyPending(): Locator {
+    return this.page.getByRole("button", { name: /my pending|my po|my pr/i }).first();
+  }
+
+  /** Scope toggle: "All Documents" (<button>, not a Radix tab). */
+  tabAllDocuments(): Locator {
+    return this.page.getByRole("button", { name: /all documents?|^all$/i }).first();
+  }
+
   async gotoNew() {
     await this.page.goto(NEW_PATH);
     await this.page.waitForLoadState("networkidle");

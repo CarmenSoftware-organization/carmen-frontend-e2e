@@ -23,7 +23,7 @@ purchaseTest.describe("Step 1 — PO List", () => {
       annotation: [
         { type: "preconditions", description: "Login เป็น Purchaser (carmensoftware.dev+purchase@gmail.com)" },
         { type: "steps", description: "1. ไปที่ /procurement/purchase-order\n2. ตรวจสอบ URL และตรวจสอบว่า list table หรือ empty-state visible" },
-        { type: "expected", description: "URL อยู่ที่หน้า list ของ PO; แท็บ My Pending ถูกเลือกเมื่อมี" },
+        { type: "expected", description: "URL อยู่ที่หน้า list ของ PO; ปุ่ม My Pending มองเห็นและถูกเลือก" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -32,9 +32,10 @@ purchaseTest.describe("Step 1 — PO List", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      // The scope toggle is part of every PO list; a missing button must fail, not skip.
       const tab = po.tabMyPending();
-      if ((await tab.count()) === 0) return;
-      await expect(tab).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      await expect(tab).toBeVisible({ timeout: 10_000 });
+      await po.expectScopeSelected(tab);
     },
   );
 
@@ -53,12 +54,9 @@ purchaseTest.describe("Step 1 — PO List", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const tab = po.tabAllDocuments();
-      if ((await tab.count()) === 0) {
-        purchaseTest.skip(true, "All Documents tab not present in this build");
-        return;
-      }
+      await expect(tab).toBeVisible({ timeout: 10_000 });
       await tab.click();
-      await expect(tab).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      await po.expectScopeSelected(tab);
     },
   );
 

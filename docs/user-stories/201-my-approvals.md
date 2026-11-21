@@ -47,7 +47,7 @@ Login เป็นผู้ใช้ที่มีสิทธิ์ approver �
 
 **Steps**
 
-1. ไปที่ /procurement/approval
+1. ไปที่ /procurement/my-approval
 2. ตรวจสอบว่า document count badges แสดงผลถูกต้อง
 3. ตรวจสอบว่า total pending count แสดงเด่นชัด
 4. ตรวจสอบว่าเอกสารเรียงตามวันที่ส่ง (เก่าสุดก่อน)
@@ -72,7 +72,7 @@ Login เป็นผู้ใช้ที่มีสิทธิ์ approver �
 
 **Steps**
 
-1. ไปที่ /procurement/approval
+1. ไปที่ /procurement/my-approval
 2. ตรวจสอบว่า queue ว่างเปล่าพร้อมข้อความแจ้งว่าไม่มี pending approvals
 
 **Expected**
@@ -94,7 +94,7 @@ Login เป็นผู้ใช้ที่มีสิทธิ์ approver �
 
 **Steps**
 
-1. ไปที่ /procurement/approval
+1. ไปที่ /procurement/my-approval
 2. รอให้ queue โหลด
 3. ตรวจสอบว่า queue โหลดเสร็จภายใน 2 วินาที
 
@@ -117,7 +117,7 @@ Login เข้าระบบแล้วแต่ไม่มีการต�
 
 **Steps**
 
-1. ไปที่ /procurement/approval
+1. ไปที่ /procurement/my-approval
 2. ตรวจสอบว่าระบบแสดงข้อความ error หรือ redirect ไปยังหน้า permission denied
 
 **Expected**
@@ -562,4 +562,4 @@ default business unit มี code === 'BLAVG'; trigger ของ BU switcher ใ
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>

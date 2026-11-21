@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1423 |
-| **Running** | **1179** |
+| Cases declared | 1421 |
+| **Running** | **1177** |
 | Skipped | 201 |
 | Fixme | 43 |
 | **Dormant** (skipped + fixme) | **17%** |
 | Running cases asserting only through a page-object helper | 38 |
-| **Running cases asserting nothing at all** | **285** |
-| Running cases whose assertions are all trivial | 25 |
-| Running cases behind an in-body skip guard | 251 |
-| Assertions in running cases | 1547 |
+| **Running cases asserting nothing at all** | **284** |
+| Running cases whose assertions are all trivial | 23 |
+| Running cases behind an in-body skip guard | 243 |
+| Assertions in running cases | 1560 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -48,8 +48,8 @@ Sorted by dormant share, then by cases that assert nothing.
 | `601-cn.spec.ts` | 45 | 79 | 0 | 64% | **33** | 0 | **2** | **3** | 16 | 22 |
 | `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | **3** | 0 | **1** | **1** | 6 | 3 |
 | `043-certification.spec.ts` | 6 | 0 | 9 | 60% | 0 | 0 | 0 | 0 | 7 | 1 |
-| `401-po.spec.ts` | 25 | 32 | 3 | 58% | **4** | 2 | **1** | **6** | 30 | 25 |
-| `301-pr.spec.ts` | 83 | 47 | 2 | 37% | **36** | 7 | **8** | **51** | 48 | 87 |
+| `401-po.spec.ts` | 24 | 32 | 3 | 59% | **4** | 2 | **1** | **5** | 29 | 25 |
+| `301-pr.spec.ts` | 83 | 47 | 2 | 37% | **36** | 7 | **8** | **49** | 50 | 87 |
 | `311-pr-returned-flow.spec.ts` | 10 | 0 | 2 | 17% | 0 | 0 | 0 | **9** | 14 | 6 |
 | `159-pl.spec.ts` | 24 | 0 | 4 | 14% | **1** | 1 | **2** | **1** | 32 | 21 |
 | `101-product-category.spec.ts` | 21 | 0 | 2 | 9% | 0 | 0 | 0 | 0 | 40 | 1 |
@@ -57,10 +57,10 @@ Sorted by dormant share, then by cases that assert nothing.
 | `1001-campaign.spec.ts` | 43 | 0 | 3 | 7% | **33** | 0 | **1** | **2** | 16 | 26 |
 | `040-currency.spec.ts` | 14 | 0 | 1 | 7% | 0 | 0 | 0 | 0 | 33 | 1 |
 | `150-vendor.spec.ts` | 29 | 0 | 2 | 6% | 0 | 1 | 0 | 0 | 51 | 1 |
-| `403-po-approver-journey.spec.ts` | 18 | 0 | 1 | 5% | 0 | 0 | 0 | **15** | 27 | 10 |
-| `720-stock-issue.spec.ts` | 24 | 0 | 1 | 4% | **18** | 0 | **2** | **1** | 6 | 9 |
+| `403-po-approver-journey.spec.ts` | 18 | 0 | 1 | 5% | 0 | 0 | 0 | **14** | 27 | 9 |
+| `720-stock-issue.spec.ts` | 24 | 0 | 1 | 4% | **18** | 0 | 0 | **1** | 10 | 9 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
-| `160-pl-template.spec.ts` | 32 | 0 | 1 | 3% | **3** | 7 | 0 | **6** | 42 | 21 |
+| `160-pl-template.spec.ts` | 31 | 0 | 1 | 3% | **2** | 7 | 0 | **5** | 42 | 19 |
 | `701-sr.spec.ts` | 46 | 0 | 1 | 2% | **44** | 0 | 0 | **3** | 2 | 14 |
 | `079-delivery-point.spec.ts` | 49 | 0 | 1 | 2% | 0 | 0 | 0 | **25** | 67 | 34 |
 | `501-grn.spec.ts` | 76 | 0 | 0 | 0% | **57** | 0 | **4** | **6** | 26 | 49 |
@@ -83,10 +83,10 @@ Sorted by dormant share, then by cases that assert nothing.
 | `110-op-category.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 28 | 4 |
 | `121-recipe-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
 | `131-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
-| `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | **22** | 37 | 10 |
-| `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | **25** | 49 | 9 |
+| `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | **21** | 41 | 10 |
+| `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | **24** | 53 | 9 |
 | `312-pr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
-| `402-po-purchaser-journey.spec.ts` | 32 | 0 | 0 | 0% | 0 | 0 | 0 | **26** | 42 | 17 |
+| `402-po-purchaser-journey.spec.ts` | 32 | 0 | 0 | 0% | 0 | 0 | 0 | **25** | 42 | 17 |
 | `404-po-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 17 | 1 |
 | `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |

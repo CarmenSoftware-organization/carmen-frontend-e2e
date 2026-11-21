@@ -16,7 +16,7 @@ _Generated from `tests/002-spa-smoke.spec.ts` annotations. Edit annotations, not
 | TC-SPA-010003 | หน้า shell (report/profile/notifications) เปิดได้ ไม่เป็น 404 | Medium | Smoke |
 | TC-SPA-010004 | config lists render (dialog-based + page-based) | High | Smoke |
 | TC-SPA-010005 | procurement lists render ครบทุกโมดูล | High | Smoke |
-| TC-SPA-010006 | PR detail เปิดจาก list ได้ (ถ้ามีข้อมูล) + landing/approval ไม่เป็น 404 | Medium | Smoke |
+| TC-SPA-010006 | PR detail เปิดจาก list All Documents ได้ + landing/approval ไม่เป็น 404 | Medium | Smoke |
 
 ---
 
@@ -36,7 +36,7 @@ _Generated from `tests/002-spa-smoke.spec.ts` annotations. Edit annotations, not
 
 **Expected**
 
-ถูก redirect ไป /login และฟอร์ม login แสดง (email field + ปุ่ม Sign In)
+ถูก redirect ไป /login?next=%2Fdashboard และฟอร์ม login แสดง (email field + ปุ่ม Sign In)
 
 ---
 
@@ -120,7 +120,7 @@ Login เป็น admin ผ่าน auth fixture
 
 ---
 
-## TC-SPA-010006 — PR detail เปิดจาก list ได้ (ถ้ามีข้อมูล) + landing/approval ไม่เป็น 404
+## TC-SPA-010006 — PR detail เปิดจาก list All Documents ได้ + landing/approval ไม่เป็น 404
 
 > **As a** Admin user, **I want** the Spa Smoke list page to load successfully, **so that** I can manage Spa Smoke records.
 
@@ -132,13 +132,13 @@ Login เป็น admin ผ่าน auth fixture
 
 **Steps**
 
-1. /procurement/purchase-request คลิกปุ่มแถวแรกใน tbody 2. /procurement 3. /procurement/approval
+1. /procurement/purchase-request?view=all-document คลิกเลขที่เอกสารของแถวแรก 2. /procurement 3. /procurement/my-approval
 
 **Expected**
 
-คลิกแล้ว URL เป็น /purchase-request/<id> (ข้ามถ้า list ว่าง); landing + approval ไม่เป็น 404
+คลิกแล้ว URL เป็น /purchase-request/<id> (ชุดข้อมูลมาตรฐานมี PR อยู่แล้ว list จึงต้องไม่ว่าง); landing + approval ไม่เป็น 404
 
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>

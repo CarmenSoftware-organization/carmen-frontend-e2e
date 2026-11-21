@@ -721,38 +721,6 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
   );
 
   procurementManagerTest(
-    "TC-PT-060004 Search and View Templates - Edge Case - Filter by Product Count",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เข้า Carmen Blue พร้อมสิทธิ์ดู template" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/price-list-template\n2. คลิก status tab 'All'\n3. คลิก 'Filter by Product Count'\n4. กรอก '0' ในช่องจำนวนต่ำสุด\n5. กรอก '10' ในช่องจำนวนสูงสุด\n6. คลิก 'Apply Filter'",
-        },
-        { type: "expected", description: "ระบบแสดง list ของ template ที่กรองแล้วโดยมีจำนวน product อยู่ในช่วงที่ระบุ" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const tpl = new PriceListTemplatePage(page);
-      await tpl.gotoList();
-      const filterBtn = tpl.filterByProductCount();
-      if ((await filterBtn.count()) === 0) {
-        procurementManagerTest.skip(true, "Filter by Product Count UI not exposed");
-        return;
-      }
-      await filterBtn.click().catch(() => {});
-      const minInput = page.getByLabel(/min.*count|minimum/i).first();
-      const maxInput = page.getByLabel(/max.*count|maximum/i).first();
-      if ((await minInput.count()) > 0) await minInput.fill("0");
-      if ((await maxInput.count()) > 0) await maxInput.fill("10");
-      await tpl.applyFilterButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  procurementManagerTest(
     "TC-PT-060005 Search and View Templates - Edge Case - Sort by Name (Z-A)",
     {
       annotation: [

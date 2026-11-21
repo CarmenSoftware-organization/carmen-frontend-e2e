@@ -323,10 +323,6 @@ export class PriceListTemplatePage extends BasePage {
   }
 
   // ── Filters / sorting (list edge cases) ──────────────────────────────
-  filterByProductCount(): Locator {
-    return this.page.getByRole("button", { name: /filter by product count/i }).first();
-  }
-
   applyFilterButton(): Locator {
     return this.page.getByRole("button", { name: /apply filters?/i }).first();
   }

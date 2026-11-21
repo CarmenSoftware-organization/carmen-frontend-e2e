@@ -37,6 +37,13 @@ export class PurchaseRequestPage extends BasePage {
     await this.page.waitForLoadState("networkidle");
   }
 
+  /** List opens on "My pending" (`?view=my-pending`); this opens "All Documents". */
+  async gotoAllDocuments() {
+    await this.page.goto(`${LIST_PATH}?view=all-document`);
+    await this.page.waitForLoadState("networkidle");
+    await this.waitForListRows();
+  }
+
   async gotoNew() {
     await this.page.goto(NEW_PATH);
     await this.page.waitForLoadState("networkidle");
@@ -121,6 +128,22 @@ export class PurchaseRequestPage extends BasePage {
     const header = this.page.getByRole("columnheader", { name: new RegExp(column, "i") }).first();
     if ((await header.count()) > 0) await header.click();
     await this.page.waitForLoadState("networkidle").catch(() => {});
+  }
+
+  /**
+   * Stage filter. There is no standalone "All Stage" dropdown any more: the stage
+   * control is a field of the list filter menu (use-pr-filter-fields.tsx,
+   * `control: "stage"` → components/filter/filter-stage.tsx, inline variant).
+   * Flow: Filter button → "Stage" field → checkbox list ("All Stage" + each stage).
+   */
+  async openStageFilter() {
+    await this.filterButton().click();
+    await this.page.getByRole("dialog").getByRole("button", { name: /^stage$/i }).first().click();
+  }
+
+  /** A stage checkbox inside the open stage filter ("All Stage" or a stage name). */
+  stageFilterOption(name: RegExp | string): Locator {
+    return this.page.getByRole("dialog").getByRole("checkbox", { name }).first();
   }
 
   // Redesigned list uses viewMode <Button>s, not Radix tabs.

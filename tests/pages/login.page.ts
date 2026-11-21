@@ -5,10 +5,17 @@ export class LoginPage extends BasePage {
   readonly emailInput = () => this.page.locator("#email");
   readonly passwordInput = () => this.page.locator("#password");
   readonly submitButton = () => this.page.getByRole("button", { name: "Sign In" });
-  readonly rateLimitMessage = () => this.page.getByText("Too many requests");
-  /** Transient network error surfaced when the (remote) auth backend times out. */
+  // Gateway IP throttle ("Too many requests") or the fallback of the per-(email+IP) login lock when
+  // the 429 carries no retry_after (messages/en.json login.errors.tooManyAttemptsFallback).
+  readonly rateLimitMessage = () =>
+    this.page.getByText(/too many requests|too many login attempts\. please try again later/i);
+  /**
+   * Transient network error surfaced when the auth backend cannot be reached. The login form maps a
+   * transport error to errors.networkUnavailable ("Could not reach the server. …"), which replaced the
+   * old "Auth server unavailable" text.
+   */
   readonly serverUnavailableMessage = () =>
-    this.page.getByText(/auth server unavailable|server.*unavailable/i);
+    this.page.getByText(/could not reach the server|auth server unavailable|server.*unavailable/i);
   readonly showPasswordToggle = () =>
     this.page.getByRole("button", { name: /show password/i });
   readonly hidePasswordToggle = () =>
