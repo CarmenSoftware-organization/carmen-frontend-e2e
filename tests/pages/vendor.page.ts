@@ -81,8 +81,7 @@ export class VendorPage extends BasePage {
   }
 
   nameInput(): Locator {
-    // Redesigned hero NameField (placeholder "e.g. บริษัท ABC จำกัด").
-    return this.page.getByPlaceholder(/บริษัท ABC|ABC จำกัด|e\.g\. .*ABC/i).first();
+    return this.page.locator("#vendor-name");
   }
 
   descriptionInput(): Locator {
@@ -103,12 +102,12 @@ export class VendorPage extends BasePage {
 
   // ── Business type (LookupBuType: Popover + Command, multi-select) ──────
   businessTypeTrigger(): Locator {
-    // The business-type LookupBuType trigger is the aria-expanded outline button
-    // inside the vendor form (scope to #vendor-form to avoid the nav org-switcher,
-    // which also renders a ChevronsUpDown glyph).
+    // The General fields sit OUTSIDE <form id="vendor-form"> now (they live in the header card —
+    // FE 8a8885c0), so scope by the "Business Type" field wrapper instead of the form id.
     return this.page
-      .locator("#vendor-form button[aria-expanded]")
-      .filter({ has: this.page.locator(".lucide-chevrons-up-down") })
+      .locator('[data-slot="field"]')
+      .filter({ hasText: /Business Type/i })
+      .locator("button[aria-expanded]")
       .first();
   }
 
@@ -230,16 +229,19 @@ export class VendorPage extends BasePage {
     }
 
     const mode = data.mode ?? "international";
-    await this.page.locator(`#${mode === "thai" ? "thai" : "international"}-${index}`).check({ force: true }).catch(() => {});
+    // Radio labelled "Thailand" / "International" inside the address card (the old #thai-0 ids are gone)
+    await this.addressRow(index)
+      .getByRole("radio", { name: mode === "thai" ? /thailand/i : /international/i })
+      .check({ timeout: 5_000 });
 
     if (data.address_line1 !== undefined) await field("address_line1").fill(data.address_line1);
     if (data.address_line2 !== undefined) await field("address_line2").fill(data.address_line2);
-    if (data.city !== undefined) await field("city").fill(data.city).catch(() => {});
-    if (data.district !== undefined) await field("district").fill(data.district).catch(() => {});
-    if (data.sub_district !== undefined) await field("sub_district").fill(data.sub_district).catch(() => {});
-    if (data.province !== undefined) await field("province").fill(data.province).catch(() => {});
-    if (data.postal_code !== undefined) await field("postal_code").first().fill(data.postal_code).catch(() => {});
-    if (data.country !== undefined) await field("country").fill(data.country).catch(() => {});
+    if (data.city !== undefined) await field("city").fill(data.city, { timeout: 5_000 });
+    if (data.district !== undefined) await field("district").fill(data.district, { timeout: 5_000 });
+    if (data.sub_district !== undefined) await field("sub_district").fill(data.sub_district, { timeout: 5_000 });
+    if (data.province !== undefined) await field("province").fill(data.province, { timeout: 5_000 });
+    if (data.postal_code !== undefined) await field("postal_code").first().fill(data.postal_code, { timeout: 5_000 });
+    if (data.country !== undefined) await field("country").fill(data.country, { timeout: 5_000 });
   }
 
   // ── Contacts section ──────────────────────────────────────────────────

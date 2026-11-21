@@ -372,11 +372,8 @@ test.describe("Eco — Smoke & CRUD", () => {
       await eco.saveButton().click();
 
       // Expected: backend rejects duplicate code → dialog stays open.
-      const dialogStillOpen = await eco.dialog().isVisible({ timeout: 10_000 }).catch(() => false);
-      if (dialogStillOpen) {
-        await expect(eco.dialog()).toBeVisible();
-        await eco.cancelButton().click();
-      }
+      await expect(eco.nameInput()).toBeVisible({ timeout: 10_000 });
+      await eco.cancelButton().click();
 
       // Cleanup: delete the original (and any dup that slipped through).
       await eco.list.goto();
@@ -385,8 +382,6 @@ test.describe("Eco — Smoke & CRUD", () => {
       await eco.deleteConfirmButton().click();
       await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
 
-      // If the dialog closed, the dup was accepted — assert it was reject-only.
-      expect(dialogStillOpen).toBe(true);
     },
   );
 

@@ -3,6 +3,7 @@ import { createAuthTest } from "./fixtures/auth.fixture";
 import { ProductCategoryPage, LIST_PATH } from "./pages/product-category.page";
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
+import { pickTaxProfile } from "./helpers/tax-profile-lookup";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
 import { fakeCode, fakeName } from "./helpers/test-data";
 
@@ -478,8 +479,9 @@ const codeInput = (page: import("@playwright/test").Page) =>
 const nameInput = (page: import("@playwright/test").Page) =>
   categoryDialog(page).locator("#name");
 
+// LookupTaxProfile is a Popover lookup now: a button reading "Select Tax Profile" (not a combobox).
 const taxProfileTrigger = (page: import("@playwright/test").Page) =>
-  categoryDialog(page).getByRole("combobox").first();
+  categoryDialog(page).getByRole("button", { name: /tax profile/i }).first();
 
 const createButton = (page: import("@playwright/test").Page) =>
   categoryDialog(page).getByRole("button", { name: /^(create|สร้าง)$/i }).first();
@@ -520,10 +522,7 @@ const confirmDeleteButton = (page: import("@playwright/test").Page) =>
 
 // Pick the first available Tax Profile option (form requires a tax_profile_id).
 async function selectFirstTaxProfile(page: import("@playwright/test").Page) {
-  await taxProfileTrigger(page).click();
-  const option = page.getByRole("option").first();
-  await option.waitFor({ state: "visible", timeout: 10_000 });
-  await option.click();
+  await pickTaxProfile(page, taxProfileTrigger(page));
 }
 
 // Open the row's hover toolbar by hovering the row, then return the actions.
@@ -757,7 +756,7 @@ adminTest.describe.serial("Product Category — admin@BLAVG subtree CRUD", () =>
   //
   // การสร้าง category (ชั้น 1) และ subcategory (ชั้น 2) ผ่านปกติ ทั้งคู่ตอบ 201 —
   // มีเฉพาะ item group (ชั้น 3) ที่พัง ตรวจกับ backend :4000 เมื่อ 2026-09-19
-  adminTest.fixme(
+  adminTest(
     "TC-CAT-040051 สร้าง item group ใต้ subcategory ผ่านปุ่ม Add child",
     {
       annotation: [
@@ -792,7 +791,7 @@ adminTest.describe.serial("Product Category — admin@BLAVG subtree CRUD", () =>
 
   // BLOCKED: ต่อเนื่องจาก TC-CAT-040051 — ไม่มี item group ให้ลบ เพราะสร้างไม่ได้
   // (backend 400 `is_used_in_purchase_order`) ปลด fixme พร้อมกันเมื่อ backend แก้
-  adminTest.fixme(
+  adminTest(
     "TC-CAT-050051 ลบ item group สำเร็จ",
     {
       annotation: [

@@ -10,22 +10,39 @@ import { uid, fakeCode, fakeName } from "./helpers/test-data";
  * Shelf (SHLF) — Config — Shelf
  * URL: /config/shelf
  *
- * NOTE (as of 2026-09-20): The catalog (`docs/test-cases/083-shelf.md`) explicitly
- * documents that the backend endpoint `/api/config/{bu_code}/shelves` does not
- * yet exist. The page was built ahead of the API contract.
- *
- * Strategy:
- *  - TC-SHLF-010001: Smoke test — page loads and toolbar renders (whether the
- *    table is empty or shows an error state is acceptable).
- *  - TC-SHLF-900002: Explicit test for the error-state / retry-button behaviour
- *    that the catalog documents as expected when the endpoint is absent.
- *  - All CRUD tests (TC-SHLF-030001, 040001, 050001, etc.) are marked
- *    test.fixme() with an explanatory note. They must be revisited once the
- *    backend endpoint is live.
+ * The backend endpoint `/api/config/{bu_code}/shelves` is live on dev now (list answers 200,
+ * empty until a shelf is created), so the CRUD cases that were deferred behind test.fixme()
+ * run for real (dialog form: #shelf-code, #shelf-name, #shelf-description, #shelf-sequence).
  */
 
 const test = createAuthTest("carmensoftware.dev+admin@gmail.com");
 const PATH = "/config/shelf";
+
+const CODE = fakeCode("SH");
+const NAME = fakeName({ tag: "Shelf" });
+const NAME_UPD = fakeName({ tag: "Shelf Upd" });
+const CODE2 = fakeCode("SH2");
+const NAME2 = fakeName({ tag: "Shelf Del" });
+
+const crud = (page: import("@playwright/test").Page) =>
+  new DialogCrudHelper(page, {
+    listPath: PATH,
+    nameInputId: "shelf-name",
+    activeSwitchId: "shelf-is-active",
+    descriptionInputId: "shelf-description",
+  });
+
+/** Create a shelf through the dialog (code + name, optional description). */
+async function createShelf(page: import("@playwright/test").Page, code: string, name: string, description?: string) {
+  const h = crud(page);
+  await h.list.goto();
+  await h.list.addButton().click();
+  await page.locator("#shelf-code").fill(code);
+  await h.nameInput().fill(name);
+  if (description) await h.descriptionInput().fill(description);
+  await h.saveButton().click();
+  await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 10_000 });
+}
 
 test.describe("Shelf — Smoke & error-state", () => {
   test.beforeEach(async ({ page }) => {
@@ -60,15 +77,15 @@ test.describe("Shelf — Smoke & error-state", () => {
   );
 
   // ------------------------------------------------------------------
-  // TC-SHLF-900002 — Error state: backend endpoint absent → retry button
+  // TC-SHLF-900002 — list loads from the live endpoint (no error state)
   // ------------------------------------------------------------------
   test(
-    "TC-SHLF-900002 backend ยังไม่มี endpoint ชั้นวาง — หน้าแสดงสถานะข้อผิดพลาดพร้อมปุ่มลองใหม่",
+    "TC-SHLF-900002 รายการชั้นวางโหลดจาก endpoint จริง — แสดงตารางและไม่เป็น error state",
     {
       annotation: [
-        { type: "preconditions", description: "backend ของ BU ที่ใช้ทดสอบยังไม่มี endpoint /api/config/{bu_code}/shelves (สถานะตามคอมเมนต์ใน hooks/use-shelf.ts)" },
-        { type: "steps", description: "1. ไปที่ /config/shelf\n2. รอให้คำขอรายการล้มเหลว\n3. คลิกปุ่มลองใหม่ในหน้าสถานะข้อผิดพลาด" },
-        { type: "expected", description: "แทนที่ตาราง หน้าแสดง ErrorState พร้อมข้อความข้อผิดพลาดและปุ่มลองใหม่; กดลองใหม่แล้วระบบยิงคำขอซ้ำโดยแอปไม่ค้างและไม่ crash" },
+        { type: "preconditions", description: "backend ของ BU ที่ใช้ทดสอบมี endpoint /api/config/{bu_code}/shelves ใช้งานได้" },
+        { type: "steps", description: "1. ไปที่ /config/shelf\n2. รอให้คำขอรายการเสร็จ" },
+        { type: "expected", description: "หน้าแสดงตารางรายการ (หรือสถานะว่าง) และไม่แสดง ErrorState / ปุ่มลองใหม่" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
@@ -76,119 +93,162 @@ test.describe("Shelf — Smoke & error-state", () => {
     async ({ page }) => {
       await page.goto(PATH);
       await page.waitForLoadState("networkidle");
-      // If endpoint is absent, look for an error/retry state OR an empty table.
-      // If the endpoint IS available (backend implemented), this test may show
-      // an empty table instead. We accept both gracefully — the important thing
-      // is that the app does not crash.
-      const retryBtn = page.getByRole("button", { name: /retry|try again|ลองใหม่/i }).first();
-      const isEmpty = await retryBtn.isVisible({ timeout: 5_000 }).catch(() => false);
-      if (isEmpty) {
-        await retryBtn.click();
-        await page.waitForLoadState("networkidle");
-        // After retry, the page should still be on /config/shelf (no crash)
-        await expect(page).toHaveURL(new RegExp(PATH));
-      } else {
-        // Endpoint available: table or empty-state visible — test passes
-        // An empty list renders the table AND its "No data found" row — `.or()` matches both,
-        // so take the first to stay out of strict mode.
-        const tableOrEmpty = page.locator("table").first()
-          .or(page.getByText(/no.*data|no.*results|ไม่พบ/i).first())
-          .first();
-        await expect(tableOrEmpty).toBeVisible({ timeout: 10_000 });
-      }
+      // The endpoint answers now: the list renders (table, possibly with its "No data" row) and the
+      // ErrorState with a retry button must NOT be shown.
+      await expect(page.locator("table").first()).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("button", { name: /retry|try again|ลองใหม่/i })).toHaveCount(0);
     },
   );
 });
 
 // ------------------------------------------------------------------
-// CRUD stubs — deferred until backend endpoint is live
+// CRUD — dialog form against the live /shelves endpoint
 // ------------------------------------------------------------------
-test.describe("Shelf — CRUD (deferred)", () => {
+test.describe("Shelf — CRUD", () => {
   test.beforeEach(async ({ page }) => {
     await ensureActiveBu(page, BU_CODE);
   });
 
-  test.fixme(
+  test(
     "TC-SHLF-030001 สร้างชั้นวางใหม่ด้วยฟิลด์บังคับ (รหัส + ชื่อ)",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อยู่ที่หน้า /config/shelf; backend มี endpoint /api/config/{bu_code}/shelves" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อยู่ที่หน้า /config/shelf" },
         { type: "steps", description: "1. คลิกปุ่ม 'เพิ่มชั้นวาง'\n2. กรอกรหัสที่ไม่ซ้ำ\n3. กรอกชื่อ\n4. คลิกปุ่มสร้าง" },
         { type: "expected", description: "แสดง toast 'สร้างชั้นวางสำเร็จ'; dialog ปิดเอง; ชั้นวางใหม่ปรากฏในรายการ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
-    async () => { /* deferred — backend endpoint not yet live */ },
+    async ({ page }) => {
+      const h = crud(page);
+      await createShelf(page, CODE, NAME);
+      await h.list.search(CODE);
+      await expect(page.getByRole("cell", { name: new RegExp(CODE) }).first()).toBeVisible({ timeout: 10_000 });
+    },
   );
 
-  test.fixme(
+  test(
     "TC-SHLF-030002 สร้างชั้นวางพร้อมคำอธิบายและลำดับ",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ใน dialog เพิ่มชั้นวาง; backend มี endpoint ชั้นวาง" },
+        { type: "preconditions", description: "อยู่ใน dialog เพิ่มชั้นวาง" },
         { type: "steps", description: "1. กรอกรหัสและชื่อที่ไม่ซ้ำ\n2. กรอกคำอธิบาย\n3. กรอกลำดับเป็นจำนวนเต็มบวก เช่น '3'\n4. คลิกปุ่มสร้าง" },
         { type: "expected", description: "สร้างสำเร็จพร้อม toast; คอลัมน์คำอธิบายในตารางแสดงข้อความที่กรอก" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
-    async () => { /* deferred — backend endpoint not yet live */ },
+    async ({ page }) => {
+      const h = crud(page);
+      const desc = `E2E shelf desc ${CODE2}`;
+      await h.list.goto();
+      await h.list.addButton().click();
+      await page.locator("#shelf-code").fill(CODE2);
+      await h.nameInput().fill(NAME2);
+      await h.descriptionInput().fill(desc);
+      await page.locator("#shelf-sequence").fill("3");
+      await h.saveButton().click();
+      await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      await h.list.search(CODE2);
+      await expect(page.getByRole("row").filter({ hasText: CODE2 }).first()).toContainText(desc);
+    },
   );
 
-  test.fixme(
+  test(
     "TC-SHLF-040001 แก้ไขชื่อและคำอธิบายแล้วค่าคงอยู่",
     {
       annotation: [
-        { type: "preconditions", description: "มีชั้นวางที่สร้างไว้แล้วอย่างน้อย 1 รายการ; backend มี endpoint ชั้นวาง" },
+        { type: "preconditions", description: "มีชั้นวางที่สร้างไว้แล้วอย่างน้อย 1 รายการ" },
         { type: "steps", description: "1. คลิกรหัสของชั้นวางเพื่อเปิด dialog แก้ไข\n2. แก้ไขชื่อและคำอธิบาย\n3. คลิกปุ่มบันทึก\n4. เปิด dialog ของชั้นวางนั้นอีกครั้ง" },
         { type: "expected", description: "แสดง toast อัปเดตสำเร็จ; ตารางแสดงชื่อและคำอธิบายใหม่" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
-    async () => { /* deferred — backend endpoint not yet live */ },
+    async ({ page }) => {
+      const h = crud(page);
+      await h.list.goto();
+      await h.list.search(CODE);
+      await expect(page.getByRole("cell", { name: new RegExp(CODE) }).first(), "TC-SHLF-030001 creates this shelf").toBeVisible({ timeout: 10_000 });
+      await page.getByRole("button", { name: CODE, exact: true }).first().click();
+      await h.nameInput().fill(NAME_UPD);
+      await h.descriptionInput().fill("edited by E2E");
+      await h.saveButton().click();
+      await expect(page.getByText(/updated successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      await h.list.search(CODE);
+      const row = page.getByRole("row").filter({ hasText: CODE }).first();
+      await expect(row).toContainText(NAME_UPD);
+      await expect(row).toContainText("edited by E2E");
+    },
   );
 
-  test.fixme(
+  test(
     "TC-SHLF-050001 ลบชั้นวางสำเร็จ",
     {
       annotation: [
-        { type: "preconditions", description: "มีชั้นวางที่สร้างขึ้นมาเพื่อลบโดยเฉพาะ; backend มี endpoint ชั้นวาง" },
+        { type: "preconditions", description: "มีชั้นวางที่สร้างขึ้นมาเพื่อลบโดยเฉพาะ" },
         { type: "steps", description: "1. เปิดเมนูจัดการท้ายแถวของชั้นวางนั้นแล้วเลือกลบ\n2. ยืนยัน dialog การลบ" },
         { type: "expected", description: "แสดง toast ลบสำเร็จ; ชั้นวางหายจากรายการหลังรีเฟรชข้อมูล" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
-    async () => { /* deferred — backend endpoint not yet live */ },
+    async ({ page }) => {
+      const h = crud(page);
+      await h.list.goto();
+      await h.list.search(CODE2);
+      const row = page.getByRole("row").filter({ hasText: CODE2 }).first();
+      await expect(row, "TC-SHLF-030002 creates this shelf").toBeVisible({ timeout: 10_000 });
+      await row.getByRole("button", { name: /Row actions/i }).click();
+      await page.getByRole("menuitem", { name: /^Delete$/i }).click();
+      await page.getByRole("alertdialog").getByRole("button", { name: /^(Delete|ลบ)$/i }).click();
+      await expect(page.getByText(/deleted successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      await h.list.search(CODE2);
+      await expect(page.getByRole("row").filter({ hasText: CODE2 })).toHaveCount(0);
+    },
   );
 
-  test.fixme(
+  test(
     "TC-SHLF-200001 บันทึกไม่ได้เมื่อเว้นรหัสและชื่อว่าง",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ใน dialog เพิ่มชั้นวาง โดยยังไม่กรอกอะไรเลย; backend มี endpoint ชั้นวาง" },
+        { type: "preconditions", description: "อยู่ใน dialog เพิ่มชั้นวาง โดยยังไม่กรอกอะไรเลย" },
         { type: "steps", description: "1. ปล่อยช่องรหัสและช่องชื่อว่าง\n2. คลิกปุ่มสร้าง" },
         { type: "expected", description: "แสดงข้อความ error ใต้ทั้งสองช่อง; dialog ไม่ปิดและไม่มีชั้นวางถูกสร้าง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Validation" },
       ],
     },
-    async () => { /* deferred — backend endpoint not yet live */ },
+    async ({ page }) => {
+      const h = crud(page);
+      await h.list.goto();
+      await h.list.addButton().click();
+      await h.saveButton().click();
+      await expect(page.locator("#shelf-code")).toHaveAttribute("aria-invalid", "true", { timeout: 5_000 });
+      await expect(h.nameInput()).toHaveAttribute("aria-invalid", "true");
+      await expect(h.dialog().first()).toBeVisible();
+    },
   );
 
-  test.fixme(
+  test(
     "TC-SHLF-300001 ส่งออกรายการชั้นวางเป็นไฟล์ XLSX",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า /config/shelf บน desktop; มีชั้นวางอย่างน้อย 1 รายการ; backend มี endpoint ชั้นวาง" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/shelf บน desktop; มีชั้นวางอย่างน้อย 1 รายการ" },
         { type: "steps", description: "1. คลิกปุ่มส่งออก\n2. รอจนปุ่มกลับจากสถานะกำลังส่งออก" },
         { type: "expected", description: "เบราว์เซอร์ดาวน์โหลดไฟล์ XLSX; แสดง toast แจ้งจำนวนรายการ" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
     },
-    async () => { /* deferred — backend endpoint not yet live */ },
+    async ({ page }) => {
+      const h = crud(page);
+      await h.list.goto();
+      const exportBtn = page.getByRole("button", { name: /^Export$/i }).first();
+      await expect(exportBtn).toBeEnabled({ timeout: 10_000 });
+      const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), exportBtn.click()]);
+      expect(download.suggestedFilename()).toMatch(/\.xlsx$/i);
+    },
   );
 });

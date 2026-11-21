@@ -1,6 +1,7 @@
 import { expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { ConfigListPage } from "./pages/config-list.page";
+import { PageFormCrudHelper } from "./pages/page-form-crud.helper";
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu } from "./helpers/bu";
 import { uid, fakeCode, fakeName } from "./helpers/test-data";
@@ -27,6 +28,25 @@ const CODE = fakeCode("COA");
 const NAME = fakeName({ tag: "COA030" });
 const CODE2 = fakeCode("COA2");
 const NAME2 = fakeName({ tag: "COA031" });
+
+const NEW_PATH = `${PATH}/new`;
+const formOpts = { listPath: PATH, codeInputId: "coa-code", nameInputId: "coa-description-1", activeSwitchId: "coa-is-active" } as const;
+
+/**
+ * COA is a routed page form (/config/chart-of-accounts/new, /:id), not a dialog — FE `coa-new.route` /
+ * `coa-edit.route` (carmen-frontend a2cfd1bc). Required fields: code, English description, category, type.
+ */
+async function fillCoaForm(
+  page: import("@playwright/test").Page,
+  v: { code: string; name: string; category?: string; type?: string },
+) {
+  await page.locator("#coa-code").fill(v.code);
+  await page.locator("#coa-description-1").fill(v.name);
+  await page.getByRole("combobox").filter({ hasText: /Select category/i }).click();
+  await page.getByRole("option", { name: v.category ?? "Assets", exact: true }).click();
+  await page.getByRole("combobox").filter({ hasText: /Select account type/i }).click();
+  await page.getByRole("option", { name: v.type ?? "Balance sheet", exact: true }).click();
+}
 
 test.describe("Chart of Accounts — CRUD & Validation", () => {
   test.beforeEach(async ({ page }) => {
@@ -153,27 +173,28 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
   // TC-COA-020001 — Open edit dialog from Code column
   // ------------------------------------------------------------------
   test(
-    "TC-COA-020001 เปิด dialog รายละเอียดบัญชีจากคอลัมน์ Code",
+    "TC-COA-020001 เปิดหน้ารายละเอียดบัญชีจากคอลัมน์ Code",
     {
       annotation: [
         { type: "preconditions", description: "มีบัญชีอย่างน้อย 1 รายการที่ทราบค่าทุกช่อง" },
         { type: "steps", description: "1. คลิกที่รหัสบัญชีในคอลัมน์ Code ของแถวที่ต้องการ" },
-        { type: "expected", description: "เปิด dialog โหมดแก้ไข (หัวข้อ Edit Chart of Account) โดย URL ไม่เปลี่ยน; ช่องข้อมูลถูกเติมค่าครบถ้วน" },
+        { type: "expected", description: "เปิดหน้ารายละเอียด /config/chart-of-accounts/:id ในโหมดดู (มีปุ่ม Edit) และแสดงรหัสบัญชีของแถวที่คลิก" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
-      // Click the first CellAction button in the first data row
+      const h = new PageFormCrudHelper(page, formOpts);
+      await h.list.goto();
       const firstDataRow = page.getByRole("row").nth(1);
       await expect(firstDataRow).toBeVisible({ timeout: 10_000 });
-      const cellBtn = firstDataRow.getByRole("button").filter({ hasText: /\S/ }).first();
-      await cellBtn.click();
-      // Expect a dialog to open
-      await expect(page.getByRole("dialog")).toBeVisible({ timeout: 10_000 });
-      expect(page.url()).toContain(PATH);
+      const code = (await firstDataRow.getByRole("button").first().innerText()).trim();
+      await firstDataRow.getByRole("button").first().click();
+      await expect(page).toHaveURL(new RegExp(`${PATH}/[^/]+$`), { timeout: 10_000 });
+      await expect(page).not.toHaveURL(/\/new/);
+      // View mode: the Edit button is offered and the code is shown as plain text
+      await expect(h.editButton()).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText(code, { exact: true }).first()).toBeVisible();
     },
   );
 
@@ -181,26 +202,33 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
   // TC-COA-020002 — Cancel dialog without saving
   // ------------------------------------------------------------------
   test(
-    "TC-COA-020002 ปิด dialog ด้วยปุ่ม Cancel โดยไม่บันทึก",
+    "TC-COA-020002 ยกเลิกการแก้ไขด้วยปุ่ม Cancel โดยไม่บันทึก",
     {
       annotation: [
-        { type: "preconditions", description: "เปิด dialog แก้ไขบัญชีอยู่" },
-        { type: "steps", description: "1. เปิด dialog แก้ไข\n2. แก้ค่าในช่อง Account name\n3. คลิกปุ่ม Cancel" },
-        { type: "expected", description: "Dialog ปิดโดยไม่มี toast บันทึกสำเร็จ" },
+        { type: "preconditions", description: "เปิดหน้ารายละเอียดบัญชีอยู่" },
+        { type: "steps", description: "1. เปิดหน้ารายละเอียดบัญชี\n2. คลิก Edit\n3. แก้ค่าในช่อง Account Description (English)\n4. คลิกปุ่ม Cancel (และยืนยันทิ้งการแก้ไขถ้ามี prompt)" },
+        { type: "expected", description: "กลับสู่โหมดดู (มีปุ่ม Edit) โดยไม่มี toast บันทึกสำเร็จ" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Alternate Flow" },
       ],
     },
     async ({ page }) => {
-      await page.goto(PATH);
-      await page.waitForLoadState("networkidle");
+      const h = new PageFormCrudHelper(page, formOpts);
+      await h.list.goto();
       const firstDataRow = page.getByRole("row").nth(1);
-      await firstDataRow.getByRole("button").filter({ hasText: /\S/ }).first().click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-      // Click Cancel
-      await dialog.getByRole("button", { name: /Cancel|ยกเลิก/i }).click();
-      await expect(dialog).toBeHidden({ timeout: 5_000 });
+      await firstDataRow.getByRole("button").first().click();
+      await expect(page).toHaveURL(new RegExp(`${PATH}/[^/]+$`), { timeout: 10_000 });
+      await h.editButton().click();
+      const original = await h.nameInput().inputValue();
+      await h.nameInput().fill(`${original} CHANGED`);
+      await h.cancelButton().click();
+      // A dirty form always asks "Discard changes?" (DiscardDialog)
+      const discard = page.getByRole("alertdialog");
+      await expect(discard).toBeVisible({ timeout: 5_000 });
+      await discard.getByRole("button", { name: /^Discard$/i }).click();
+      // Back to view mode: Edit offered again, no input left, no save toast
+      await expect(h.editButton()).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText(/updated successfully/i)).toHaveCount(0);
     },
   );
 
@@ -208,31 +236,27 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
   // TC-COA-030001 — Create account (Debit + Balance sheet default)
   // ------------------------------------------------------------------
   test(
-    "TC-COA-030001 สร้างบัญชีใหม่ด้วยค่าเริ่มต้น Debit + Balance sheet",
+    "TC-COA-030001 สร้างบัญชีใหม่ (Assets + Balance sheet)",
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; เตรียมรหัสบัญชีที่ยังไม่ถูกใช้งาน" },
-        { type: "steps", description: "1. คลิกปุ่ม Add Account\n2. ตรวจค่าตั้งต้น Debit / Balance sheet\n3. กรอก Code และ Account name\n4. คลิกปุ่ม Create" },
-        { type: "expected", description: "แสดง toast สร้างสำเร็จ; dialog ปิดลง; แถวใหม่ปรากฏในตาราง" },
+        { type: "steps", description: "1. คลิกปุ่ม New (ไปที่ /config/chart-of-accounts/new)\n2. กรอก Code และ Account Description (English)\n3. เลือก Category = Assets และ Type = Balance sheet\n4. คลิกปุ่ม Create" },
+        { type: "expected", description: "แสดง toast สร้างสำเร็จ; กลับไปหน้า list; แถวใหม่ปรากฏในตาราง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
     async ({ page }) => {
-      const list = new ConfigListPage(page, PATH);
-      await list.goto();
-      await list.addButton().click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-      // Fill code and name
-      await dialog.locator("input").first().fill(CODE);
-      await dialog.getByPlaceholder(/Account name|Name/i).first().fill(NAME);
-      // Submit
-      await dialog.getByRole("button", { name: /Create|Save|สร้าง|บันทึก/i }).click();
-      await expect(page.getByText(/created|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-      // Verify row appears in list
-      await list.search(CODE);
-      await expect(page.getByRole("cell", { name: new RegExp(CODE) })).toBeVisible({ timeout: 10_000 });
+      const h = new PageFormCrudHelper(page, formOpts);
+      await page.goto(NEW_PATH);
+      await page.waitForLoadState("networkidle");
+      await fillCoaForm(page, { code: CODE, name: NAME });
+      await h.saveButton().click();
+      await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      // Redirected back to the list; the new row is there
+      await expect(page).toHaveURL(new RegExp(`${PATH}(\\?|$)`), { timeout: 10_000 });
+      await h.list.search(CODE);
+      await expect(page.getByRole("cell", { name: new RegExp(CODE) }).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -243,31 +267,26 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
     "TC-COA-030003 สร้างบัญชีโดยปิดสถานะใช้งานตั้งแต่ต้น",
     {
       annotation: [
-        { type: "preconditions", description: "เปิด dialog สร้างบัญชีใหม่อยู่" },
-        { type: "steps", description: "1. กรอก Code และ Account name\n2. สลับสวิตช์สถานะให้เป็น inactive\n3. คลิกปุ่ม Create" },
-        { type: "expected", description: "บัญชีถูกสร้างพร้อม toast สำเร็จ; แถวใหม่แสดง Status badge เป็น Inactive" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-accounts/new" },
+        { type: "steps", description: "1. กรอก Code, Account Description (English), Category และ Type\n2. สลับสวิตช์สถานะให้เป็น inactive\n3. คลิกปุ่ม Create" },
+        { type: "expected", description: "บัญชีถูกสร้างพร้อม toast สำเร็จ; แถวใหม่ในตารางแสดงสถานะ Inactive" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
     },
     async ({ page }) => {
-      const list = new ConfigListPage(page, PATH);
-      await list.goto();
-      await list.addButton().click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-      await dialog.locator("input").first().fill(CODE2);
-      await dialog.getByPlaceholder(/Account name|Name/i).first().fill(NAME2);
-      // Toggle the active switch to inactive
-      const activeSwitch = dialog.getByRole("switch").first();
-      if (await activeSwitch.isVisible()) {
-        const isChecked = await activeSwitch.getAttribute("aria-checked");
-        if (isChecked === "true") {
-          await activeSwitch.click();
-        }
-      }
-      await dialog.getByRole("button", { name: /Create|Save|สร้าง|บันทึก/i }).click();
-      await expect(page.getByText(/created|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+      const h = new PageFormCrudHelper(page, formOpts);
+      await page.goto(NEW_PATH);
+      await page.waitForLoadState("networkidle");
+      await fillCoaForm(page, { code: CODE2, name: NAME2 });
+      await h.setActive(false);
+      expect(await h.isActive()).toBe(false);
+      await h.saveButton().click();
+      await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      await h.list.search(CODE2);
+      const row = page.getByRole("row", { name: new RegExp(CODE2) }).first();
+      await expect(row).toBeVisible({ timeout: 10_000 });
+      await expect(row.getByText(/inactive/i).first()).toBeVisible();
     },
   );
 
@@ -279,27 +298,25 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
     {
       annotation: [
         { type: "preconditions", description: "มีบัญชีที่สร้างไว้จากเคสก่อนหน้า (หรือบัญชีทดสอบที่แก้ไขได้)" },
-        { type: "steps", description: "1. ค้นหาบัญชีที่ CODE\n2. คลิกรหัสบัญชีเพื่อเปิด dialog\n3. แก้ไขช่อง Account name\n4. คลิกปุ่ม Save" },
-        { type: "expected", description: "แสดง toast อัปเดตสำเร็จ; dialog ปิด; คอลัมน์ Account name เป็นค่าใหม่" },
+        { type: "steps", description: "1. ค้นหาบัญชีที่ CODE\n2. คลิกรหัสบัญชีเพื่อเปิดหน้ารายละเอียด\n3. คลิก Edit แล้วแก้ช่อง Account Description (English)\n4. คลิกปุ่ม Save" },
+        { type: "expected", description: "แสดง toast อัปเดตสำเร็จ; กลับหน้า list; คอลัมน์ Account name เป็นค่าใหม่" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
     async ({ page }) => {
-      const list = new ConfigListPage(page, PATH);
-      await list.goto();
-      await list.search(CODE);
-      const firstDataRow = page.getByRole("row").nth(1);
-      await expect(firstDataRow).toBeVisible({ timeout: 10_000 });
-      await firstDataRow.getByRole("button").filter({ hasText: /\S/ }).first().click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
+      const h = new PageFormCrudHelper(page, formOpts);
+      await h.list.goto();
+      await h.list.search(CODE);
+      await h.clickRowName(CODE);
+      await h.editButton().click();
       const nameUpdated = fakeName({ tag: "COA040 Upd" });
-      const nameField = dialog.getByPlaceholder(/Account name|Name/i).first();
-      await nameField.fill(nameUpdated);
-      await dialog.getByRole("button", { name: /Save|บันทึก/i }).click();
-      // Wait for dialog to close (update committed) or success toast
-      await expect(dialog).toBeHidden({ timeout: 10_000 });
+      await h.nameInput().fill(nameUpdated);
+      await h.saveButton().click();
+      await expect(page.getByText(/updated successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      await h.list.goto();
+      await h.list.search(CODE);
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first()).toContainText(nameUpdated);
     },
   );
 
@@ -369,25 +386,22 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
     "TC-COA-200001 บันทึกไม่ได้เมื่อเว้นรหัสบัญชีว่าง",
     {
       annotation: [
-        { type: "preconditions", description: "เปิด dialog สร้างบัญชีใหม่อยู่" },
-        { type: "steps", description: "1. ปล่อยช่อง Code ว่างไว้\n2. กรอกเฉพาะ Account name\n3. คลิกปุ่ม Create" },
-        { type: "expected", description: "แสดงข้อความ required ใต้ช่อง Code; dialog ยังเปิดอยู่" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-accounts/new" },
+        { type: "steps", description: "1. ปล่อยช่อง Code ว่างไว้\n2. กรอกเฉพาะ Account Description (English)\n3. คลิกปุ่ม Create" },
+        { type: "expected", description: "ไม่บันทึก: ยังอยู่ที่ /new และช่อง Code ถูกทำเครื่องหมายผิดพลาด (aria-invalid)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Validation" },
       ],
     },
     async ({ page }) => {
-      const list = new ConfigListPage(page, PATH);
-      await list.goto();
-      await list.addButton().click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-      // Fill only Account name, leave Code empty
-      await dialog.getByPlaceholder(/Account name|Name/i).first().fill("Test Name Only");
-      await dialog.getByRole("button", { name: /Create|สร้าง/i }).click();
-      // Dialog should still be visible (validation prevents submit)
-      await expect(dialog).toBeVisible({ timeout: 5_000 });
-      await dialog.getByRole("button", { name: /Cancel|ยกเลิก/i }).click();
+      const h = new PageFormCrudHelper(page, formOpts);
+      await page.goto(NEW_PATH);
+      await page.waitForLoadState("networkidle");
+      await h.nameInput().fill("Test Name Only");
+      await h.saveButton().click();
+      // Validation blocks the submit: still on /new, code field flagged
+      await expect(page).toHaveURL(/\/new/);
+      await expect(page.locator("#coa-code")).toHaveAttribute("aria-invalid", "true", { timeout: 5_000 });
     },
   );
 
@@ -398,24 +412,21 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
     "TC-COA-200002 บันทึกไม่ได้เมื่อเว้นชื่อบัญชีว่าง",
     {
       annotation: [
-        { type: "preconditions", description: "เปิด dialog สร้างบัญชีใหม่อยู่" },
-        { type: "steps", description: "1. กรอกเฉพาะช่อง Code\n2. ปล่อยช่อง Account name ว่างไว้\n3. คลิกปุ่ม Create" },
-        { type: "expected", description: "แสดงข้อความ required ใต้ช่อง Account name; dialog ยังเปิดอยู่" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-accounts/new" },
+        { type: "steps", description: "1. กรอกเฉพาะช่อง Code\n2. ปล่อยช่อง Account Description (English) ว่างไว้\n3. คลิกปุ่ม Create" },
+        { type: "expected", description: "ไม่บันทึก: ยังอยู่ที่ /new และช่อง Account Description (English) ถูกทำเครื่องหมายผิดพลาด (aria-invalid)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Validation" },
       ],
     },
     async ({ page }) => {
-      const list = new ConfigListPage(page, PATH);
-      await list.goto();
-      await list.addButton().click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-      // Fill only Code, leave Name empty
-      await dialog.locator("input").first().fill(fakeCode("CVAL"));
-      await dialog.getByRole("button", { name: /Create|สร้าง/i }).click();
-      await expect(dialog).toBeVisible({ timeout: 5_000 });
-      await dialog.getByRole("button", { name: /Cancel|ยกเลิก/i }).click();
+      const h = new PageFormCrudHelper(page, formOpts);
+      await page.goto(NEW_PATH);
+      await page.waitForLoadState("networkidle");
+      await h.codeInput().fill(fakeCode("CVAL"));
+      await h.saveButton().click();
+      await expect(page).toHaveURL(/\/new/);
+      await expect(page.locator("#coa-description-1")).toHaveAttribute("aria-invalid", "true", { timeout: 5_000 });
     },
   );
 
@@ -423,38 +434,33 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
   // TC-COA-200003 — Validation: description optional
   // ------------------------------------------------------------------
   test(
-    "TC-COA-200003 ช่องคำอธิบายไม่บังคับ — ปล่อยว่างแล้วบันทึกได้",
+    "TC-COA-200003 ช่องคำอธิบายภาษาไทยไม่บังคับ — ปล่อยว่างแล้วบันทึกได้",
     {
       annotation: [
-        { type: "preconditions", description: "เปิด dialog สร้างบัญชีใหม่อยู่; เตรียมรหัสบัญชีที่ยังไม่ถูกใช้" },
-        { type: "steps", description: "1. กรอก Code และ Account name\n2. ปล่อยช่อง Description ว่าง\n3. คลิกปุ่ม Create" },
-        { type: "expected", description: "บัญชีถูกสร้างสำเร็จพร้อม toast" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-accounts/new; เตรียมรหัสบัญชีที่ยังไม่ถูกใช้" },
+        { type: "steps", description: "1. กรอก Code, Account Description (English), Category และ Type\n2. ปล่อยช่อง Account Description (Thai) ว่าง\n3. คลิกปุ่ม Create" },
+        { type: "expected", description: "บัญชีถูกสร้างสำเร็จพร้อม toast (ช่องคำอธิบายภาษาไทยไม่บังคับ)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Validation" },
       ],
     },
     async ({ page }) => {
-      const list = new ConfigListPage(page, PATH);
-      await list.goto();
-      await list.addButton().click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
+      const h = new PageFormCrudHelper(page, formOpts);
+      await page.goto(NEW_PATH);
+      await page.waitForLoadState("networkidle");
       const code = fakeCode("COA3");
-      await dialog.locator("input").first().fill(code);
-      await dialog.getByPlaceholder(/Account name|Name/i).first().fill(fakeName({ tag: "COA200" }));
-      // Do not fill Description
-      await dialog.getByRole("button", { name: /Create|สร้าง/i }).click();
-      await expect(page.getByText(/created|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-      // Cleanup
-      await list.search(code);
+      // Thai description (description_2) is left empty
+      await fillCoaForm(page, { code, name: fakeName({ tag: "COA200" }) });
+      await h.saveButton().click();
+      await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      // Cleanup: delete the row we just made
+      await h.list.search(code);
       const row = page.getByRole("row", { name: new RegExp(code) }).first();
-      if (await row.isVisible()) {
-        await row.getByRole("button", { name: /Row actions/i }).click();
-        await page.getByRole("menuitem", { name: /^Delete$/i }).click();
-        const alertDialog = page.getByRole("alertdialog");
-        await expect(alertDialog).toBeVisible({ timeout: 5_000 });
-        await alertDialog.getByRole("button", { name: /Delete|ลบ/i }).click();
-      }
+      await expect(row).toBeVisible({ timeout: 10_000 });
+      await row.getByRole("button", { name: /Row actions/i }).click();
+      await page.getByRole("menuitem", { name: /^Delete$/i }).click();
+      await h.deleteConfirmButton().click();
+      await expect(page.getByText(/deleted successfully/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -465,33 +471,23 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
     "TC-COA-900001 ช่องกรอกจำกัดความยาวสูงสุดตามที่กำหนด",
     {
       annotation: [
-        { type: "preconditions", description: "เปิด dialog สร้างบัญชีใหม่อยู่" },
-        { type: "steps", description: "1. พิมพ์ข้อความยาวเกิน 50 ตัวอักษรลงในช่อง Code\n2. พิมพ์ข้อความยาวเกิน 150 ตัวอักษรลงในช่อง Account name\n3. พิมพ์ข้อความยาวเกิน 150 ตัวอักษรลงในช่อง Description" },
+        { type: "preconditions", description: "อยู่ที่หน้า /config/chart-of-accounts/new" },
+        { type: "steps", description: "1. พิมพ์ข้อความยาวเกิน 50 ตัวอักษรลงในช่อง Code\n2. พิมพ์ข้อความยาวเกิน 150 ตัวอักษรลงในช่อง Account Description (English)\n3. พิมพ์ข้อความยาวเกิน 150 ตัวอักษรลงในช่อง Account Description (Thai)" },
         { type: "expected", description: "ช่อง Code รับได้สูงสุด 50 ตัวอักษร; ช่อง Account name และ Description รับได้สูงสุด 150 ตัวอักษร" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const list = new ConfigListPage(page, PATH);
-      await list.goto();
-      await list.addButton().click();
-      const dialog = page.getByRole("dialog");
-      await expect(dialog).toBeVisible({ timeout: 10_000 });
-
-      const longCode = "c".repeat(100);
-      const codeInput = dialog.locator("input").first();
-      await codeInput.fill(longCode);
-      const codeVal = await codeInput.inputValue();
-      expect(codeVal.length).toBeLessThanOrEqual(50);
-
-      const longName = "n".repeat(300);
-      const nameInput = dialog.getByPlaceholder(/Account name|Name/i).first();
-      await nameInput.fill(longName);
-      const nameVal = await nameInput.inputValue();
-      expect(nameVal.length).toBeLessThanOrEqual(150);
-
-      await dialog.getByRole("button", { name: /Cancel|ยกเลิก/i }).click();
+      const h = new PageFormCrudHelper(page, formOpts);
+      await page.goto(NEW_PATH);
+      await page.waitForLoadState("networkidle");
+      await h.codeInput().fill("c".repeat(100));
+      expect((await h.codeInput().inputValue()).length).toBeLessThanOrEqual(50);
+      await h.nameInput().fill("n".repeat(300));
+      expect((await h.nameInput().inputValue()).length).toBeLessThanOrEqual(150);
+      await page.locator("#coa-description-2").fill("d".repeat(300));
+      expect((await page.locator("#coa-description-2").inputValue()).length).toBeLessThanOrEqual(150);
     },
   );
 

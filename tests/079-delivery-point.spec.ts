@@ -29,6 +29,7 @@ test.beforeEach(async ({ page }) => {
 const DP_NAME = fakeName({ tag: "DP" });
 const DP_NAME_INACTIVE = fakeName({ tag: "DP Inactive" });
 const DP_NAME_UPDATED = fakeName({ tag: "DP Upd" });
+const DP_NAME_SORT = fakeName({ tag: "DP Sort" });
 
 
 /**
@@ -153,7 +154,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const select = list.perPageSelect();
-    if (!(await select.isVisible().catch(() => false))) test.skip();
+    await expect(select).toBeVisible({ timeout: 10_000 });
     for (const size of ["25", "50", "100"]) {
       await select.click();
       await page.getByRole("option", { name: size }).click();
@@ -178,7 +179,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const select = list.perPageSelect();
-    if (!(await select.isVisible().catch(() => false))) test.skip();
+    await expect(select).toBeVisible({ timeout: 10_000 });
     await select.click();
     await expect(page.getByRole("option", { name: /^200$/ })).toHaveCount(0);
     await page.keyboard.press("Escape");
@@ -198,7 +199,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     async ({ page }) => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
-    if (!(await list.nextPageButton().isEnabled().catch(() => false))) test.skip();
+    test.skip(!(await list.nextPageButton().isEnabled({ timeout: 2_000 }).catch(() => false)), "needs more than one page of delivery points (dataset has < 10) — data guard");
     const firstBefore = await list.tableRows().first().innerText();
     await list.nextPageButton().click();
     await page.waitForLoadState("networkidle");
@@ -223,7 +224,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const sample = await list.tableRows().first().innerText().catch(() => "");
-    if (!sample) test.skip();
+    expect(sample, "no delivery point in the BU — run `bun run data:reset`").toBeTruthy();
     const term = sample.split(/\s+/).find((t) => t.length > 2) ?? sample.slice(0, 3);
     await list.search(term);
     const count = await list.tableRows().count();
@@ -273,7 +274,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
       annotation: [
         { type: "preconditions", description: "ผู้ใช้ login แล้ว และมีตัวเลือก filter" },
         { type: "steps", description: "1. เปิดหน้า list\n2. กดปุ่ม filter\n3. เลือก option active\n4. รอผล" },
-        { type: "expected", description: "table แสดงผลที่ผ่าน filter (count >= 0) โดยไม่ crash" },
+        { type: "expected", description: "table แสดงเฉพาะ delivery point ที่ Status = Active (ทุกแถวมีสถานะ Active และไม่มีแถว Inactive)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -281,19 +282,22 @@ test.describe("จุดส่งของ — อ่าน", () => {
     async ({ page }) => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
-    // Filter by is_active status if available
-    const filterButton = page.getByRole("button", { name: /filter|status/i }).first();
-    if (!(await filterButton.isVisible().catch(() => false))) test.skip();
-    await filterButton.click();
-    const activeOption = page.getByRole("option", { name: /active/i }).first();
-    if (!(await activeOption.isVisible().catch(() => false))) {
-      await page.keyboard.press("Escape");
-      test.skip();
-    }
-    await activeOption.click();
-    await page.waitForLoadState("networkidle");
-    const count = await list.tableRows().count();
-    expect(count).toBeGreaterThanOrEqual(0);
+    // ListFilter (FE components/list-filter): one "Status" group with All / Active / Inactive.
+    await list.filterButton().click();
+    const sheet = page.locator("[role=dialog]:visible").last();
+    await sheet.getByRole("button", { name: "Status" }).click();
+    await sheet.getByText("Active", { exact: true }).click();
+    await page.keyboard.press("Escape");
+    // Wait for the filtered result (rows briefly render as a skeleton) instead of reading once.
+    await expect
+      .poll(async () => {
+        const rows = await list.tableRows().allInnerTexts();
+        return rows.length > 0 && rows.every((r) => /\bActive\b/.test(r));
+      }, { timeout: 10_000, message: "every remaining row should be Active" })
+      .toBe(true);
+    const filtered = await list.tableRows().allInnerTexts();
+    expect(filtered.length, "filter by Active leaves at least one row").toBeGreaterThan(0);
+    expect(filtered.some((r) => /\bInactive\b/.test(r)), "no Inactive row remains").toBe(false);
   });
 
   test(
@@ -313,7 +317,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const sortButton = list
       .headerCell(/name/i)
       .getByRole("button", { name: /name/i });
-    if (!(await sortButton.isVisible().catch(() => false))) test.skip();
+    await expect(sortButton).toBeVisible({ timeout: 10_000 });
     await sortButton.click();
     await expect(sortButton).toBeEnabled({ timeout: 10_000 });
     await page.waitForLoadState("networkidle");
@@ -334,16 +338,19 @@ test.describe("จุดส่งของ — อ่าน", () => {
     },
     async ({ page }) => {
     const list = new DeliveryPointListPage(page);
+    // data:reset leaves one delivery point ("Main"); a sort needs at least two rows to reorder.
+    await ensureDeliveryPoint(page, DP_NAME_SORT);
     await list.goto();
     const sortButton = list
       .headerCell(/name/i)
       .getByRole("button", { name: /name/i });
-    if (!(await sortButton.isVisible().catch(() => false))) test.skip();
+    await expect(sortButton).toBeVisible({ timeout: 10_000 });
     // First click: A→Z
     await sortButton.click();
     await expect(sortButton).toBeEnabled({ timeout: 10_000 });
     await page.waitForLoadState("networkidle");
     const ascAll = await list.tableRows().allInnerTexts();
+    expect(ascAll.length, "needs at least 2 delivery points").toBeGreaterThan(1);
     // Second click: Z→A
     await sortButton.click();
     await expect(sortButton).toBeEnabled({ timeout: 10_000 });
@@ -368,18 +375,19 @@ test.describe("จุดส่งของ — อ่าน", () => {
     await list.goto();
     // Search first
     const sample = await list.tableRows().first().innerText().catch(() => "");
-    if (!sample) test.skip();
+    expect(sample, "no delivery point in the BU — run `bun run data:reset`").toBeTruthy();
     const term = sample.split(/\s+/).find((t) => t.length > 2) ?? sample.slice(0, 3);
     await list.search(term);
     // Then sort
     const sortButton = list
       .headerCell(/name/i)
       .getByRole("button", { name: /name/i });
-    if (await sortButton.isVisible().catch(() => false)) {
-      await sortButton.click();
-      await page.waitForLoadState("networkidle");
-    }
-    // Page should not crash
+    await expect(sortButton).toBeVisible({ timeout: 10_000 });
+    await sortButton.click();
+    await page.waitForLoadState("networkidle");
+    // Search + sort still leave the matching record(s), and the page stays usable
+    expect(await list.tableRows().count(), "search term still matches after sorting").toBeGreaterThan(0);
+    await expect(list.searchInput().first()).toHaveValue(term);
     await expect(list.addButton()).toBeVisible();
   });
 
@@ -398,7 +406,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const cardToggle = list.viewToggleCard();
-    if (!(await cardToggle.isVisible().catch(() => false))) test.skip();
+    await expect(cardToggle).toBeVisible({ timeout: 10_000 });
     await cardToggle.click();
     await page.waitForLoadState("networkidle");
     // Table should be hidden or card content should appear
@@ -420,7 +428,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const cardToggle = list.viewToggleCard();
-    if (!(await cardToggle.isVisible().catch(() => false))) test.skip();
+    await expect(cardToggle).toBeVisible({ timeout: 10_000 });
     await cardToggle.click();
     await page.waitForLoadState("networkidle");
     await list.viewToggleTable().click();
@@ -444,7 +452,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     await list.goto();
     const tableFirst = await list.tableRows().first().innerText().catch(() => "");
     const cardToggle = list.viewToggleCard();
-    if (!(await cardToggle.isVisible().catch(() => false))) test.skip();
+    await expect(cardToggle).toBeVisible({ timeout: 10_000 });
     await cardToggle.click();
     await page.waitForLoadState("networkidle");
     if (tableFirst) {
@@ -469,10 +477,10 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const cardToggle = list.viewToggleCard();
-    if (!(await cardToggle.isVisible().catch(() => false))) test.skip();
+    await expect(cardToggle).toBeVisible({ timeout: 10_000 });
     // Search first
     const sample = await list.tableRows().first().innerText().catch(() => "");
-    if (!sample) test.skip();
+    expect(sample, "no delivery point in the BU — run `bun run data:reset`").toBeTruthy();
     const term = sample.split(/\s+/).find((t) => t.length > 2) ?? sample.slice(0, 3);
     await list.search(term);
     // Switch to card
@@ -498,7 +506,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const cardToggle = list.viewToggleCard();
-    if (!(await cardToggle.isVisible().catch(() => false))) test.skip();
+    await expect(cardToggle).toBeVisible({ timeout: 10_000 });
     await cardToggle.click();
     await page.waitForLoadState("networkidle");
     await list.viewToggleTable().click();
@@ -522,7 +530,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const cardToggle = list.viewToggleCard();
-    if (!(await cardToggle.isVisible().catch(() => false))) test.skip();
+    await expect(cardToggle).toBeVisible({ timeout: 10_000 });
     await cardToggle.click();
     await page.waitForLoadState("networkidle");
     await page.reload();
@@ -546,7 +554,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const btn = list.columnVisibilityButton();
-    if (!(await btn.isVisible().catch(() => false))) test.skip();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
     await btn.click();
     const menuItem = page.getByRole("menuitemcheckbox").first();
     await expect(menuItem).toBeVisible();
@@ -568,7 +576,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const btn = list.columnVisibilityButton();
-    if (!(await btn.isVisible().catch(() => false))) test.skip();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
     await btn.click();
     const item = page.getByRole("menuitemcheckbox", { name: /name/i }).first();
     await item.click();
@@ -595,7 +603,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const btn = list.columnVisibilityButton();
-    if (!(await btn.isVisible().catch(() => false))) test.skip();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
     // Hide first
     await btn.click();
     const item = page.getByRole("menuitemcheckbox", { name: /name/i }).first();
@@ -624,7 +632,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const btn = list.columnVisibilityButton();
-    if (!(await btn.isVisible().catch(() => false))) test.skip();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
     await btn.click();
     const items = page.getByRole("menuitemcheckbox");
     const count = await items.count();
@@ -649,7 +657,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
       annotation: [
         { type: "preconditions", description: "ผู้ใช้ login แล้ว และมีปุ่ม column visibility" },
         { type: "steps", description: "1. เปิดหน้า list\n2. ซ่อน column name\n3. search ด้วยคำที่อยู่ในข้อมูล\n4. ตรวจสอบ rows" },
-        { type: "expected", description: "search ยังกรองข้อมูลตาม column ที่ซ่อนได้ (rows >= 0)" },
+        { type: "expected", description: "search ยังกรองข้อมูลตาม column ที่ซ่อนได้: header Name หายไปแต่ค้นด้วยค่าของ column นั้นยังเจอ record (rows > 0)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -658,10 +666,10 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const btn = list.columnVisibilityButton();
-    if (!(await btn.isVisible().catch(() => false))) test.skip();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
     // Get a name before hiding
     const sample = await list.tableRows().first().innerText().catch(() => "");
-    if (!sample) test.skip();
+    expect(sample, "no delivery point in the BU — run `bun run data:reset`").toBeTruthy();
     const term = sample.split(/\s+/).find((t) => t.length > 2) ?? sample.slice(0, 3);
     // Hide name column
     await btn.click();
@@ -670,8 +678,10 @@ test.describe("จุดส่งของ — อ่าน", () => {
     await page.keyboard.press("Escape");
     // Search should still work
     await list.search(term);
-    const rows = await list.tableRows().count();
-    expect(rows).toBeGreaterThanOrEqual(0);
+    // The hidden Name column is still searchable: the record we searched for is found
+    await expect(list.headerCell(/^name$/i)).toHaveCount(0);
+    expect(await list.tableRows().count(), "search by the hidden column's value finds the record").toBeGreaterThan(0);
+    expect(await list.tableRows().first().innerText()).not.toMatch(/no data found/i);
     // Restore
     await btn.click();
     await item.click();
@@ -694,8 +704,8 @@ test.describe("จุดส่งของ — อ่าน", () => {
     await list.goto();
     const btn = list.columnVisibilityButton();
     const cardToggle = list.viewToggleCard();
-    if (!(await btn.isVisible().catch(() => false))) test.skip();
-    if (!(await cardToggle.isVisible().catch(() => false))) test.skip();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
+    await expect(cardToggle).toBeVisible({ timeout: 10_000 });
     // Hide name column
     await btn.click();
     const item = page.getByRole("menuitemcheckbox", { name: /name/i }).first();
@@ -729,7 +739,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const btn = list.columnVisibilityButton();
-    if (!(await btn.isVisible().catch(() => false))) test.skip();
+    await expect(btn).toBeVisible({ timeout: 10_000 });
     // Hide name column
     await btn.click();
     const item = page.getByRole("menuitemcheckbox", { name: /name/i }).first();
@@ -758,7 +768,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const list = new DeliveryPointListPage(page);
     await list.goto();
     const cardToggle = list.viewToggleCard();
-    if (!(await cardToggle.isVisible().catch(() => false))) test.skip();
+    await expect(cardToggle).toBeVisible({ timeout: 10_000 });
     await cardToggle.click();
     await page.waitForLoadState("networkidle");
     await expect(list.columnVisibilityButton()).not.toBeVisible();
@@ -884,7 +894,7 @@ test.describe("จุดส่งของ — สร้าง", () => {
   // Refresh the page and try again." — advice that cannot help, since refreshing
   // and retrying hits the same duplicate. Un-fixme once 409 carries the
   // conflicting field through.
-  test.fixme(
+  test(
     "TC-DP-200002 กรอก name ซ้ำกับที่มีอยู่แล้ว ระบบต้องห้าม",
     {
       annotation: [
@@ -898,15 +908,22 @@ test.describe("จุดส่งของ — สร้าง", () => {
     async ({ page }) => {
     const list = new DeliveryPointListPage(page);
     const dialog = new DeliveryPointDialog(page);
+    // The worker may have restarted since TC-DP-030004 (uid changes) — make sure the name exists.
+    await ensureDeliveryPoint(page, DP_NAME);
     await list.goto();
     await list.addButton().click();
     await dialog.nameInput().fill(DP_NAME);
+    const answered = page.waitForResponse((r) => r.request().method() === "POST" && /delivery-point/.test(r.url()), { timeout: 10_000 });
     await dialog.saveButton().click();
-    const errorToast = page.getByText(/exists|duplicate|already|ซ้ำ/i).first();
-    await expect.soft(errorToast).toBeVisible({ timeout: 5_000 });
-    if (await dialog.dialog().isVisible().catch(() => false)) {
-      await dialog.cancelButton().click();
-    }
+    // Normal steps: the backend rejects the duplicate with 409 and the dialog stays open...
+    const response = await answered;
+    expect(response.status()).toBe(409);
+    await expect(dialog.nameInput()).toBeVisible();
+    // ...bug site: the user is told nothing (no toast / message) about why.
+    test.fail(true, "suspected bug: a duplicate delivery-point name is rejected (409 DELIVERY_POINT_ALREADY_EXISTS, no row written) but the dialog shows no toast or message — the user gets no feedback");
+    // FE e4035fba: a 409 "already exists" now reads "...conflicts with data already recorded in the system"
+    await expect(page.getByText(/already|exists|duplicate|conflicts with data|ซ้ำ/i).first()).toBeVisible({ timeout: 5_000 });
+    await dialog.cancelButton().click();
   });
 
   test(
@@ -1273,11 +1290,10 @@ test.describe("จุดส่งของ — ลบ", () => {
     async ({ page }) => {
     const list = new DeliveryPointListPage(page);
     const confirm = new DeleteConfirmDialog(page);
+    await ensureDeliveryPoint(page, DP_NAME_INACTIVE);
     await list.goto();
     await list.search(DP_NAME_INACTIVE);
-    if (!(await page.getByRole("cell", { name: DP_NAME_INACTIVE }).isVisible().catch(() => false))) {
-      test.skip();
-    }
+    await expect(page.getByRole("cell", { name: DP_NAME_INACTIVE })).toBeVisible({ timeout: 10_000 });
     await list.deleteRow(DP_NAME_INACTIVE);
     await expect(confirm.dialog()).toBeVisible();
     await confirm.cancelButton().click();
@@ -1298,13 +1314,13 @@ test.describe("จุดส่งของ — ลบ", () => {
     async ({ page }) => {
     const list = new DeliveryPointListPage(page);
     const confirm = new DeleteConfirmDialog(page);
+    await ensureDeliveryPoint(page, DP_NAME_INACTIVE);
     await list.goto();
     await list.search(DP_NAME_INACTIVE);
-    if (!(await page.getByRole("cell", { name: DP_NAME_INACTIVE }).isVisible().catch(() => false))) {
-      test.skip();
-    }
-    // Get count before
-    const countBefore = await list.tableRows().count();
+    await expect(page.getByRole("cell", { name: DP_NAME_INACTIVE })).toBeVisible({ timeout: 10_000 });
+    // Count real records (an empty table still renders one "No data found" row)
+    const records = page.locator("tbody tr:has(button)");
+    const countBefore = await records.count();
     await list.deleteRow(DP_NAME_INACTIVE);
     await confirm.confirmButton().click();
     await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({
@@ -1312,8 +1328,7 @@ test.describe("จุดส่งของ — ลบ", () => {
     });
     await page.waitForLoadState("networkidle");
     await list.search(DP_NAME_INACTIVE);
-    const countAfter = await list.tableRows().count();
-    expect(countAfter).toBeLessThan(countBefore);
+    await expect(records).toHaveCount(countBefore - 1, { timeout: 10_000 });
   });
 
   test(
@@ -1333,16 +1348,16 @@ test.describe("จุดส่งของ — ลบ", () => {
     await list.goto();
     // Navigate to last page if possible
     const nextBtn = list.nextPageButton();
-    if (!(await nextBtn.isEnabled().catch(() => false))) test.skip();
+    test.skip(!(await nextBtn.isEnabled({ timeout: 2_000 }).catch(() => false)), "needs more than one page of delivery points (dataset has < 10) — data guard");
     // Go to last page
     let safety = 0;
-    while ((await nextBtn.isEnabled().catch(() => false)) && safety < 20) {
+    while ((await nextBtn.isEnabled({ timeout: 2_000 }).catch(() => false)) && safety < 20) {
       await nextBtn.click();
       await page.waitForLoadState("networkidle");
       safety++;
     }
     const rowsOnLastPage = await list.tableRows().count();
-    if (rowsOnLastPage !== 1) test.skip();
+    test.skip(rowsOnLastPage !== 1, "last page must hold exactly one row — data guard");
     // Only 1 row on last page — delete it
     const confirm = new DeleteConfirmDialog(page);
     const rowText = await list.tableRows().first().innerText();

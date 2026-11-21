@@ -15,16 +15,16 @@ _Generated from `tests/082-chart-of-accounts.spec.ts` annotations. Edit annotati
 | TC-COA-010002 | ค้นหาบัญชีด้วยรหัสหรือชื่อบัญชี | High | Functional |
 | TC-COA-010003 | ล้างคำค้นด้วยปุ่มกากบาทในช่องค้นหา | Medium | Functional |
 | TC-COA-010004 | กรองตามสถานะ Active / Inactive | High | Functional |
-| TC-COA-020001 | เปิด dialog รายละเอียดบัญชีจากคอลัมน์ Code | High | Happy Path |
-| TC-COA-020002 | ปิด dialog ด้วยปุ่ม Cancel โดยไม่บันทึก | Medium | Alternate Flow |
-| TC-COA-030001 | สร้างบัญชีใหม่ด้วยค่าเริ่มต้น Debit + Balance sheet | High | CRUD |
+| TC-COA-020001 | เปิดหน้ารายละเอียดบัญชีจากคอลัมน์ Code | High | Happy Path |
+| TC-COA-020002 | ยกเลิกการแก้ไขด้วยปุ่ม Cancel โดยไม่บันทึก | Medium | Alternate Flow |
+| TC-COA-030001 | สร้างบัญชีใหม่ (Assets + Balance sheet) | High | CRUD |
 | TC-COA-030003 | สร้างบัญชีโดยปิดสถานะใช้งานตั้งแต่ต้น | Medium | CRUD |
 | TC-COA-040001 | แก้ไขชื่อบัญชีแล้วค่าคงอยู่ | High | CRUD |
 | TC-COA-050001 | ลบบัญชีจากเมนู Row actions | High | CRUD |
 | TC-COA-050002 | ยกเลิกการลบใน dialog ยืนยัน | Medium | Alternate Flow |
 | TC-COA-200001 | บันทึกไม่ได้เมื่อเว้นรหัสบัญชีว่าง | High | Validation |
 | TC-COA-200002 | บันทึกไม่ได้เมื่อเว้นชื่อบัญชีว่าง | High | Validation |
-| TC-COA-200003 | ช่องคำอธิบายไม่บังคับ — ปล่อยว่างแล้วบันทึกได้ | Medium | Validation |
+| TC-COA-200003 | ช่องคำอธิบายภาษาไทยไม่บังคับ — ปล่อยว่างแล้วบันทึกได้ | Medium | Validation |
 | TC-COA-900001 | ช่องกรอกจำกัดความยาวสูงสุดตามที่กำหนด | Low | Edge Case |
 | TC-COA-900002 | ไม่พบข้อมูล — แสดงสถานะว่างและส่งออกไม่ได้ | Medium | Edge Case |
 
@@ -116,7 +116,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; มี
 
 ---
 
-## TC-COA-020001 — เปิด dialog รายละเอียดบัญชีจากคอลัมน์ Code
+## TC-COA-020001 — เปิดหน้ารายละเอียดบัญชีจากคอลัมน์ Code
 
 > **As a** Admin user, **I want** this Chart Of Accounts behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -133,11 +133,11 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; มี
 
 **Expected**
 
-เปิด dialog โหมดแก้ไข (หัวข้อ Edit Chart of Account) โดย URL ไม่เปลี่ยน; ช่องข้อมูลถูกเติมค่าครบถ้วน
+เปิดหน้ารายละเอียด /config/chart-of-accounts/:id ในโหมดดู (มีปุ่ม Edit) และแสดงรหัสบัญชีของแถวที่คลิก
 
 ---
 
-## TC-COA-020002 — ปิด dialog ด้วยปุ่ม Cancel โดยไม่บันทึก
+## TC-COA-020002 — ยกเลิกการแก้ไขด้วยปุ่ม Cancel โดยไม่บันทึก
 
 > **As a** Admin user, **I want** this Chart Of Accounts behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -146,21 +146,22 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; มี
 
 **Preconditions**
 
-เปิด dialog แก้ไขบัญชีอยู่
+เปิดหน้ารายละเอียดบัญชีอยู่
 
 **Steps**
 
-1. เปิด dialog แก้ไข
-2. แก้ค่าในช่อง Account name
-3. คลิกปุ่ม Cancel
+1. เปิดหน้ารายละเอียดบัญชี
+2. คลิก Edit
+3. แก้ค่าในช่อง Account Description (English)
+4. คลิกปุ่ม Cancel (และยืนยันทิ้งการแก้ไขถ้ามี prompt)
 
 **Expected**
 
-Dialog ปิดโดยไม่มี toast บันทึกสำเร็จ
+กลับสู่โหมดดู (มีปุ่ม Edit) โดยไม่มี toast บันทึกสำเร็จ
 
 ---
 
-## TC-COA-030001 — สร้างบัญชีใหม่ด้วยค่าเริ่มต้น Debit + Balance sheet
+## TC-COA-030001 — สร้างบัญชีใหม่ (Assets + Balance sheet)
 
 > **As a** Admin user, **I want** to create a new Chart Of Accounts record, **so that** it becomes available for downstream operations.
 
@@ -172,14 +173,14 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; เต
 
 **Steps**
 
-1. คลิกปุ่ม Add Account
-2. ตรวจค่าตั้งต้น Debit / Balance sheet
-3. กรอก Code และ Account name
+1. คลิกปุ่ม New (ไปที่ /config/chart-of-accounts/new)
+2. กรอก Code และ Account Description (English)
+3. เลือก Category = Assets และ Type = Balance sheet
 4. คลิกปุ่ม Create
 
 **Expected**
 
-แสดง toast สร้างสำเร็จ; dialog ปิดลง; แถวใหม่ปรากฏในตาราง
+แสดง toast สร้างสำเร็จ; กลับไปหน้า list; แถวใหม่ปรากฏในตาราง
 
 ---
 
@@ -191,17 +192,17 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; เต
 
 **Preconditions**
 
-เปิด dialog สร้างบัญชีใหม่อยู่
+อยู่ที่หน้า /config/chart-of-accounts/new
 
 **Steps**
 
-1. กรอก Code และ Account name
+1. กรอก Code, Account Description (English), Category และ Type
 2. สลับสวิตช์สถานะให้เป็น inactive
 3. คลิกปุ่ม Create
 
 **Expected**
 
-บัญชีถูกสร้างพร้อม toast สำเร็จ; แถวใหม่แสดง Status badge เป็น Inactive
+บัญชีถูกสร้างพร้อม toast สำเร็จ; แถวใหม่ในตารางแสดงสถานะ Inactive
 
 ---
 
@@ -218,13 +219,13 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; เต
 **Steps**
 
 1. ค้นหาบัญชีที่ CODE
-2. คลิกรหัสบัญชีเพื่อเปิด dialog
-3. แก้ไขช่อง Account name
+2. คลิกรหัสบัญชีเพื่อเปิดหน้ารายละเอียด
+3. คลิก Edit แล้วแก้ช่อง Account Description (English)
 4. คลิกปุ่ม Save
 
 **Expected**
 
-แสดง toast อัปเดตสำเร็จ; dialog ปิด; คอลัมน์ Account name เป็นค่าใหม่
+แสดง toast อัปเดตสำเร็จ; กลับหน้า list; คอลัมน์ Account name เป็นค่าใหม่
 
 ---
 
@@ -281,17 +282,17 @@ Dialog ปิดลงโดยไม่มี toast ลบสำเร็จ; �
 
 **Preconditions**
 
-เปิด dialog สร้างบัญชีใหม่อยู่
+อยู่ที่หน้า /config/chart-of-accounts/new
 
 **Steps**
 
 1. ปล่อยช่อง Code ว่างไว้
-2. กรอกเฉพาะ Account name
+2. กรอกเฉพาะ Account Description (English)
 3. คลิกปุ่ม Create
 
 **Expected**
 
-แสดงข้อความ required ใต้ช่อง Code; dialog ยังเปิดอยู่
+ไม่บันทึก: ยังอยู่ที่ /new และช่อง Code ถูกทำเครื่องหมายผิดพลาด (aria-invalid)
 
 ---
 
@@ -303,21 +304,21 @@ Dialog ปิดลงโดยไม่มี toast ลบสำเร็จ; �
 
 **Preconditions**
 
-เปิด dialog สร้างบัญชีใหม่อยู่
+อยู่ที่หน้า /config/chart-of-accounts/new
 
 **Steps**
 
 1. กรอกเฉพาะช่อง Code
-2. ปล่อยช่อง Account name ว่างไว้
+2. ปล่อยช่อง Account Description (English) ว่างไว้
 3. คลิกปุ่ม Create
 
 **Expected**
 
-แสดงข้อความ required ใต้ช่อง Account name; dialog ยังเปิดอยู่
+ไม่บันทึก: ยังอยู่ที่ /new และช่อง Account Description (English) ถูกทำเครื่องหมายผิดพลาด (aria-invalid)
 
 ---
 
-## TC-COA-200003 — ช่องคำอธิบายไม่บังคับ — ปล่อยว่างแล้วบันทึกได้
+## TC-COA-200003 — ช่องคำอธิบายภาษาไทยไม่บังคับ — ปล่อยว่างแล้วบันทึกได้
 
 > **As a** Admin user, **I want** the system to block invalid Chart Of Accounts submissions, **so that** data quality is preserved.
 
@@ -325,17 +326,17 @@ Dialog ปิดลงโดยไม่มี toast ลบสำเร็จ; �
 
 **Preconditions**
 
-เปิด dialog สร้างบัญชีใหม่อยู่; เตรียมรหัสบัญชีที่ยังไม่ถูกใช้
+อยู่ที่หน้า /config/chart-of-accounts/new; เตรียมรหัสบัญชีที่ยังไม่ถูกใช้
 
 **Steps**
 
-1. กรอก Code และ Account name
-2. ปล่อยช่อง Description ว่าง
+1. กรอก Code, Account Description (English), Category และ Type
+2. ปล่อยช่อง Account Description (Thai) ว่าง
 3. คลิกปุ่ม Create
 
 **Expected**
 
-บัญชีถูกสร้างสำเร็จพร้อม toast
+บัญชีถูกสร้างสำเร็จพร้อม toast (ช่องคำอธิบายภาษาไทยไม่บังคับ)
 
 ---
 
@@ -348,13 +349,13 @@ Dialog ปิดลงโดยไม่มี toast ลบสำเร็จ; �
 
 **Preconditions**
 
-เปิด dialog สร้างบัญชีใหม่อยู่
+อยู่ที่หน้า /config/chart-of-accounts/new
 
 **Steps**
 
 1. พิมพ์ข้อความยาวเกิน 50 ตัวอักษรลงในช่อง Code
-2. พิมพ์ข้อความยาวเกิน 150 ตัวอักษรลงในช่อง Account name
-3. พิมพ์ข้อความยาวเกิน 150 ตัวอักษรลงในช่อง Description
+2. พิมพ์ข้อความยาวเกิน 150 ตัวอักษรลงในช่อง Account Description (English)
+3. พิมพ์ข้อความยาวเกิน 150 ตัวอักษรลงในช่อง Account Description (Thai)
 
 **Expected**
 
@@ -384,4 +385,4 @@ _(no steps documented)_
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>

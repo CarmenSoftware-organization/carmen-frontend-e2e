@@ -196,11 +196,12 @@ export class PriceListPage extends BasePage {
    * failed even once the product picker worked.
    */
   taxProfileTrigger(): Locator {
-    // A Radix Select (role="combobox"), not a button — the row holds two of them
-    // ("Select Unit" and this one), so filter by the value text rather than
-    // taking an index.
+    // A Popover + Command lookup now (FE c80f15e8 moved tax profile to the Lookup API), not a Radix
+    // Select: a plain button reading "Select Tax Profile" in the item row.
     return this.page
-      .getByRole("combobox")
+      .locator("tbody tr")
+      .first()
+      .getByRole("button")
       .filter({ hasText: /select tax profile/i })
       .first();
   }
@@ -230,21 +231,22 @@ export class PriceListPage extends BasePage {
 
   async selectFirstTaxProfile(): Promise<void> {
     const trigger = this.taxProfileTrigger();
-    if ((await trigger.count()) === 0) return;
+    // Required field: wait for it rather than skipping when count() is read a beat too early.
+    await trigger.waitFor({ state: "visible", timeout: 10_000 });
     await trigger.click({ timeout: 10_000 });
-    const options = this.page.getByRole("option");
+    // Lookup options are buttons with data-value inside the popover; the first is "None".
+    // Pick a real VAT profile by name when there is one (this BU may also hold junk tax-profile
+    // names from the security specs, so never take a loose match).
+    const options = this.page.locator("[data-slot=popover-content]:visible button[data-value]");
     await options.first().waitFor({ state: "visible", timeout: 10_000 });
-    // Pick a real VAT profile by name. Anything looser goes wrong here: this BU
-    // still holds `<script>alert('xss-e2e')</script>` as a tax-profile name from a
-    // security test, and `/vat|tax|\d/i` matched it via the "2" in "e2e". Nor can
-    // this be an `.or()` chain — a union resolves to both sides and `.first()`
-    // then takes whichever is first in the DOM, which is that same entry.
-    const vat = options.filter({ hasText: /^vat/i }).first();
-    if ((await vat.count()) > 0) {
+    const vat = options.filter({ hasText: /^\s*vat/i }).first();
+    // The list opens with "None" and fills in once the lookup answers — wait for the VAT entry
+    // instead of reading count() the instant the first option shows.
+    if (await vat.waitFor({ state: "visible", timeout: 8_000 }).then(() => true, () => false)) {
       await vat.click({ timeout: 10_000 });
       return;
     }
-    await options.nth(1).click({ timeout: 10_000 }); // nth(0) is "None"
+    await options.filter({ hasNotText: /^\s*none\s*$/i }).first().click({ timeout: 10_000 });
   }
 
   moqInput(): Locator {

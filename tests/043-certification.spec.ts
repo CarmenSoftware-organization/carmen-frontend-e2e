@@ -36,9 +36,10 @@ const secOpts = {
 // BU-assert and validation cases all pass as carmensoftware.dev+admin@gmail.com — only the
 // writes fail, and they fail on the payload contract, not on permissions.
 //
-// Flip the 9 `test.fixme` below back to `test` once certification-dialog.tsx
-// sends the metadata-wrapped payload (that change also supplies doc_version,
-// which TC-CERT-040003 needs on PATCH).
+// The 9 write cases below are `test.fail(true, "suspected bug: ...")`: certification-dialog.tsx posts
+// without `metadata`, so the backend answers 400 "metadata field is required" (verified live on dev,
+// 2026-11-21). They flip red ("expected to fail but passed") when the payload is fixed — then drop the marker.
+// (that change also supplies doc_version, which TC-CERT-040003 needs on PATCH).
 test.describe("Certification — Smoke & CRUD", () => {
   test.beforeEach(async ({ page }) => {
     await ensureActiveBu(page, BU_CODE);
@@ -160,7 +161,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-030001 สร้างรายการใหม่และปรากฏในตาราง",
     {
       annotation: [
@@ -174,16 +175,23 @@ test.describe("Certification — Smoke & CRUD", () => {
     async ({ page }) => {
       const cert = new CertificationPage(page);
       await cert.list.goto();
-      await cert.createCertification(CODE, NAME);
+      await cert.openAddDialog();
+      await cert.codeInput().fill(CODE);
+      await cert.nameInput().fill(NAME);
+      const created = page.waitForResponse((r) => r.request().method() === "POST" && /vendor-master-certificates/.test(r.url()), { timeout: 10_000 });
+      await cert.saveButton().click();
+      // The request is sent (normal step); its answer is the bug site.
+      const response = await created;
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      expect(response.ok(), `POST /vendor-master-certificates → ${response.status()} ${(await response.text()).slice(0, 120)}`).toBe(true);
       await cert.list.search(CODE);
-      // CODE column may render as a cell or a clickable button (CellAction)
       const codeCell = page.getByRole("cell", { name: CODE });
       const codeButton = page.getByRole("button", { name: CODE, exact: true });
       await expect(codeCell.or(codeButton).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-040001 แก้ไขชื่อและบันทึก",
     {
       annotation: [
@@ -195,6 +203,13 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      // Leading steps are normal assertions; only the missing record (the bug's consequence) is the expected failure.
+      const certPage = new CertificationPage(page);
+      await certPage.list.goto();
+      await expect(certPage.list.addButton()).toBeVisible({ timeout: 10_000 });
+      await certPage.list.search(CODE);
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first(), "record from TC-CERT-030001 (blocked by the metadata 400)").toBeVisible({ timeout: 5_000 });
       const cert = new CertificationPage(page);
       await cert.list.goto();
       await cert.list.search(CODE);
@@ -208,7 +223,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-200002 แก้ไข: clear name แล้วบันทึก ต้องแสดง error",
     {
       annotation: [
@@ -220,6 +235,13 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      // Leading steps are normal assertions; only the missing record (the bug's consequence) is the expected failure.
+      const certPage = new CertificationPage(page);
+      await certPage.list.goto();
+      await expect(certPage.list.addButton()).toBeVisible({ timeout: 10_000 });
+      await certPage.list.search(CODE);
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first(), "record from TC-CERT-030001 (blocked by the metadata 400)").toBeVisible({ timeout: 5_000 });
       const cert = new CertificationPage(page);
       await cert.list.goto();
       await cert.list.search(CODE);
@@ -231,7 +253,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-050001 ลบรายการ",
     {
       annotation: [
@@ -243,9 +265,18 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      // Leading steps are normal assertions; only the missing record (the bug's consequence) is the expected failure.
+      const certPage = new CertificationPage(page);
+      await certPage.list.goto();
+      await expect(certPage.list.addButton()).toBeVisible({ timeout: 10_000 });
+      await certPage.list.search(CODE);
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first(), "record from TC-CERT-030001 (blocked by the metadata 400)").toBeVisible({ timeout: 5_000 });
       const cert = new CertificationPage(page);
       await cert.list.goto();
       await cert.list.search(CODE);
+      // fail fast when TC-CERT-030001's record is missing (a bare timeout is not an "expected failure")
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first()).toBeVisible({ timeout: 5_000 });
       await cert.deleteRow(CODE);
       await cert.deleteConfirmButton().click();
       await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({
@@ -254,7 +285,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-040002 toggle is_active แล้ว persist",
     {
       annotation: [
@@ -266,6 +297,13 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      // Leading steps are normal assertions; only the missing record (the bug's consequence) is the expected failure.
+      const certPage = new CertificationPage(page);
+      await certPage.list.goto();
+      await expect(certPage.list.addButton()).toBeVisible({ timeout: 10_000 });
+      await certPage.list.search(CODE);
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first(), "record from TC-CERT-030001 (blocked by the metadata 400)").toBeVisible({ timeout: 5_000 });
       const cert = new CertificationPage(page);
       const code = fakeCode("EC42");
       const name = fakeName({ tag: "CERT042" });
@@ -285,7 +323,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-040003 แก้ไขชื่อแล้ว persist",
     {
       annotation: [
@@ -297,6 +335,13 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      // Leading steps are normal assertions; only the missing record (the bug's consequence) is the expected failure.
+      const certPage = new CertificationPage(page);
+      await certPage.list.goto();
+      await expect(certPage.list.addButton()).toBeVisible({ timeout: 10_000 });
+      await certPage.list.search(CODE);
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first(), "record from TC-CERT-030001 (blocked by the metadata 400)").toBeVisible({ timeout: 5_000 });
       const cert = new CertificationPage(page);
       const code = fakeCode("EC43");
       const name = fakeName({ tag: "CERT043" });
@@ -326,7 +371,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-040004 ยกเลิกการแก้ไข ค่าต้องไม่ถูกบันทึก",
     {
       annotation: [
@@ -338,6 +383,13 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      // Leading steps are normal assertions; only the missing record (the bug's consequence) is the expected failure.
+      const certPage = new CertificationPage(page);
+      await certPage.list.goto();
+      await expect(certPage.list.addButton()).toBeVisible({ timeout: 10_000 });
+      await certPage.list.search(CODE);
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first(), "record from TC-CERT-030001 (blocked by the metadata 400)").toBeVisible({ timeout: 5_000 });
       const cert = new CertificationPage(page);
       const code = fakeCode("EC44");
       const name = fakeName({ tag: "CERT044" });
@@ -365,7 +417,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-200003 สร้าง code ซ้ำ ต้องถูก reject",
     {
       annotation: [
@@ -377,6 +429,13 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      // Leading steps are normal assertions; only the missing record (the bug's consequence) is the expected failure.
+      const certPage = new CertificationPage(page);
+      await certPage.list.goto();
+      await expect(certPage.list.addButton()).toBeVisible({ timeout: 10_000 });
+      await certPage.list.search(CODE);
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first(), "record from TC-CERT-030001 (blocked by the metadata 400)").toBeVisible({ timeout: 5_000 });
       const cert = new CertificationPage(page);
       const code = fakeCode("EC20");
       const name = fakeName({ tag: "CERT200" });
@@ -391,11 +450,8 @@ test.describe("Certification — Smoke & CRUD", () => {
       await cert.saveButton().click();
 
       // Expected: backend rejects duplicate code → dialog stays open.
-      const dialogStillOpen = await cert.dialog().isVisible({ timeout: 10_000 }).catch(() => false);
-      if (dialogStillOpen) {
-        await expect(cert.dialog()).toBeVisible();
-        await cert.cancelButton().click();
-      }
+      await expect(cert.nameInput()).toBeVisible({ timeout: 10_000 });
+      await cert.cancelButton().click();
 
       // Cleanup: delete the original (and any dup that slipped through).
       await cert.list.goto();
@@ -404,12 +460,10 @@ test.describe("Certification — Smoke & CRUD", () => {
       await cert.deleteConfirmButton().click();
       await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
 
-      // If the dialog closed, the dup was accepted — assert it was reject-only.
-      expect(dialogStillOpen).toBe(true);
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-050002 ยกเลิกการลบ record ต้องยังอยู่",
     {
       annotation: [
@@ -421,6 +475,13 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      // Leading steps are normal assertions; only the missing record (the bug's consequence) is the expected failure.
+      const certPage = new CertificationPage(page);
+      await certPage.list.goto();
+      await expect(certPage.list.addButton()).toBeVisible({ timeout: 10_000 });
+      await certPage.list.search(CODE);
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first(), "record from TC-CERT-030001 (blocked by the metadata 400)").toBeVisible({ timeout: 5_000 });
       const cert = new CertificationPage(page);
       const code = fakeCode("EC50");
       const name = fakeName({ tag: "CERT050" });

@@ -62,10 +62,11 @@ export function addDialogSecurityCases(
     await h.saveButton().click();
     // No alert dialog from XSS — guard above will throw if it fires
     // Either created safely (text escaped) OR validation rejects
-    await page.waitForTimeout(500);
-    if (await h.dialog().isVisible().catch(() => false)) {
-      await h.cancelButton().click();
-    }
+    // The dialog closes on a successful (escaped) save; a validation reject leaves it open. Wait on the
+    // dialog's own name field — getByRole("dialog") also matches the always-mounted Command Palette.
+    const closed = await h.nameInput().waitFor({ state: "hidden", timeout: 8_000 }).then(() => true, () => false);
+    if (!closed) await h.cancelButton().click();
+    await expect(h.nameInput()).toBeHidden({ timeout: 8_000 });
   });
 
   test(

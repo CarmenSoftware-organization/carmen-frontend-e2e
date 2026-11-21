@@ -373,7 +373,8 @@ test.describe("Location — Smoke & CRUD", () => {
       await h.list.goto();
       await h.list.search(name);
       await h.clickRowName(name);
-      await expect(h.activeSwitch()!).toHaveAttribute("aria-checked", "false", { timeout: 5_000 });
+      // Detail opens in view mode: the status shows as a badge, not the switch.
+      await expect(page.getByText("Inactive", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
 
       await deleteLOC(h, page, name);
     },

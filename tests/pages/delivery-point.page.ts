@@ -11,10 +11,11 @@ export class DeliveryPointListPage extends BasePage {
     this.page.locator("thead").getByRole("columnheader", { name });
   // override: returns the full collection (no .first()) so callers can use .count()
   readonly emptyState = () => this.page.getByText(/no.*data|no.*results|empty|ไม่พบ/i);
-  readonly viewToggleTable = () => this.page.getByRole("button", { name: /table view/i });
-  readonly viewToggleCard = () => this.page.getByRole("button", { name: /card view/i });
+  // DisplayModeToggle (FE components/share/display-mode-toggle.tsx): "List view" / "Grid view" (aria-pressed)
+  readonly viewToggleTable = () => this.page.getByRole("button", { name: /^list view$/i });
+  readonly viewToggleCard = () => this.page.getByRole("button", { name: /^grid view$/i });
   readonly columnVisibilityButton = () =>
-    this.page.getByRole("button", { name: /column|view options/i });
+    this.page.getByRole("button", { name: /^toggle columns$/i });
   readonly perPageSelect = () => this.page.getByRole("combobox", { name: /per page|rows/i });
   readonly nextPageButton = () => this.page.getByRole("button", { name: /next page/i });
   readonly prevPageButton = () => this.page.getByRole("button", { name: /previous page/i });
