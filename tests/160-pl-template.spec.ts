@@ -135,21 +135,22 @@ procurementStaffTest.describe("Pricelist Template — Create — Permission deni
     "TC-PT-010004 Create Pricelist Template - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Procurement Staff และมีสิทธิ์เข้าถึงเฉพาะหน้า list ของ Pricelist Templates" },
+        { type: "preconditions", description: "Login เป็น requestor ซึ่งมีเฉพาะ vendor_management.price_list_template.view" },
         {
           type: "steps",
           description: "1. ไปที่ /vendor-management/price-list-template\n2. คลิก 'New Pricelist Template'",
         },
-        { type: "expected", description: "ผู้ใช้ถูก redirect ไปยังหน้าไม่มีสิทธิ์เข้าถึงหรือปุ่ม 'New Pricelist Template' ถูกซ่อน/disabled" },
+        { type: "expected", description: "ไม่มีปุ่ม 'Add Price List Template' (บั๊ก: ปัจจุบันปุ่มยังแสดงและเปิด /new ได้)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      procurementStaffTest.fail(true, "suspected bug: requestor sees an enabled 'Add Price List Template' button and can open /new (no write gate on vendor-management)");
       const tpl = new PriceListTemplatePage(page);
       await tpl.gotoList();
       await expect(tpl.rowActionsButton(), "list rendered").toBeVisible({ timeout: 10_000 });
+      // Bug site: requestor@ holds price_list_template.view only, yet the FE offers Add.
+      procurementStaffTest.fail(true, "suspected bug: a view-only role (requestor@: price_list_template.view, no .create) sees an enabled 'Add Price List Template' button");
       await expect(tpl.newButton()).toHaveCount(0);
     },
   );
@@ -218,13 +219,13 @@ procurementManagerTest.describe("Pricelist Template — Add products", () => {
       ],
     },
     async ({ page }) => {
-      procurementManagerTest.fail(true, "suspected bug: a price-list template saves with no product (no validation error) — product decision pending");
       const tpl = new PriceListTemplatePage(page);
       await tpl.gotoNew();
       await tpl.nameInput().fill(`PT invalid row ${uid}`);
       await tpl.selectFirstCurrency();
+      procurementManagerTest.fail(true, "suspected bug: a price-list template saves with no product (no validation error) — product decision pending");
       // ไม่ติ๊กสินค้า — schema ต้องการอย่างน้อยหนึ่งรายการ
-      const write = page.waitForResponse((r) => r.request().method() !== "GET" && /price-list-template/.test(r.url()), { timeout: 6_000 }).then(() => true, () => false);
+      const write = page.waitForResponse((r) => r.request().method() !== "GET" && /pricelist/i.test(r.url()), { timeout: 6_000 }).then(() => true, () => false);
       await tpl.saveButton().click({ timeout: 10_000 });
       // A blocked save sends no write request at all. (anyError() is no use here: the required-field
       // asterisks are .text-destructive too, so it matches on a perfectly valid form.)
@@ -364,7 +365,7 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
       procurementManagerTest.fail(true, "suspected bug: a price-list template saves with no product at all (no validation error) — same as TC-PT-020002");
       const { tpl } = await openOwnTemplate(page, "noprod");
       await tpl.editButton().click({ timeout: 10_000 });
-      const write = page.waitForResponse((r) => r.request().method() !== "GET" && /price-list-template/.test(r.url()), { timeout: 6_000 }).then(() => true, () => false);
+      const write = page.waitForResponse((r) => r.request().method() !== "GET" && /pricelist/i.test(r.url()), { timeout: 6_000 }).then(() => true, () => false);
       await tpl.saveButton().click({ timeout: 10_000 });
       // A blocked save sends no write request (validation), so nothing is saved.
       expect(await write, "validation should block the save: no write expected").toBe(false);
@@ -504,7 +505,7 @@ procurementManagerTest.describe("Pricelist Template — Clone (removed)", () => 
     async ({ page }) => {
       const tpl = new PriceListTemplatePage(page);
       expect(await tpl.openFirst(), "no price-list template in the BU — run `bun run data:reset`").toBe(true);
-      await tpl.editButton().click({ timeout: 10_000 }).catch(() => {});
+      await tpl.editButton().click({ timeout: 10_000 });
       await expect(tpl.saveButton()).toBeVisible({ timeout: 10_000 });
       await expect(tpl.cloneButton()).toHaveCount(0, { timeout: 5_000 });
     },
@@ -750,21 +751,20 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
 
 procurementStaffTest.describe("Pricelist Template — Search and View — Permission denial", () => {
   procurementStaffTest(
-    "TC-PT-060003 Search and View Templates - Negative - Insufficient Permission",
+    "TC-PT-060003 role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template",
     {
       annotation: [
-        { type: "preconditions", description: "Login เข้า Carmen Blue แต่ไม่มีสิทธิ์ดู template" },
+        { type: "preconditions", description: "Login เป็น requestor (ทุก role ใน seed มีสิทธิ์ price_list_template.view จึงทดสอบ 'ไม่มีสิทธิ์ดู' ไม่ได้)" },
         { type: "steps", description: "1. ไปที่ /vendor-management/price-list-template" },
-        { type: "expected", description: "ระบบ redirect ผู้ใช้ไปยังหน้าไม่มีสิทธิ์เข้าถึงหรือแสดงข้อความปฏิเสธสิทธิ์" },
+        { type: "expected", description: "role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template (แถว STD campaign template)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      procurementStaffTest.fail(true, "suspected bug: requestor can open the price-list template list (no role gate on vendor-management)");
       await page.goto(LIST_PATH);
       await page.waitForLoadState("networkidle");
-      await expect(page.getByText(/permission denied|restricted|not authori[sz]ed/i).first()).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByRole("row").filter({ hasText: /STD campaign template/ }).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 });
@@ -854,10 +854,8 @@ adminTest.describe.serial("Pricelist Template — admin@BLAVG CRUD", () => {
 
       await tpl.gotoList();
       const search = tpl.searchInput();
-      if ((await search.count()) > 0) {
-        await search.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search.press("Enter").catch(() => {});
-      }
+      await search.fill(ADMIN_NAME_UPDATED);
+      await search.press("Enter");
       await expect(page.getByText(ADMIN_NAME_UPDATED).first()).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -882,10 +880,8 @@ adminTest.describe.serial("Pricelist Template — admin@BLAVG CRUD", () => {
 
       await tpl.gotoList();
       const search = tpl.searchInput();
-      if ((await search.count()) > 0) {
-        await search.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search.press("Enter").catch(() => {});
-      }
+      await search.fill(ADMIN_NAME_UPDATED);
+      await search.press("Enter");
       await expect(page.getByText(ADMIN_NAME_UPDATED).first()).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -927,18 +923,14 @@ adminTest.describe.serial("Pricelist Template — admin@BLAVG CRUD", () => {
       const tpl = new PriceListTemplatePage(page);
       await tpl.gotoList();
       const search = tpl.searchInput();
-      if ((await search.count()) > 0) {
-        await search.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search.press("Enter").catch(() => {});
-      }
+      await search.fill(ADMIN_NAME_UPDATED);
+      await search.press("Enter");
       await tpl.deleteViaRowActions(ADMIN_NAME_UPDATED, { confirm: false });
 
       await tpl.gotoList();
       const search2 = tpl.searchInput();
-      if ((await search2.count()) > 0) {
-        await search2.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search2.press("Enter").catch(() => {});
-      }
+      await search2.fill(ADMIN_NAME_UPDATED);
+      await search2.press("Enter");
       await expect(page.getByText(ADMIN_NAME_UPDATED).first()).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -958,10 +950,8 @@ adminTest.describe.serial("Pricelist Template — admin@BLAVG CRUD", () => {
       const tpl = new PriceListTemplatePage(page);
       await tpl.gotoList();
       const search = tpl.searchInput();
-      if ((await search.count()) > 0) {
-        await search.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search.press("Enter").catch(() => {});
-      }
+      await search.fill(ADMIN_NAME_UPDATED);
+      await search.press("Enter");
       await tpl.deleteViaRowActions(ADMIN_NAME_UPDATED, { confirm: true });
       await tpl.expectSavedToast();
     },

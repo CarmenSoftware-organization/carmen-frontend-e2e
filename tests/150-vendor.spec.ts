@@ -252,7 +252,6 @@ test.describe("Vendor — Create happy path", () => {
       ],
     },
     async ({ page }) => {
-    test.fail(true, "suspected bug: Primary checkbox on a vendor contact card does not re-render (vendor-contact.tsx:152 reads form.getValues, not useWatch)");
     const vendor = new VendorPage(page);
     await vendor.gotoNew();
     const code = `${CODE.slice(0, 9)}C`;
@@ -264,8 +263,11 @@ test.describe("Vendor — Create happy path", () => {
       name: "Primary Person",
       email: "primary@example.com",
       phone: "0123456789",
-      is_primary: true,
     });
+    // Bug site: ticking Primary does not change the checkbox state (card does not re-render).
+    test.fail(true, "suspected bug: Primary checkbox on a vendor contact card does not re-render (vendor-contact.tsx:152 reads form.getValues, not useWatch)");
+    await vendor.setPrimaryContact(0);
+    await expect(vendor.contactRow(0).getByRole("checkbox").first()).toBeChecked({ timeout: 3_000 });
     await vendor.saveButton().click();
     await vendor.expectSaved();
     await vendor.gotoList();
@@ -382,7 +384,6 @@ test.describe("Vendor — Tabs & dynamic arrays", () => {
       ],
     },
     async ({ page }) => {
-    test.fail(true, "suspected bug: Primary checkbox on a vendor contact card does not re-render (vendor-contact.tsx:152 reads form.getValues, not useWatch)");
     const vendor = new VendorPage(page);
     await vendor.gotoNew();
     await vendor.switchTab("contact");
@@ -390,6 +391,8 @@ test.describe("Vendor — Tabs & dynamic arrays", () => {
     await vendor.addContactRow();
     await vendor.fillContact(0, { name: "A" });
     await vendor.fillContact(1, { name: "B" });
+    // Bug site: ticking Primary does not change the checkbox state (card does not re-render).
+    test.fail(true, "suspected bug: Primary checkbox on a vendor contact card does not re-render (vendor-contact.tsx:152 reads form.getValues, not useWatch)");
     await vendor.setPrimaryContact(0);
     await expect(vendor.contactRow(0).getByRole("checkbox")).toBeChecked();
     await vendor.setPrimaryContact(1);

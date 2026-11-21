@@ -222,11 +222,10 @@ test.describe("Chart of Accounts — CRUD & Validation", () => {
       const original = await h.nameInput().inputValue();
       await h.nameInput().fill(`${original} CHANGED`);
       await h.cancelButton().click();
-      // Dirty form: confirm the discard prompt if it appears
+      // A dirty form always asks "Discard changes?" (DiscardDialog)
       const discard = page.getByRole("alertdialog");
-      if (await discard.isVisible().catch(() => false)) {
-        await discard.getByRole("button", { name: /discard|yes|confirm|ทิ้ง/i }).click();
-      }
+      await expect(discard).toBeVisible({ timeout: 5_000 });
+      await discard.getByRole("button", { name: /^Discard$/i }).click();
       // Back to view mode: Edit offered again, no input left, no save toast
       await expect(h.editButton()).toBeVisible({ timeout: 5_000 });
       await expect(page.getByText(/updated successfully/i)).toHaveCount(0);

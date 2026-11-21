@@ -541,6 +541,9 @@ test.describe("Department — Smoke & CRUD", () => {
       await h.nameInput().fill(name);
       await h.saveButton().click();
       await expect(page.getByText(/created|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+      // Create navigates to the detail page; wait for it, or Edit is clicked on the /new form that is about to unmount
+      await page.waitForURL(/\/config\/department\/[0-9a-f-]{36}/, { timeout: 10_000 });
+      await page.waitForLoadState("networkidle");
 
       await h.editButton().click();
       await h.nameInput().clear();
@@ -628,32 +631,40 @@ test.describe("Department — Smoke & CRUD", () => {
     async ({ page }) => {
       const h = new PageFormCrudHelper(page, opts);
       const members = new DepartmentMembersHelper(page);
+      const openSeededDept = async () => {
+        await h.list.goto();
+        await page.locator("tbody tr").first().getByRole("button").first().click();
+        await page.waitForLoadState("networkidle");
+        await h.editButton().click();
+      };
       // data:reset maps every user into a department, so the "available" list is empty on a new
       // department. Exercise the transfer on a seeded department instead: move a member out,
-      // save, check it persisted, then move the same member back (restores the dataset).
-      await h.list.goto();
-      await page.locator("tbody tr").first().getByRole("button").first().click();
-      await page.waitForLoadState("networkidle");
-      await h.editButton().click();
+      // save, check it persisted, then move the same member back. The restore runs in `finally`
+      // so a failure in the middle cannot leave the seeded department short of a member.
+      await openSeededDept();
       expect(await members.availableUsers("Department Members"), "dataset: available list is expected to start empty").toBe(0);
       const moved = await members.unassignFirstAssigned("Department Members");
       expect(moved, "seeded department should have at least one member").not.toBeNull();
-      await h.saveButton().click();
-      await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-      await page.reload();
-      await page.waitForLoadState("networkidle");
-      await h.editButton().click();
-      expect(await members.availableUsers("Department Members"), "the removed member is now available").toBe(1);
-
-      // restore: assign the freed user again
-      const back = await members.assignFirstAvailable("Department Members");
-      expect(back).not.toBeNull();
-      await h.saveButton().click();
-      await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-      await page.reload();
-      await page.waitForLoadState("networkidle");
-      await h.editButton().click();
-      expect(await members.availableUsers("Department Members")).toBe(0);
+      try {
+        await h.saveButton().click();
+        await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await h.editButton().click();
+        expect(await members.availableUsers("Department Members"), "the removed member is now available").toBe(1);
+      } finally {
+        // restore (best effort; never masks the original failure): re-assign whoever is available
+        await (async () => {
+          await openSeededDept();
+          if ((await members.availableUsers("Department Members")) > 0) {
+            await members.assignFirstAvailable("Department Members");
+            await h.saveButton().click();
+            await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+          }
+        })().catch(() => {});
+      }
+      await openSeededDept();
+      expect(await members.availableUsers("Department Members"), "restored: nobody is left unassigned").toBe(0);
     },
   );
 
@@ -671,32 +682,38 @@ test.describe("Department — Smoke & CRUD", () => {
     async ({ page }) => {
       const h = new PageFormCrudHelper(page, opts);
       const members = new DepartmentMembersHelper(page);
+      const openSeededDept = async () => {
+        await h.list.goto();
+        await page.locator("tbody tr").first().getByRole("button").first().click();
+        await page.waitForLoadState("networkidle");
+        await h.editButton().click();
+      };
       // A department's HOD candidates are its own members, so a new (member-less) department has
-      // none. Use the seeded first department (data:reset puts every user in it): set an HOD, check
-      // it persisted, then clear it again to restore the dataset.
-      await h.list.goto();
-      await page.locator("tbody tr").first().getByRole("button").first().click();
-      await page.waitForLoadState("networkidle");
-      await h.editButton().click();
+      // none. Use the seeded first department (data:reset puts every user in it): add an HOD, check
+      // it persisted, then take that same user out again. Restore is in `finally`.
+      await openSeededDept();
       const hodBefore = await members.availableUsers("Head of Department");
       expect(hodBefore, "seeded department should offer members as HOD candidates — run `bun run data:reset`").toBeGreaterThan(0);
-
       const moved = await members.assignFirstAvailable("Head of Department");
       expect(moved).not.toBeNull();
-      console.log("MOVED=", JSON.stringify(moved));
-      await h.saveButton().click();
-      await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-
-      await page.reload();
-      await page.waitForLoadState("networkidle");
-      await expect(page.getByText(moved!.split("\n")[0].trim(), { exact: false }).first()).toBeVisible({ timeout: 10_000 });
-
-      // restore: move the new HOD back out so the dataset keeps its original head
-      await h.editButton().click();
-      expect(await members.availableUsers("Head of Department")).toBe(hodBefore - 1);
-      await members.unassignFirstAssigned("Head of Department");
-      await h.saveButton().click();
-      await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+      const label = moved!.trim();
+      try {
+        await h.saveButton().click();
+        await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+        await page.reload();
+        await page.waitForLoadState("networkidle");
+        await expect(page.getByText(label.split("\n")[0].trim(), { exact: false }).first()).toBeVisible({ timeout: 10_000 });
+      } finally {
+        await (async () => {
+          await openSeededDept();
+          if (await members.unassignByLabel("Head of Department", label)) {
+            await h.saveButton().click();
+            await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+          }
+        })().catch(() => {});
+      }
+      await openSeededDept();
+      expect(await members.availableUsers("Head of Department"), "restored: HOD candidates back to the original count").toBe(hodBefore);
     },
   );
 });

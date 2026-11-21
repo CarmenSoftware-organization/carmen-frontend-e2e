@@ -73,4 +73,17 @@ export class DepartmentMembersHelper {
     await section.getByRole("button", { name: "Move selected to left" }).click();
     return label || "(moved)";
   }
+
+  /** Move one specific assigned user (by its row label) back to the available list. */
+  async unassignByLabel(heading: string, label: string): Promise<boolean> {
+    const section = this.section(heading);
+    const boxes = section.getByRole("checkbox");
+    const first = (await this.availableUsers(heading)) + 2; // after [available header][rows][assigned header]
+    const texts = await boxes.evaluateAll((els) => els.map((e) => (e.parentElement?.textContent ?? "").trim()));
+    const idx = texts.findIndex((t, i) => i >= first && t === label);
+    if (idx < 0) return false;
+    await boxes.nth(idx).check();
+    await section.getByRole("button", { name: "Move selected to left" }).click();
+    return true;
+  }
 }

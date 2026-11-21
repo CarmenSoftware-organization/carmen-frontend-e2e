@@ -382,11 +382,12 @@ test.describe("จุดส่งของ — อ่าน", () => {
     const sortButton = list
       .headerCell(/name/i)
       .getByRole("button", { name: /name/i });
-    if (await sortButton.isVisible().catch(() => false)) {
-      await sortButton.click();
-      await page.waitForLoadState("networkidle");
-    }
-    // Page should not crash
+    await expect(sortButton).toBeVisible({ timeout: 10_000 });
+    await sortButton.click();
+    await page.waitForLoadState("networkidle");
+    // Search + sort still leave the matching record(s), and the page stays usable
+    expect(await list.tableRows().count(), "search term still matches after sorting").toBeGreaterThan(0);
+    await expect(list.searchInput().first()).toHaveValue(term);
     await expect(list.addButton()).toBeVisible();
   });
 
@@ -677,8 +678,10 @@ test.describe("จุดส่งของ — อ่าน", () => {
     await page.keyboard.press("Escape");
     // Search should still work
     await list.search(term);
-    const rows = await list.tableRows().count();
-    expect(rows).toBeGreaterThanOrEqual(0);
+    // The hidden Name column is still searchable: the record we searched for is found
+    await expect(list.headerCell(/^name$/i)).toHaveCount(0);
+    expect(await list.tableRows().count(), "search by the hidden column's value finds the record").toBeGreaterThan(0);
+    expect(await list.tableRows().first().innerText()).not.toMatch(/no data found/i);
     // Restore
     await btn.click();
     await item.click();
@@ -903,7 +906,6 @@ test.describe("จุดส่งของ — สร้าง", () => {
       ],
     },
     async ({ page }) => {
-    test.fail(true, "suspected bug: a duplicate delivery-point name is rejected (409 DELIVERY_POINT_ALREADY_EXISTS, no row written) but the dialog shows no toast or message at all — the user gets no feedback");
     const list = new DeliveryPointListPage(page);
     const dialog = new DeliveryPointDialog(page);
     // The worker may have restarted since TC-DP-030004 (uid changes) — make sure the name exists.
@@ -911,10 +913,16 @@ test.describe("จุดส่งของ — สร้าง", () => {
     await list.goto();
     await list.addButton().click();
     await dialog.nameInput().fill(DP_NAME);
+    const answered = page.waitForResponse((r) => r.request().method() === "POST" && /delivery-point/.test(r.url()), { timeout: 10_000 });
     await dialog.saveButton().click();
+    // Normal steps: the backend rejects the duplicate with 409 and the dialog stays open...
+    const response = await answered;
+    expect(response.status()).toBe(409);
+    await expect(dialog.nameInput()).toBeVisible();
+    // ...bug site: the user is told nothing (no toast / message) about why.
+    test.fail(true, "suspected bug: a duplicate delivery-point name is rejected (409 DELIVERY_POINT_ALREADY_EXISTS, no row written) but the dialog shows no toast or message — the user gets no feedback");
     // FE e4035fba: a 409 "already exists" now reads "...conflicts with data already recorded in the system"
     await expect(page.getByText(/already|exists|duplicate|conflicts with data|ซ้ำ/i).first()).toBeVisible({ timeout: 5_000 });
-    await expect(dialog.nameInput()).toBeVisible();
     await dialog.cancelButton().click();
   });
 

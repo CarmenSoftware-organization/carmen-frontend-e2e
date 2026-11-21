@@ -5,21 +5,22 @@ _Generated from `tests/1001-campaign.spec.ts` annotations. Edit annotations, not
 **Module:** Campaign
 **Spec:** `tests/1001-campaign.spec.ts`
 **Default role:** Admin
-**Total test cases:** 23 (12 High / 8 Medium / 3 Low)
+**Total test cases:** 25 (12 High / 9 Medium / 4 Low)
 
 ## Test Cases at a Glance
 
 | TC | Title | Priority | Test Type |
 | --- | --- | --- | --- |
 | TC-CAM-010001 | View Campaign List - Happy Path | High | Happy Path |
-| TC-CAM-010002 | View Campaign List - Invalid Permissions | High | Authorization |
+| TC-CAM-010002 | role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ Campaign | High | Authorization |
+| TC-CAM-010003 | View Campaign List - Empty Campaign List | Medium | Edge Case |
 | TC-CAM-010050 | active BU = BLAVG | High | Smoke |
 | TC-CAM-010051 | หน้า list โหลดสำเร็จ (admin/BLAVG) + ปุ่ม Add แสดง | High | Smoke |
 | TC-CAM-010052 | ค้นหาคำที่ไม่มี → empty state | Medium | Negative |
 | TC-CAM-020001 | Happy Path - Create Campaign with All Valid Inputs | High | Happy Path |
 | TC-CAM-020002 | Negative Path - Missing Required Fields | High | Negative |
 | TC-CAM-030001 | View active campaign detail | High | Happy Path |
-| TC-CAM-030002 | User with no permission to view campaign detail | High | Authorization |
+| TC-CAM-030002 | role ที่มีสิทธิ์ view อย่างเดียวเปิดรายละเอียด Campaign ได้ | High | Authorization |
 | TC-CAM-030003 | Campaign detail with draft status | Medium | Alternate Flow |
 | TC-CAM-030004 | View campaign detail with empty performance summary | Medium | Edge Case |
 | TC-CAM-030005 | Campaign detail with future start date | Low | Edge Case |
@@ -30,7 +31,8 @@ _Generated from `tests/1001-campaign.spec.ts` annotations. Edit annotations, not
 | TC-CAM-080001 | Happy Path - Delete Campaign | Medium | Happy Path |
 | TC-CAM-080004 | Negative - No Permission | High | Authorization |
 | TC-CAM-090001 | Export campaign data - happy path | Medium | Happy Path |
-| TC-CAM-090002 | Export campaign data - no permission | Medium | Authorization |
+| TC-CAM-090002 | role ที่มีสิทธิ์ view อย่างเดียว export Campaign ได้ (ไม่มีสิทธิ์ export แยก) | Medium | Authorization |
+| TC-CAM-090003 | Export campaign data - large dataset | Low | Edge Case |
 | TC-CAM-090004 | Export campaign data - multiple exports | Low | Edge Case |
 | TC-CAM-100002 | Search by Text - Valid Term | High | Functional |
 | TC-CAM-100004 | Search by Text - No Matching Terms | Medium | Negative |
@@ -60,7 +62,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; BU มี campaign STD
 
 ---
 
-## TC-CAM-010002 — View Campaign List - Invalid Permissions
+## TC-CAM-010002 — role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ Campaign
 
 > **As a** low-privilege user, **I should NOT** see Add/edit controls on Campaign, **so that** role separation is enforced.
 
@@ -68,16 +70,37 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; BU มี campaign STD
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ดู campaign list
+Login เป็น carmensoftware.dev+hod@gmail.com ซึ่งมีเฉพาะ vendor_management.request_price_list.view (ทุก role ใน seed มีสิทธิ์ view จึงทดสอบ 'ไม่มีสิทธิ์ดู' ไม่ได้)
 
 **Steps**
 
 1. ไปที่ /vendor-management/request-price-list
-2. ตรวจสอบ error message หรือ redirect
 
 **Expected**
 
-ผู้ใช้ถูก redirect ออกจากหน้า list หรือเห็น permission denied (ไม่เห็นตาราง campaign)
+role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ campaign (แถว STD campaign.active)
+
+---
+
+## TC-CAM-010003 — View Campaign List - Empty Campaign List
+
+> **As a** Admin user, **I want** this Campaign behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Medium · **Test Type:** Edge Case
+
+**Preconditions**
+
+Login เป็น carmensoftware.dev+purchase@gmail.com; BU มี campaign STD (ใช้การค้นหาที่ไม่มีผลลัพธ์แทนรายการว่างจริง เพื่อไม่ลบ campaign ที่ seed ไว้)
+
+**Steps**
+
+1. ไปที่ /vendor-management/request-price-list
+2. พิมพ์คำค้นที่ไม่ตรงกับ campaign ใดแล้วกด Enter
+
+**Expected**
+
+ตารางไม่มี campaign (ไม่มีแถวที่เปิดได้) และแสดงข้อความ empty state 'No data found'
 
 ---
 
@@ -216,7 +239,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign 'STD c
 
 ---
 
-## TC-CAM-030002 — User with no permission to view campaign detail
+## TC-CAM-030002 — role ที่มีสิทธิ์ view อย่างเดียวเปิดรายละเอียด Campaign ได้
 
 > **As a** low-privilege user, **I should NOT** see Add/edit controls on Campaign, **so that** role separation is enforced.
 
@@ -224,16 +247,15 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign 'STD c
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ดู campaign
+Login เป็น carmensoftware.dev+hod@gmail.com (view-only; ทุก role มีสิทธิ์ view)
 
 **Steps**
 
-1. ไปที่ /vendor-management/request-price-list
-2. เปิดรายละเอียด campaign
+1. เปิดรายละเอียด 'STD campaign.active'
 
 **Expected**
 
-ไม่สามารถเปิดรายละเอียดได้ (permission denied / redirect)
+role ที่มีสิทธิ์ view อย่างเดียวเปิดรายละเอียดและเห็นป้ายรอบ 'days left' กับสรุป vendor
 
 ---
 
@@ -358,7 +380,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; อยู่ที่�
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์แก้ไข campaign
+Login เป็น carmensoftware.dev+hod@gmail.com ซึ่งมีสิทธิ์ view แต่ไม่มี request_price_list.update
 
 **Steps**
 
@@ -366,7 +388,7 @@ Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่�
 
 **Expected**
 
-ไม่มีปุ่ม Edit (หรือปุ่มถูก disable)
+ไม่มีปุ่ม Edit (บั๊ก: ปัจจุบันปุ่ม Edit ยังแสดงและกดได้)
 
 ---
 
@@ -424,7 +446,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign E2E �
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ลบ campaign
+Login เป็น carmensoftware.dev+hod@gmail.com ซึ่งมีสิทธิ์ view แต่ไม่มี request_price_list.delete
 
 **Steps**
 
@@ -432,7 +454,7 @@ Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่�
 
 **Expected**
 
-ไม่มีปุ่ม Delete (หรือปุ่มถูก disable)
+ไม่มีปุ่ม Delete (บั๊ก: ปัจจุบันปุ่ม Delete ยังแสดงและกดได้)
 
 ---
 
@@ -458,7 +480,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign อย
 
 ---
 
-## TC-CAM-090002 — Export campaign data - no permission
+## TC-CAM-090002 — role ที่มีสิทธิ์ view อย่างเดียว export Campaign ได้ (ไม่มีสิทธิ์ export แยก)
 
 > **As a** low-privilege user, **I should NOT** see Add/edit controls on Campaign, **so that** role separation is enforced.
 
@@ -466,15 +488,38 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign อย
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ export ข้อมูล campaign
+Login เป็น carmensoftware.dev+hod@gmail.com (view-only; ไม่มีคีย์สิทธิ์ export แยก — export ตามสิทธิ์ view)
+
+**Steps**
+
+1. ไปที่ /vendor-management/request-price-list\n2. กด 'Export'
+
+**Expected**
+
+role ที่มีสิทธิ์ view อย่างเดียว export ได้: ดาวน์โหลดไฟล์ .xlsx
+
+---
+
+## TC-CAM-090003 — Export campaign data - large dataset
+
+> **As a** Admin user, **I want** this Campaign behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Low · **Test Type:** Edge Case
+
+**Preconditions**
+
+Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign อย่างน้อย 1 รายการ
 
 **Steps**
 
 1. ไปที่ /vendor-management/request-price-list
+2. ตั้ง Rows per page เป็น 100 (ขนาดหน้าสูงสุดของตาราง)
+3. กด 'Export'
 
 **Expected**
 
-ไม่มีปุ่ม Export หรือปุ่มถูก disable
+ดาวน์โหลดไฟล์ .xlsx ได้โดยไม่ crash และไฟล์มีขนาด > 0
 
 ---
 
@@ -544,4 +589,4 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และอยู่�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>
+<sub>Last regenerated: 2026-11-21 · git 4c477d5</sub>

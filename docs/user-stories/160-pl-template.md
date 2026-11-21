@@ -40,7 +40,7 @@ _Generated from `tests/160-pl-template.spec.ts` annotations. Edit annotations, n
 | TC-PT-050051 | ลบ template (admin/BLAVG) cleanup | High | CRUD |
 | TC-PT-060001 | Search and View Templates - Happy Path | High | Happy Path |
 | TC-PT-060002 | Search and View Templates - Negative - Invalid Search Term | High | Negative |
-| TC-PT-060003 | Search and View Templates - Negative - Insufficient Permission | High | Negative |
+| TC-PT-060003 | role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template | High | Negative |
 | TC-PT-060005 | Search and View Templates - Edge Case - Sort by Name (Z-A) | Medium | Edge Case |
 | TC-PT-200050 | สร้าง template ชื่อซ้ำ ต้องถูก reject | High | Negative |
 
@@ -104,7 +104,7 @@ Login เป็น Procurement Manager และมีสิทธิ์เข�
 
 **Preconditions**
 
-Login เป็น Procurement Staff และมีสิทธิ์เข้าถึงเฉพาะหน้า list ของ Pricelist Templates
+Login เป็น requestor ซึ่งมีเฉพาะ vendor_management.price_list_template.view
 
 **Steps**
 
@@ -113,7 +113,7 @@ Login เป็น Procurement Staff และมีสิทธิ์เข้�
 
 **Expected**
 
-ผู้ใช้ถูก redirect ไปยังหน้าไม่มีสิทธิ์เข้าถึงหรือปุ่ม 'New Pricelist Template' ถูกซ่อน/disabled
+ไม่มีปุ่ม 'Add Price List Template' (บั๊ก: ปัจจุบันปุ่มยังแสดงและเปิด /new ได้)
 
 ---
 
@@ -757,7 +757,7 @@ Login เข้า Carmen Blue พร้อมสิทธิ์ดู template
 
 ---
 
-## TC-PT-060003 — Search and View Templates - Negative - Insufficient Permission
+## TC-PT-060003 — role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template
 
 > **As a** Admin user, **I want** this Price List Template behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -766,7 +766,7 @@ Login เข้า Carmen Blue พร้อมสิทธิ์ดู template
 
 **Preconditions**
 
-Login เข้า Carmen Blue แต่ไม่มีสิทธิ์ดู template
+Login เป็น requestor (ทุก role ใน seed มีสิทธิ์ price_list_template.view จึงทดสอบ 'ไม่มีสิทธิ์ดู' ไม่ได้)
 
 **Steps**
 
@@ -774,7 +774,7 @@ Login เข้า Carmen Blue แต่ไม่มีสิทธิ์ดู 
 
 **Expected**
 
-ระบบ redirect ผู้ใช้ไปยังหน้าไม่มีสิทธิ์เข้าถึงหรือแสดงข้อความปฏิเสธสิทธิ์
+role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template (แถว STD campaign template)
 
 ---
 
@@ -826,4 +826,4 @@ TC-PT-040050 ผ่านแล้ว → template ADMIN_NAME_UPDATED มีอ�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>
+<sub>Last regenerated: 2026-11-21 · git 4c477d5</sub>

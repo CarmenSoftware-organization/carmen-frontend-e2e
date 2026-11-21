@@ -18,11 +18,13 @@ import { field, pickDate, pickLookup } from "./helpers/movement/ui";
 //     The "status" is derived from the request window (Upcoming / N days left / Closed).
 //   - Seeded by `bun run data:reset` (STD campaign.draft / .active / .expired, one vendor each).
 //
-// Purchase = carmensoftware.dev+purchase@gmail.com; permission denial uses
-// carmensoftware.dev+requestor@gmail.com — which today can open, edit, delete and export
-// (no client-side gate; reported as a suspected bug, each denial case is test.fail).
+// Purchase = carmensoftware.dev+purchase@gmail.com (full vendor_management.request_price_list.*).
+// Permission seed on dev (checked via /api/user/profile): EVERY role holds ...request_price_list.view, and
+// only purchase@ and requestor@ hold create/update/delete. So "denied view" cannot be exercised with this
+// data (env-data) — the permission cases use hod@ (view-only) to check what a view-only role sees. FE
+// does not hide Edit / Delete / New for a view-only role: that is the pinned suspected bug.
 // ─────────────────────────────────────────────────────────────────────────
-const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
+const viewOnlyTest = createAuthTest("carmensoftware.dev+hod@gmail.com"); // request_price_list.view only
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 
 const SEED_ACTIVE = "STD campaign.active";
@@ -114,24 +116,46 @@ purchaseTest.describe("Campaign — List", () => {
   );
 });
 
-requestorTest.describe("Campaign — List — Permission denial", () => {
-  // Suspected bug: vendor-management routes carry no role gate — requestor@ opens the list.
-  requestorTest(
-    "TC-CAM-010002 View Campaign List - Invalid Permissions",
+purchaseTest.describe("Campaign — List — empty search", () => {
+  purchaseTest(
+    "TC-CAM-010003 View Campaign List - Empty Campaign List",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ดู campaign list" },
-        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. ตรวจสอบ error message หรือ redirect" },
-        { type: "expected", description: "ผู้ใช้ถูก redirect ออกจากหน้า list หรือเห็น permission denied (ไม่เห็นตาราง campaign)" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; BU มี campaign STD (ใช้การค้นหาที่ไม่มีผลลัพธ์แทนรายการว่างจริง เพื่อไม่ลบ campaign ที่ seed ไว้)" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. พิมพ์คำค้นที่ไม่ตรงกับ campaign ใดแล้วกด Enter" },
+        { type: "expected", description: "ตารางไม่มี campaign (ไม่มีแถวที่เปิดได้) และแสดงข้อความ empty state 'No data found'" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const cam = new CampaignPage(page);
+      await cam.gotoList();
+      await expect(page.getByRole("button", { name: SEED_ACTIVE, exact: true })).toBeVisible({ timeout: 15_000 });
+      await cam.searchInput().fill(`__EMPTY_${uid}__`);
+      await cam.searchInput().press("Enter");
+      await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator("tbody tr:has(button)")).toHaveCount(0);
+    },
+  );
+});
+
+viewOnlyTest.describe("Campaign — List — view-only role", () => {
+  viewOnlyTest(
+    "TC-CAM-010002 role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ Campaign",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+hod@gmail.com ซึ่งมีเฉพาะ vendor_management.request_price_list.view (ทุก role ใน seed มีสิทธิ์ view จึงทดสอบ 'ไม่มีสิทธิ์ดู' ไม่ได้)" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list" },
+        { type: "expected", description: "role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ campaign (แถว STD campaign.active)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      requestorTest.fail(true, "suspected bug: requestor can open the Request for Pricing list (no role gate on vendor-management routes)");
       await page.goto(LIST_PATH);
       await page.waitForLoadState("networkidle");
-      await expect(page.getByRole("button", { name: SEED_ACTIVE, exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: SEED_ACTIVE, exact: true })).toBeVisible({ timeout: 15_000 });
     },
   );
 });
@@ -273,25 +297,22 @@ purchaseTest.describe("Campaign — Detail", () => {
   );
 });
 
-requestorTest.describe("Campaign — Detail — Permission denial", () => {
-  requestorTest(
-    "TC-CAM-030002 User with no permission to view campaign detail",
+viewOnlyTest.describe("Campaign — Detail — view-only role", () => {
+  viewOnlyTest(
+    "TC-CAM-030002 role ที่มีสิทธิ์ view อย่างเดียวเปิดรายละเอียด Campaign ได้",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ดู campaign" },
-        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. เปิดรายละเอียด campaign" },
-        { type: "expected", description: "ไม่สามารถเปิดรายละเอียดได้ (permission denied / redirect)" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+hod@gmail.com (view-only; ทุก role มีสิทธิ์ view)" },
+        { type: "steps", description: "1. เปิดรายละเอียด 'STD campaign.active'" },
+        { type: "expected", description: "role ที่มีสิทธิ์ view อย่างเดียวเปิดรายละเอียดและเห็นป้ายรอบ 'days left' กับสรุป vendor" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      requestorTest.fail(true, "suspected bug: requestor can open a Request for Pricing detail page (no role gate on vendor-management routes)");
-      await page.goto(LIST_PATH);
-      await page.waitForLoadState("networkidle");
-      await page.getByRole("button", { name: SEED_ACTIVE, exact: true }).click({ timeout: 10_000 });
-      // Positive denial signal (a "not on detail" check would pass before the navigation lands).
-      await expect(page.getByText(/permission denied|restricted|not authori[sz]ed/i).first()).toBeVisible({ timeout: 5_000 });
+      await openSeeded(page, SEED_ACTIVE);
+      await expect(page.getByText(/days? left/i).first()).toBeVisible();
+      await expect(page.getByText(/0 of 1 vendor has submitted/i)).toBeVisible();
     },
   );
 });
@@ -374,23 +395,24 @@ purchaseTest.describe("Campaign — Edit", () => {
   );
 });
 
-requestorTest.describe("Campaign — Edit — Permission denial", () => {
-  requestorTest(
+viewOnlyTest.describe("Campaign — Edit — view-only role", () => {
+  viewOnlyTest(
     "TC-CAM-040003 Edit Campaign with No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์แก้ไข campaign" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+hod@gmail.com ซึ่งมีสิทธิ์ view แต่ไม่มี request_price_list.update" },
         { type: "steps", description: "1. เปิดรายละเอียด 'STD campaign.active'" },
-        { type: "expected", description: "ไม่มีปุ่ม Edit (หรือปุ่มถูก disable)" },
+        { type: "expected", description: "ไม่มีปุ่ม Edit (บั๊ก: ปัจจุบันปุ่ม Edit ยังแสดงและกดได้)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      requestorTest.fail(true, "suspected bug: requestor sees an enabled Edit button on a Request for Pricing (no write gate)");
       await openSeeded(page, SEED_ACTIVE);
       // The toolbar is rendered (Activity is there) — only then is "no Edit button" meaningful.
       await expect(page.getByRole("button", { name: /^Activity$/ })).toBeVisible();
+      // Bug site: hod@ holds request_price_list.view only, yet the FE offers Edit.
+      viewOnlyTest.fail(true, "suspected bug: a view-only role (hod@: request_price_list.view, no .update) sees an enabled Edit button on a Request for Pricing");
       await expect(page.getByRole("button", { name: /^Edit$/ })).toHaveCount(0);
     },
   );
@@ -429,22 +451,22 @@ purchaseTest.describe("Campaign — Delete", () => {
   );
 });
 
-requestorTest.describe("Campaign — Delete — Permission denial", () => {
-  requestorTest(
+viewOnlyTest.describe("Campaign — Delete — view-only role", () => {
+  viewOnlyTest(
     "TC-CAM-080004 Negative - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ลบ campaign" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+hod@gmail.com ซึ่งมีสิทธิ์ view แต่ไม่มี request_price_list.delete" },
         { type: "steps", description: "1. เปิดรายละเอียด 'STD campaign.active'" },
-        { type: "expected", description: "ไม่มีปุ่ม Delete (หรือปุ่มถูก disable)" },
+        { type: "expected", description: "ไม่มีปุ่ม Delete (บั๊ก: ปัจจุบันปุ่ม Delete ยังแสดงและกดได้)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      requestorTest.fail(true, "suspected bug: requestor sees an enabled Delete button on a Request for Pricing (no write gate)");
       await openSeeded(page, SEED_ACTIVE);
       await expect(page.getByRole("button", { name: /^Activity$/ })).toBeVisible();
+      viewOnlyTest.fail(true, "suspected bug: a view-only role (hod@: request_price_list.view, no .delete) sees an enabled Delete button on a Request for Pricing");
       await expect(page.getByRole("button", { name: /^Delete$/ })).toHaveCount(0);
     },
   );
@@ -497,23 +519,51 @@ purchaseTest.describe("Campaign — Export", () => {
   );
 });
 
-requestorTest.describe("Campaign — Export — Permission denial", () => {
-  requestorTest(
-    "TC-CAM-090002 Export campaign data - no permission",
+purchaseTest.describe("Campaign — Export — large page", () => {
+  purchaseTest(
+    "TC-CAM-090003 Export campaign data - large dataset",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ export ข้อมูล campaign" },
-        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list" },
-        { type: "expected", description: "ไม่มีปุ่ม Export หรือปุ่มถูก disable" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign อย่างน้อย 1 รายการ" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. ตั้ง Rows per page เป็น 100 (ขนาดหน้าสูงสุดของตาราง)\n3. กด 'Export'" },
+        { type: "expected", description: "ดาวน์โหลดไฟล์ .xlsx ได้โดยไม่ crash และไฟล์มีขนาด > 0" },
+        { type: "priority", description: "Low" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const cam = new CampaignPage(page);
+      await cam.gotoList();
+      await page.getByRole("combobox", { name: /rows per page/i }).click();
+      await page.getByRole("option", { name: "100", exact: true }).click();
+      await page.waitForLoadState("networkidle");
+      await expect(cam.exportButton()).toBeEnabled({ timeout: 10_000 });
+      const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), cam.exportButton().click()]);
+      expect(download.suggestedFilename()).toMatch(/\.xlsx$/i);
+      const path = await download.path();
+      expect(path, "downloaded file").toBeTruthy();
+    },
+  );
+});
+
+viewOnlyTest.describe("Campaign — Export — view-only role", () => {
+  viewOnlyTest(
+    "TC-CAM-090002 role ที่มีสิทธิ์ view อย่างเดียว export Campaign ได้ (ไม่มีสิทธิ์ export แยก)",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+hod@gmail.com (view-only; ไม่มีคีย์สิทธิ์ export แยก — export ตามสิทธิ์ view)" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\\n2. กด 'Export'" },
+        { type: "expected", description: "role ที่มีสิทธิ์ view อย่างเดียว export ได้: ดาวน์โหลดไฟล์ .xlsx" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      requestorTest.fail(true, "suspected bug: requestor sees an enabled Export button on the Request for Pricing list (no role gate)");
       const cam = new CampaignPage(page);
       await cam.gotoList();
-      await expect(cam.exportButton()).toBeDisabled();
+      await expect(cam.exportButton()).toBeEnabled({ timeout: 10_000 });
+      const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), cam.exportButton().click()]);
+      expect(download.suggestedFilename()).toMatch(/\.xlsx$/i);
     },
   );
 });

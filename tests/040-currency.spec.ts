@@ -410,7 +410,6 @@ test.describe("Currency — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
-      test.fail(true, "suspected bug: backend accepts a second currency with the same name (dialog closes, record is created) — cf. dept TC-DEP-010011");
       const h = new DialogCrudHelper(page, opts);
       const name = fakeName({ tag: "CUR200" });
       await h.list.goto();
@@ -425,9 +424,11 @@ test.describe("Currency — Smoke & CRUD", () => {
       await h.openAddDialog();
       await selectIso(h, page, "QAR");
       await h.nameInput().fill(name);
+      const answered = page.waitForResponse((r) => r.request().method() === "POST" && /currenc/i.test(r.url()), { timeout: 10_000 });
       await h.saveButton().click();
-      // A rejected duplicate leaves the dialog (and its name field) open.
-      await page.waitForResponse((r) => r.request().method() !== "GET" && /currenc/i.test(r.url()), { timeout: 10_000 }).catch(() => {});
+      const response = await answered; // the write is sent (normal step); its answer is the bug site
+      test.fail(true, "suspected bug: backend accepts a second currency with the same name (POST answers 2xx, dialog closes, record is created) — cf. dept TC-DEP-010011");
+      expect(response.ok(), `duplicate name should be rejected, POST → ${response.status()}`).toBe(false);
       await expect(h.nameInput()).toBeVisible({ timeout: 5_000 });
       await h.cancelButton().click();
     },

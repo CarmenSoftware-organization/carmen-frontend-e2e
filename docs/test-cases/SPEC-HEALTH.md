@@ -8,8 +8,8 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1392 |
-| **Running** | **1177** |
+| Cases declared | 1394 |
+| **Running** | **1179** |
 | Skipped | 201 |
 | Fixme | 14 |
 | **Dormant** (skipped + fixme) | **15%** |
@@ -17,7 +17,7 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | **Running cases asserting nothing at all** | **247** |
 | Running cases whose assertions are all trivial | 20 |
 | Running cases behind an in-body skip guard | 201 |
-| Assertions in running cases | 1705 |
+| Assertions in running cases | 1761 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -58,31 +58,31 @@ Sorted by dormant share, then by cases that assert nothing.
 | `310-pr-template.spec.ts` | 61 | 0 | 0 | 0% | **51** | 0 | **4** | 0 | 13 | 11 |
 | `302-pr-creator-journey.spec.ts` | 42 | 0 | 0 | 0% | **1** | 0 | 0 | **21** | 52 | 10 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
-| `010-department.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 58 | 0 |
+| `010-department.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 57 | 2 |
 | `020-unit.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 32 | 0 |
 | `029-business-type.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 35 | 0 |
 | `030-extra-cost.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 34 | 0 |
 | `031-adjustment-type.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 28 | 0 |
 | `032-credit-term.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 34 | 0 |
-| `040-currency.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 36 | 2 |
+| `040-currency.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 37 | 1 |
 | `041-exchange-rate.spec.ts` | 3 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 4 | 0 |
 | `042-tax-profile.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 34 | 0 |
-| `043-certification.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 29 | 1 |
-| `044-eco.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 28 | 1 |
-| `079-delivery-point.spec.ts` | 50 | 0 | 0 | 0% | 0 | 0 | 0 | **2** | 96 | 10 |
+| `043-certification.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 45 | 0 |
+| `044-eco.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 27 | 0 |
+| `079-delivery-point.spec.ts` | 50 | 0 | 0 | 0% | 0 | 0 | 0 | **2** | 102 | 9 |
 | `080-location.spec.ts` | 17 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 37 | 0 |
 | `081-chart-of-account-mapping.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 47 | 0 |
-| `082-chart-of-accounts.spec.ts` | 16 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 41 | 2 |
+| `082-chart-of-accounts.spec.ts` | 16 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 42 | 1 |
 | `083-shelf.spec.ts` | 8 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 19 | 0 |
-| `1001-campaign.spec.ts` | 23 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 57 | 1 |
+| `1001-campaign.spec.ts` | 25 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 65 | 1 |
 | `101-product-category.spec.ts` | 23 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 44 | 1 |
-| `110-op-category.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 28 | 4 |
-| `111-cuisine.spec.ts` | 17 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 32 | 8 |
+| `110-op-category.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 28 | 0 |
+| `111-cuisine.spec.ts` | 17 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 36 | 4 |
 | `121-recipe-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
 | `131-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
-| `150-vendor.spec.ts` | 31 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 56 | 1 |
-| `159-pl.spec.ts` | 22 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 31 | 11 |
-| `160-pl-template.spec.ts` | 32 | 0 | 0 | 0% | 0 | 7 | 0 | 0 | 53 | 11 |
+| `150-vendor.spec.ts` | 31 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 57 | 1 |
+| `159-pl.spec.ts` | 22 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 52 | 0 |
+| `160-pl-template.spec.ts` | 32 | 0 | 0 | 0% | 0 | 7 | 0 | 0 | 53 | 0 |
 | `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | **21** | 41 | 10 |
 | `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | **24** | 53 | 9 |
 | `312-pr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
