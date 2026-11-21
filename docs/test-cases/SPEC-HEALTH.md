@@ -17,7 +17,7 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | **Running cases asserting nothing at all** | **0** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 22 |
-| Assertions in running cases | 2779 |
+| Assertions in running cases | 2782 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -85,9 +85,9 @@ Sorted by dormant share, then by cases that assert nothing.
 | `403-po-approver-journey.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 71 | 0 |
 | `404-po-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 17 | 1 |
 | `501-grn.spec.ts` | 54 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 179 | 2 |
-| `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
+| `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |
-| `603-cn-doc-flow.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 20 | 1 |
+| `603-cn-doc-flow.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 21 | 0 |
 | `701-sr.spec.ts` | 33 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 152 | 0 |
 | `702-sr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
 | `710-wastage-reporting.spec.ts` | 18 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 67 | 0 |
