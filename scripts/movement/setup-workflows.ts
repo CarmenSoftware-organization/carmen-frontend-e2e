@@ -14,13 +14,13 @@
  */
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { apiSend } from "../../tests/helpers/movement/api";
+import { srIssueWorkflowName } from "../../tests/helpers/movement/doc-flow";
 
 const BU = "CARMEN-AVG";
 const BACKUP = "runs/movement/workflows-backup.json";
 const SOURCE = "ทดสอบสร้าง PR";
-// The SR workflow ("SR Test Flow v2 (with Issue)") was renamed on dev and already carries its products,
-// so only the PR/PO targets are needed; a target that no longer exists is reported and skipped.
-const TARGETS = ["general item", "PO inherit-sig test"];
+// The SR workflow (found by its stages — it was renamed on dev) is provisioned too, but is left alone once it has products.
+const TARGETS = ["general item", "PO inherit-sig test", await srIssueWorkflowName(BU)];
 
 async function getWorkflow(id: string) {
   const r = await apiSend("GET", `/api/config/${BU}/workflows/${id}`);
@@ -47,6 +47,7 @@ if (process.argv[2] === "restore") {
   if (!existsSync(BACKUP)) throw new Error(`ไม่มีไฟล์สำรอง ${BACKUP}`);
   const backup = JSON.parse(readFileSync(BACKUP, "utf8")) as Record<string, any>;
   for (const name of TARGETS) {
+    if (!backup[name]) continue; // backed up before this target existed
     await put(await getWorkflow(ids[name]), backup[name].data);
     console.log("restored", name);
   }

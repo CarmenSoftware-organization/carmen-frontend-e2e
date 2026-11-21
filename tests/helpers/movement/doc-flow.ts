@@ -91,18 +91,22 @@ const srWorkflowCache = new Map<string, string>();
 /**
  * Name of the active SR workflow shaped Create Request -> HOD -> Issue -> Completed. It was created as
  * "SR Test Flow v2 (with Issue)" and has since been renamed on dev, so it is found by its stages.
+ * Throws when several workflows match (names listed); E2E_SR_WORKFLOW=<name> picks one explicitly.
  */
 export async function srIssueWorkflowName(bu: string = DOC_FLOW_BU): Promise<string> {
+  if (process.env.E2E_SR_WORKFLOW) return process.env.E2E_SR_WORKFLOW;
   const hit = srWorkflowCache.get(bu);
   if (hit) return hit;
   const list = await apiGet(`/api/config/${bu}/workflows?perpage=100`);
+  const matches: string[] = [];
   for (const w of (list.body?.data ?? []).filter((x: any) => x.workflow_type === "store_requisition" && x.is_active)) {
     const d = await apiGet(`/api/config/${bu}/workflows/${w.id}`);
     const stages = (d.body?.data?.data?.stages ?? []).map((x: any) => x.role).join(">");
-    if (stages === "create>approve>issue>approve") {
-      srWorkflowCache.set(bu, w.name);
-      return w.name;
-    }
+    if (stages === "create>approve>issue>approve") matches.push(w.name);
   }
-  throw new Error(`${bu}: no active store_requisition workflow with stages create > approve (HOD) > issue > approve`);
+  if (matches.length !== 1) {
+    throw new Error(`${bu}: expected exactly one active SR workflow (create > approve > issue > approve), found ${matches.length}: ${matches.join(" | ") || "-"} — set E2E_SR_WORKFLOW=<name>`);
+  }
+  srWorkflowCache.set(bu, matches[0]);
+  return matches[0];
 }

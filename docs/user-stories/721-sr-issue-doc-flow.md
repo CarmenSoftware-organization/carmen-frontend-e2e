@@ -34,7 +34,7 @@ _Generated from `tests/721-sr-issue-doc-flow.spec.ts` annotations. Edit annotati
 
 **Preconditions**
 
-Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG; E2E_DB_URL ตั้งไว้ (อ่านยอดคงเหลือจาก cost layer)
+Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG
 
 **Steps**
 
@@ -58,7 +58,7 @@ GRN สถานะ saved และยอดคงเหลือ 11020001 ท�
 
 **Preconditions**
 
-TC-SI-700001 ผ่านแล้ว; Login เป็น requestor@carmen.com; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว; E2E_DB_URL ตั้งไว้ (อ่านงวด active)
+TC-SI-700001 ผ่านแล้ว; Login เป็น requestor@carmen.com; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว
 
 **Steps**
 
@@ -106,7 +106,7 @@ TC-SI-700002 ผ่านแล้ว — SR อยู่ขั้น HOD; Login
 
 **Preconditions**
 
-TC-SI-700003 ผ่านแล้ว — SR อยู่ขั้น Issue และลงวันที่ในงวด active; Login เป็น fc@carmen.com (อยู่ใน stage Issue); E2E_DB_URL ตั้งไว้
+TC-SI-700003 ผ่านแล้ว — SR อยู่ขั้น Issue และลงวันที่ในงวด active; Login เป็น fc@carmen.com (อยู่ใน stage Issue)
 
 **Steps**
 
@@ -117,7 +117,7 @@ TC-SI-700003 ผ่านแล้ว — SR อยู่ขั้น Issue แ�
 
 **Expected**
 
-คำขอ issue ตอบ < 300; SR completed; ยอดคงเหลือต้นทางลด 1; cost layer ลงงวด active; ถ้าวันนี้อยู่นอกงวด active ระบบต้องถามวันที่จ่าย
+คำขอ issue ตอบ < 300; SR completed; ยอดคงเหลือต้นทางลด 1; มี inventory transaction ลงวันที่ในงวด active (API ไม่เปิดงวดของ cost layer); ถ้าวันนี้อยู่นอกงวด active ระบบต้องถามวันที่จ่าย
 
 > _Note: เดิม SRI.3 · ณ 2026-10-02 รอบ r3 หลังบ้านตอบ 422 SR_ISSUE_PERIOD_NOT_CURRENT ไม่ถามวันที่ — รอบ r4 ผ่านแล้ว · TC-SR-120001 (701-sr) หาปุ่ม Record Issuance ซึ่งไม่มีแล้ว_
 
@@ -156,7 +156,7 @@ TC-SI-700003 ผ่านแล้ว — SR อยู่ขั้น Issue แ�
 
 **Preconditions**
 
-รัน bun run movement:setup-fifo-roles แล้ว (fc ถือ role Purchase + คลัง TEST-MOVE บน CARMEN-FIFO); E2E_SRI_BU=FIFO; E2E_DB_URL ตั้งไว้
+รัน bun run movement:setup-fifo-roles แล้ว (fc ถือ role Purchase + คลัง TEST-MOVE บน CARMEN-FIFO); E2E_SRI_BU=FIFO
 
 **Steps**
 
@@ -236,7 +236,7 @@ TC-SI-710003 ผ่านแล้ว — SR อยู่ขั้น Issue; fc 
 
 **Expected**
 
-คำขอ issue ตอบ < 300; SR completed; ยอดคงเหลือ TEST-MOVE ลด 1; cost layer ลงงวด active
+คำขอ issue ตอบ < 300; SR completed; ยอดคงเหลือ TEST-MOVE ลด 1; มี inventory transaction ลงวันที่ในงวด active (API ไม่เปิดงวดของ cost layer)
 
 > _Note: เดิม SRF.3_
 
@@ -314,4 +314,4 @@ TC-SI-710006 ผ่านแล้ว — ใบที่สองอยู่�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 4a3cb23</sub>
+<sub>Last regenerated: 2026-11-21 · git 3ec284f</sub>

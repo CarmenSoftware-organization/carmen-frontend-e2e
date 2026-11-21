@@ -207,11 +207,11 @@ async function issueAsFc(page: Page, id: string, fillQty: boolean) {
   const full = (await apiGet(`/api/${V.bu}/store-requisitions/${id}`)).body?.data;
   const issuedQty = (full?.store_requisition_detail ?? []).reduce((n: number, x: any) => n + Number(x.issued_qty ?? 0), 0);
   const tx = sr.no ? await txOfDoc(V.bu, id, sr.no) : [];
-  // The API does not expose the cost layer's at_period, so "posted into the active period" = it posted and the SR is dated inside that period.
+  // The API exposes no cost-layer period (at_period), so this proves only: the issue posted a transaction AND the SR is dated inside the active period.
   const period = await activePeriod();
   const atPeriods = tx.length && sr.date && period.contains(sr.date) ? [period.period] : [];
   const d = { issued: String(issuedQty), tx: tx.length ? "yes" : null };
-  const facts = `date question: ${q.asked ? `asked (${q.code})` : "not asked"} · HTTP ${q.res.status()} code=${q.body?.error?.code ?? "-"} · posted to ${atPeriods.join(",") || "-"} · Issued default "${defaultIssued}"${fillQty ? " → typed 1" : " (left)"} · SR ${sr.status} stage ${sr.stage} · issued_qty ${Number(d?.issued ?? 0)} · inventory transaction ${d?.tx ? "yes" : "no"} · on hand ${V.from} ${before} → ${after} · dialog: "${dialog.slice(0, 120)}" · toast: "${toast || "-"}"`;
+  const facts = `date question: ${q.asked ? `asked (${q.code})` : "not asked"} · HTTP ${q.res.status()} code=${q.body?.error?.code ?? "-"} · posted (tx dated in active period) ${atPeriods.join(",") || "-"} · Issued default "${defaultIssued}"${fillQty ? " → typed 1" : " (left)"} · SR ${sr.status} stage ${sr.stage} · issued_qty ${Number(d?.issued ?? 0)} · inventory transaction ${d?.tx ? "yes" : "no"} · on hand ${V.from} ${before} → ${after} · dialog: "${dialog.slice(0, 120)}" · toast: "${toast || "-"}"`;
   await observed(facts);
   return { status: q.res.status(), sr, before, after, facts, asked: q.asked, atPeriods };
 }
@@ -232,7 +232,7 @@ test.describe("CARMEN-AVG", () => {
       "TC-SI-700001 Requestor รับสินค้าเข้าคลังต้นทางด้วย GRN ให้มีของพอเบิก",
       {
         annotation: [
-          { type: "preconditions", description: "Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG; E2E_DB_URL ตั้งไว้ (อ่านยอดคงเหลือจาก cost layer)" },
+          { type: "preconditions", description: "Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG" },
           { type: "steps", description: "1. สร้าง GRN manual วันที่ในงวด active: กร๊อบกรอบ รสสาหร่าย (11020001) × 5 @10 ที่ LCX013\n2. กด Create (AVG ลงสต๊อกตอน saved)\n3. อ่านยอดคงเหลือของสินค้านั้นที่ LCX013" },
           { type: "expected", description: "GRN สถานะ saved และยอดคงเหลือ 11020001 ที่ LCX013 ≥ 1 — ตัดเหตุ \"ของไม่พอ\" ออกจากการทดสอบ issue" },
           { type: "priority", description: "Medium" },
@@ -253,7 +253,7 @@ test.describe("CARMEN-AVG", () => {
       "TC-SI-700002 Requestor Submit ใบเบิกแล้วระบบถามวันที่ตามกติกางวด active",
       {
         annotation: [
-          { type: "preconditions", description: "TC-SI-700001 ผ่านแล้ว; Login เป็น requestor@carmen.com; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว; E2E_DB_URL ตั้งไว้ (อ่านงวด active)" },
+          { type: "preconditions", description: "TC-SI-700001 ผ่านแล้ว; Login เป็น requestor@carmen.com; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว" },
           { type: "steps", description: "1. สร้าง SR: LCX013 → 1FO02, 11020001 × 1, กด Save\n2. กด Submit แล้วยืนยัน\n3. ถ้าระบบถาม \"Which date should this carry?\" เลือก \"inside the open period\"" },
           { type: "expected", description: "SR in_progress ขั้น HOD; ถ้าวันนี้อยู่ในงวด active ต้องไม่ถามและลงวันนี้ — ถ้าอยู่นอกงวด active ต้องถาม และ sr_date = วันสุดท้ายของงวด active" },
           { type: "priority", description: "High" },
@@ -298,9 +298,9 @@ test.describe("CARMEN-AVG", () => {
       "TC-SI-700004 FC กรอกจำนวนจ่ายแล้วกด Issue ใบเบิกของงวด active จ่ายได้และตัดของ",
       {
         annotation: [
-          { type: "preconditions", description: "TC-SI-700003 ผ่านแล้ว — SR อยู่ขั้น Issue และลงวันที่ในงวด active; Login เป็น fc@carmen.com (อยู่ใน stage Issue); E2E_DB_URL ตั้งไว้" },
+          { type: "preconditions", description: "TC-SI-700003 ผ่านแล้ว — SR อยู่ขั้น Issue และลงวันที่ในงวด active; Login เป็น fc@carmen.com (อยู่ใน stage Issue)" },
           { type: "steps", description: "1. เปิดใบ → Edit → เลือกทุกบรรทัด → Approve รายบรรทัด\n2. ช่อง Issued กรอก 1 (เท่าที่ขอ)\n3. กด Issue ของทั้งใบ แล้วยืนยัน\n4. ถ้าระบบถามวันที่ เลือก \"inside the open period\"" },
-          { type: "expected", description: "คำขอ issue ตอบ < 300; SR completed; ยอดคงเหลือต้นทางลด 1; cost layer ลงงวด active; ถ้าวันนี้อยู่นอกงวด active ระบบต้องถามวันที่จ่าย" },
+          { type: "expected", description: "คำขอ issue ตอบ < 300; SR completed; ยอดคงเหลือต้นทางลด 1; มี inventory transaction ลงวันที่ในงวด active (API ไม่เปิดงวดของ cost layer); ถ้าวันนี้อยู่นอกงวด active ระบบต้องถามวันที่จ่าย" },
           { type: "priority", description: "High" },
           { type: "testType", description: "Functional" },
           { type: "note", description: "เดิม SRI.3 · ณ 2026-10-02 รอบ r3 หลังบ้านตอบ 422 SR_ISSUE_PERIOD_NOT_CURRENT ไม่ถามวันที่ — รอบ r4 ผ่านแล้ว · TC-SR-120001 (701-sr) หาปุ่ม Record Issuance ซึ่งไม่มีแล้ว" },
@@ -313,7 +313,7 @@ test.describe("CARMEN-AVG", () => {
         expect(x.status, `the backend refused to issue a requisition of the active period — ${x.facts}`).toBeLessThan(300);
         expect(x.sr.status, x.facts).toBe("completed");
         expect(x.after, `issuing must take the stock — ${x.facts}`).toBe(x.before - 1);
-        expect(x.atPeriods, `must post into active period ${a.period} — ${x.facts}`).toEqual([a.period]);
+        expect(x.atPeriods, `issue must post a transaction dated inside active period ${a.period} — ${x.facts}`).toEqual([a.period]);
         if (!a.todayInside) expect(x.asked, `today is outside the active period, the issue date must be asked — ${x.facts}`).toBe(true);
       },
     );
@@ -355,7 +355,7 @@ test.describe("CARMEN-FIFO", () => {
       "TC-SI-710001 FC รับสินค้าเข้า TEST-MOVE ด้วย GRN แล้ว Commit ให้มีของพอเบิก",
       {
         annotation: [
-          { type: "preconditions", description: "รัน bun run movement:setup-fifo-roles แล้ว (fc ถือ role Purchase + คลัง TEST-MOVE บน CARMEN-FIFO); E2E_SRI_BU=FIFO; E2E_DB_URL ตั้งไว้" },
+          { type: "preconditions", description: "รัน bun run movement:setup-fifo-roles แล้ว (fc ถือ role Purchase + คลัง TEST-MOVE บน CARMEN-FIFO); E2E_SRI_BU=FIFO" },
           { type: "steps", description: "1. Login เป็น fc สร้าง GRN manual วันที่ในงวด active: T-01-F × 5 @10 ที่ TEST-MOVE\n2. กด Create แล้ว Commit (FIFO ลงสต๊อกตอน commit)\n3. อ่านยอดคงเหลือ T-01-F ที่ TEST-MOVE" },
           { type: "expected", description: "GRN committed และยอดคงเหลือ T-01-F ที่ TEST-MOVE ≥ 1" },
           { type: "priority", description: "Medium" },
@@ -420,7 +420,7 @@ test.describe("CARMEN-FIFO", () => {
         annotation: [
           { type: "preconditions", description: "TC-SI-710003 ผ่านแล้ว — SR อยู่ขั้น Issue; fc อยู่ใน stage Issue ของ workflow บน CARMEN-FIFO" },
           { type: "steps", description: "1. เปิดใบ → Edit → Approve รายบรรทัด\n2. ช่อง Issued กรอก 1\n3. กด Issue ของทั้งใบแล้วยืนยัน" },
-          { type: "expected", description: "คำขอ issue ตอบ < 300; SR completed; ยอดคงเหลือ TEST-MOVE ลด 1; cost layer ลงงวด active" },
+          { type: "expected", description: "คำขอ issue ตอบ < 300; SR completed; ยอดคงเหลือ TEST-MOVE ลด 1; มี inventory transaction ลงวันที่ในงวด active (API ไม่เปิดงวดของ cost layer)" },
           { type: "priority", description: "High" },
           { type: "testType", description: "Functional" },
           { type: "note", description: "เดิม SRF.3" },
@@ -433,7 +433,7 @@ test.describe("CARMEN-FIFO", () => {
         expect(x.status, x.facts).toBeLessThan(300);
         expect(x.sr.status, x.facts).toBe("completed");
         expect(x.after, `issuing must take the stock — ${x.facts}`).toBe(x.before - 1);
-        expect(x.atPeriods, `must post into active period ${a.period} — ${x.facts}`).toEqual([a.period]);
+        expect(x.atPeriods, `issue must post a transaction dated inside active period ${a.period} — ${x.facts}`).toEqual([a.period]);
       },
     );
   });

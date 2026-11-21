@@ -59,7 +59,11 @@ test.beforeAll(async () => {
 // Data precondition (API-checked in beforeAll): the form cannot be dated beyond today (FE 90018c6d), so every case
 // that fills the date needs an active period that contains today. The two "open the create page" cases do not.
 test.beforeEach(() => {
-  test.skip(!TODAY && !/TC-IADJ-7[01]0001/.test(test.info().title), `${BU} active period does not contain today — Stock In/Out cannot be dated inside it`);
+  const blocked = !TODAY && !/TC-IADJ-7[01]0001/.test(test.info().title);
+  const reason = `${BU} active period does not contain today — Stock In/Out cannot be dated inside it`;
+  // E2E_MOVEMENT_STRICT=1 turns the environment gap into a failure (CI that must not silently lose these cases).
+  if (blocked && process.env.E2E_MOVEMENT_STRICT === "1") throw new Error(`precondition not met: ${reason}`);
+  test.skip(blocked, reason);
 });
 
 // ── shared steps ────────────────────────────────────────────────────────────────

@@ -155,8 +155,8 @@ test(
     if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|ลบ/i);
     await expect(itemRow(page, PROD.P2.code)).toHaveCount(0);
     await addLine(page, EDITED[1]);
-    test.fail(true, "suspected bug: PATCH of a Draft with an added line -> 400 'Argument is_tax_included is missing' (BE update/add path) - bisected by replaying PATCH .../save: a line carrying BOTH pricelist_detail_id:null AND is_tax_included fails, dropping either key gives 200; FE 76ec45e4 (2026-11-09) added is_tax_included to the payload, BE schema 1ac85b1ae (2026-11-09) has the column and dev runs build f529576a9 (2026-11-13), so this is not a not-yet-deployed change; same cluster as the pins in the 301/302/311 PR specs");
     const r = await saveAndWait(page);
+    test.fail(true, "suspected bug: PATCH of a Draft with an added line -> 400 'Argument is_tax_included is missing' (BE update/add path) - bisected by replaying PATCH .../save: a line carrying BOTH pricelist_detail_id:null AND is_tax_included fails, dropping either key gives 200; FE 76ec45e4 (2026-11-09) added is_tax_included to the payload, BE schema 1ac85b1ae (2026-11-09) has the column and dev runs build f529576a9 (2026-11-13), so this is not a not-yet-deployed change; same cluster as the pins in the 301/302/311 PR specs");
     expect(r.status, JSON.stringify(r.body).slice(0, 300)).toBeLessThan(300);
     await expect.poll(async () => fmt((await prById(draftId)).lines), { timeout: 15_000 }).toBe(fmt(EDITED));
     const pr = await prById(draftId);
