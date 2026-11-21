@@ -3,6 +3,7 @@ import { writeFileSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createAuthTest } from "./fixtures/auth.fixture";
+import { authFile } from "./fixtures/auth.paths";
 import { CreditNotePage } from "./pages/credit-note.page";
 import { createDraftCn, deleteE2eCns, deleteReason, ensureReason, getCn, listCns, seededCn } from "./helpers/cn-api";
 import { button, confirmDialog, lastToast, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
@@ -33,14 +34,6 @@ const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 purchaseTest.describe.configure({ timeout: 90_000 });
 fcTest.describe.configure({ timeout: 60_000 });
 
-const SKIP_NOTE_BACKEND =
-  "Backend / system-level behavior (server actions, sequence generation, journal entries, " +
-  "stock movement generation, FIFO costing, tax calculations, audit log integrity, " +
-  "real-time sync, transaction commitment). Cannot be exercised reliably through the UI in E2E. " +
-  "Verify with API / integration tests.";
-
-const SKIP_NOTE_CONCURRENCY =
-  "Requires concurrent multi-user session orchestration. Tracked but skipped in single-worker E2E.";
 
 
 const LIST = "/procurement/credit-note";
@@ -802,6 +795,359 @@ purchaseTest.describe("CN — Comments — no document", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════
+// Revived from the dormant "backend only" block: cases the credit-note UI can exercise.
+// Kept BEFORE the Submit describe: committing a CN credits its GRN product for good (one credit per product),
+// so any case that seeds a draft against the same GRN must run before TC-CN-100001.
+// ═════════════════════════════════════════════════════════════════════════
+const tmpFile = (name: string, bytes: Buffer) => {
+  const file = join(mkdtempSync(join(tmpdir(), "cn-att-")), name);
+  writeFileSync(file, bytes);
+  return file;
+};
+const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
+const openComments = async (page: Page) => {
+  await page.getByRole("button", { name: /^Comment\b/ }).click();
+  const dlg = page.locator("[role=dialog]:visible").last();
+  await expect(dlg).toContainText(/Comments \(\d+\)/);
+  return dlg;
+};
+/** Post one comment with a PNG attachment on the CN page that is already open; returns the dialog. */
+const postWithPng = async (page: Page, text: string) => {
+  const dlg = await openComments(page);
+  await dlg.locator("input[type=file]").setInputFiles(tmpFile("e2e-pixel.png", PIXEL));
+  await dlg.getByPlaceholder("Add comment...").fill(text);
+  await dlg.getByRole("button", { name: "Send comment" }).click();
+  await expect(dlg).toContainText("Comments (1)", { timeout: 20_000 });
+  return dlg;
+};
+
+withReason("CN — Attachments (advanced)", () => {
+  purchaseTest(
+    "TC-CN-290001 Upload valid attachment",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test (ไม่มี comment)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN → Comment\n2. Attach file เลือกรูป PNG ที่ถูกต้อง\n3. Send comment\n4. โหลดหน้าใหม่แล้วเปิด Comment อีกครั้ง" },
+        { type: "expected", description: "ไฟล์แนบ e2e-pixel.png ขึ้นใน comment ทันทีและยังอยู่หลัง reload (ถูกเก็บจริง ไม่ใช่แค่แสดงชั่วคราว)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("att1");
+      await gotoCn(page, g.id);
+      const dlg = await postWithPng(page, `attach ${uid}`);
+      await expect(dlg.getByText("e2e-pixel.png").or(dlg.locator("img").first())).toBeVisible({ timeout: 15_000 });
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({ timeout: 20_000 });
+      const again = await openComments(page);
+      await expect(again).toContainText("Comments (1)");
+      await expect(again.getByText("e2e-pixel.png").or(again.locator("img").first())).toBeVisible({ timeout: 15_000 });
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-290002 Try to upload invalid attachment",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test; นโยบายไฟล์แนบของ BU รับเฉพาะรูป/PDF" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN → Comment\n2. Attach file เลือกไฟล์ .zip" },
+        { type: "expected", description: "toast 'only ... files are allowed' ชื่อไฟล์ e2e-archive.zip; ไม่มีไฟล์แนบค้าง และยังเป็น 'Comments (0)'" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("att2");
+      await gotoCn(page, g.id);
+      const dlg = await openComments(page);
+      await dlg.locator("input[type=file]").setInputFiles({ name: "e2e-archive.zip", mimeType: "application/zip", buffer: Buffer.from("PK") });
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /e2e-archive\.zip.*only .* files are allowed/i })).toBeVisible({ timeout: 10_000 });
+      await expect(dlg).toContainText("Comments (0)");
+      await expect(dlg.getByRole("button", { name: /remove file/i })).toHaveCount(0);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-290003 Delete attachment",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test พร้อม comment ที่มีไฟล์แนบ PNG (ผู้ใช้เป็นเจ้าของ comment)" },
+        { type: "steps", description: "1. เปิด Comment เห็น comment พร้อมไฟล์แนบ\n2. กดปุ่ม Delete ของ comment\n3. ยืนยัน" },
+        { type: "expected", description: "ไฟล์แนบถูกลบไปพร้อม comment: header เป็น 'Comments (0)' และไม่เหลือรูปแนบ (หลัง reload ก็ไม่กลับมา)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("att3");
+      await gotoCn(page, g.id);
+      const dlg = await postWithPng(page, `to delete ${uid}`);
+      await expect(dlg.locator("img").first()).toBeVisible({ timeout: 15_000 });
+      await dlg.getByRole("button", { name: "Delete", exact: true }).click();
+      await confirmDialog(page, /delete/i);
+      await expect(dlg).toContainText("Comments (0)", { timeout: 15_000 });
+      await expect(dlg.locator("img")).toHaveCount(0);
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({ timeout: 20_000 });
+      await expect(await openComments(page)).toContainText("Comments (0)");
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-290004 Attempt to delete attachment without permission",
+    {
+      annotation: [
+        { type: "preconditions", description: "Purchase โพสต์ comment พร้อมไฟล์แนบบน CN draft; FC (view อย่างเดียว) เปิด CN ใบเดียวกัน" },
+        { type: "steps", description: "1. Purchase โพสต์ comment + PNG\n2. Login เป็น FC เปิด CN เดียวกัน → Comment\n3. มองหาปุ่ม Delete / Edit บน comment ของ Purchase" },
+        { type: "expected", description: "FC เห็น comment และไฟล์แนบ แต่ไม่มีปุ่ม Delete/Edit (ลบได้เฉพาะเจ้าของ comment, comment-sheet.tsx isOwner); Purchase เองเห็นปุ่ม Delete" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async ({ page, browser }) => {
+      const g = await createDraftCn("att4");
+      await gotoCn(page, g.id);
+      const dlg = await postWithPng(page, `owned ${uid}`);
+      await expect(dlg.getByRole("button", { name: "Delete", exact: true })).toBeVisible();
+      const other = await browser.newContext({ storageState: authFile("carmensoftware.dev+fc@gmail.com") });
+      try {
+        const p2 = await other.newPage();
+        await gotoCn(p2, g.id);
+        const d2 = await openComments(p2);
+        await expect(d2).toContainText("Comments (1)", { timeout: 20_000 });
+        await expect(d2).toContainText(`owned ${uid}`);
+        await expect(d2.getByRole("button", { name: "Delete", exact: true })).toHaveCount(0);
+        await expect(d2.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+      } finally {
+        await other.close();
+      }
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-290005 Upload large file",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test; นโยบายไฟล์แนบของ BU จำกัดขนาด (ค่าเริ่มต้น 10 MB)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN → Comment\n2. Attach file PDF ขนาด 60 MB" },
+        { type: "expected", description: "toast '... exceeds N MB limit'; ไฟล์ไม่ถูกอัปโหลด ยังเป็น 'Comments (0)'" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("att5");
+      await gotoCn(page, g.id);
+      const dlg = await openComments(page);
+      await dlg.locator("input[type=file]").setInputFiles(tmpFile("e2e-big.pdf", Buffer.alloc(60 * 1024 * 1024, 0x25)));
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /e2e-big\.pdf.*exceeds \d+ MB limit/i })).toBeVisible({ timeout: 15_000 });
+      await expect(dlg).toContainText("Comments (0)");
+    },
+  );
+});
+
+withReason("CN — Validation & amounts (revived)", () => {
+  const quantity = (page: Page) => rowsOf(page).first().locator('input[name$=".quantity"]');
+  const noCreatedToast = (page: Page) => expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|saved|success|updated/i })).toHaveCount(0);
+
+  purchaseTest(
+    "TC-CN-530001 Valid Credit Note Data",
+    {
+      annotation: [
+        { type: "preconditions", description: "GRN261100002 (committed, Ground Beef 5 KG); มี reason ของ test" },
+        { type: "steps", description: "1. เปิดฟอร์ม New Credit Note กรอก Vendor, GRN, Reason, Tax Invoice # และวันที่\n2. Add Item แล้วกรอก Return qty 2\n3. Create\n4. ค้นหาเลข Tax Invoice ในหน้า list" },
+        { type: "expected", description: "ผ่านการตรวจสอบและบันทึกสำเร็จ: toast สำเร็จ; list แสดง CN ใบใหม่สถานะ Draft; backend เก็บ return_qty 2" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const taxNo = `E2E-CN-valid-${uid}`;
+      await fillHeader(page, taxNo);
+      await addFromGrn(page, 1);
+      await typeInto(quantity(page), 2);
+      await button(page, "Create").click();
+      expect(await lastToast(page)).toMatch(/created|success/i);
+      let mine: Array<{ id: string; cn_no: string }> = [];
+      await expect
+        .poll(async () => {
+          mine = [];
+          for (const c of await listCns()) if ((await getCn(c.id)).data!.tax_invoice_no === taxNo) mine.push(c);
+          return mine.length;
+        })
+        .toBe(1);
+      const d = (await getCn(mine[0].id)).data!;
+      expect(d.doc_status).toBe("draft");
+      expect(Number(d.credit_note_detail[0].return_qty)).toBe(2);
+      await new CreditNotePage(page).gotoList();
+      await search(page, mine[0].cn_no);
+      await expect(page.getByRole("row").filter({ hasText: mine[0].cn_no })).toContainText(/draft/i);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-530002 Missing Required Fields",
+    {
+      annotation: [
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง CN" },
+        { type: "steps", description: "1. เปิดฟอร์ม New Credit Note\n2. ไม่กรอกอะไรเลย → Create" },
+        { type: "expected", description: "ไม่บันทึก: ขึ้น toast เตือน 'Check these fields again' ที่ระบุช่อง Vendor ยังอยู่ที่ /new ไม่มี toast สำเร็จ และไม่มี CN ใหม่ใน backend" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      const before = (await listCns()).length;
+      await page.goto(`${LIST}/new`);
+      await button(page, "Create").click();
+      expect(await lastToast(page)).toMatch(/Check these fields again:.*Vendor/i);
+      await expect(page).toHaveURL(/credit-note\/new/);
+      await noCreatedToast(page);
+      expect((await listCns()).length).toBe(before);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-530003 Invalid Credit Amount",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test (Ground Beef, GRN รับ 5 KG, return qty 1)" },
+        { type: "steps", description: "1. เปิด CN → Edit\n2. ตั้ง Return qty เป็น 6 (เกินที่รับ 5)\n3. Save" },
+        { type: "expected", description: "ไม่บันทึก: ช่อง qty ถูกทำเครื่องหมายผิด ไม่มี toast สำเร็จ และ backend ยังเก็บ return_qty เดิม 1" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("badamt");
+      await gotoCn(page, g.id);
+      await button(page, "Edit").click();
+      await typeInto(quantity(page), 6);
+      await button(page, "Save").click();
+      await expect(page.locator('[aria-invalid="true"]').first()).toBeVisible({ timeout: 10_000 });
+      await noCreatedToast(page);
+      expect(Number((await getCn(g.id)).data!.credit_note_detail[0].return_qty)).toBe(1);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-260004 Edge Case - Large Credit Note Amount",
+    {
+      annotation: [
+        { type: "preconditions", description: "GRN261100002 (Ground Beef 5 KG); มี reason ของ test" },
+        { type: "steps", description: "1. กรอกหัวฟอร์มและ Add Item Ground Beef\n2. พิมพ์ Return qty 999999999\n3. Create" },
+        { type: "expected", description: "ราคาต่อหน่วยมาจาก GRN (แก้ไม่ได้) จึงมีแต่ qty ที่ทำให้ยอดใหญ่ได้ — ระบบไม่รับ: ช่อง qty ถูกทำเครื่องหมายผิด ไม่มี toast สำเร็จ ไม่มี CN ที่ใช้เลข tax invoice นั้น" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const taxNo = `E2E-CN-huge-${uid}`;
+      await fillHeader(page, taxNo);
+      await addFromGrn(page, 1);
+      await typeInto(quantity(page), 999999999);
+      await button(page, "Create").click();
+      await expect(page.locator('[aria-invalid="true"]').first()).toBeVisible({ timeout: 10_000 });
+      await expect(page).toHaveURL(/credit-note\/new/);
+      await noCreatedToast(page);
+      for (const c of await listCns()) expect((await getCn(c.id)).data!.tax_invoice_no).not.toBe(taxNo);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-260005 Edge Case - Zero Amount",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test (Ground Beef, return qty 1)" },
+        { type: "steps", description: "1. เปิด CN → Edit\n2. ตั้ง Return qty เป็น 0\n3. Save (บันทึกร่าง)" },
+        { type: "expected", description: "บันทึกร่างได้ และบรรทัดนั้นมียอดภาษีและยอดรวมเป็น 0 ใน backend (cn_amount 0, tax_amount 0)" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("zeroamt");
+      await gotoCn(page, g.id);
+      await button(page, "Edit").click();
+      await typeInto(quantity(page), 0);
+      await save(page);
+      const line: any = (await getCn(g.id)).data!.credit_note_detail[0];
+      expect(Number(line.return_qty)).toBe(0);
+      expect(Number(line.cn_amount)).toBe(0);
+      expect(Number(line.tax_amount ?? 0)).toBe(0);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-520003 Negative Case - Invalid Credit Note Amount",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test (Ground Beef, return qty 1)" },
+        { type: "steps", description: "1. เปิด CN → Edit\n2. ตั้ง Return qty เป็น -3\n3. Save" },
+        { type: "expected", description: "ช่อง qty ถูกทำเครื่องหมายผิด (min 0); Save ไม่บันทึกค่า -3: backend ยังเก็บ return_qty 1 และ CN ยังเป็น draft (ไม่มีทางไป commit ด้วยยอดติดลบ)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("negamt");
+      await gotoCn(page, g.id);
+      await button(page, "Edit").click();
+      await typeInto(quantity(page), -3);
+      await expect(quantity(page)).toHaveAttribute("aria-invalid", "true");
+      await button(page, "Save").click();
+      await noCreatedToast(page);
+      expect(Number((await getCn(g.id)).data!.credit_note_detail[0].return_qty)).toBe(1);
+      expect((await getCn(g.id)).data!.doc_status).toBe("draft");
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-510001 Happy Path - Generate Valid CN Number",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN seed 2 ใบ (CN26110001, CN26110002); มี reason ของ test" },
+        { type: "steps", description: "1. สร้าง CN ใหม่ (ได้เลขจาก backend ตอนสร้าง ไม่มีปุ่ม Generate CN Number)\n2. เปิดหน้า detail ของใบนั้น" },
+        { type: "expected", description: "cn_no ที่ได้เป็นรูปแบบ CN + ปี/เดือน + ลำดับ (CNYYMMNNNN) ไม่ซ้ำกับใบอื่นใน list และหัวหน้า detail แสดงเลขเดียวกัน" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("cnno");
+      expect(g.cn_no).toMatch(/^CN\d{8}$/);
+      const all = await listCns();
+      expect(all.filter((c) => c.cn_no === g.cn_no)).toHaveLength(1);
+      await gotoCn(page, g.id);
+      await expect(page.locator("main")).toContainText(g.cn_no);
+    },
+  );
+});
+
+purchaseTest.describe("CN — Create form: vendor/GRN lookup (revived)", () => {
+  purchaseTest(
+    "TC-CN-220001 Fetch vendor and GRN data with valid input",
+    {
+      annotation: [
+        { type: "preconditions", description: "GRN261100002 (committed) ของ vendor seed" },
+        { type: "steps", description: "1. เปิดฟอร์ม New Credit Note\n2. เลือก Vendor\n3. เปิดรายการ Select GRN" },
+        { type: "expected", description: "หลังเลือก vendor รายการ GRN แสดง GRN261100002 ให้เลือก และเลือกแล้วฟอร์มแสดงเลข GRN นั้น" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      await page.goto(`${LIST}/new`);
+      await pickLookup(page, page.getByRole("button", { name: "Select Vendor" }));
+      const picked = await pickLookup(page, page.getByRole("button", { name: "Select GRN" }), "GRN261100002");
+      expect(picked).toContain("GRN261100002");
+      await expect(page.locator("main")).toContainText("GRN261100002");
+    },
+  );
+});
+
+// ═════════════════════════════════════════════════════════════════════════
 // Submit (was "Commit")
 // ═════════════════════════════════════════════════════════════════════════
 withReason("CN — Submit", () => {
@@ -920,37 +1266,10 @@ fcTest.describe("CN — Permission denial", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// BACKEND / SYSTEM-LEVEL — all skipped
-// TC-CN-900101..214 = stock movement gen, journal entries, tax calc, costing,
-// FIFO, audit log, sequence gen, server actions, real-time sync, etc.
+// DORMANT — each case carries the specific reason its behaviour has no UI path in the
+// credit-note module (checked against ../carmen-frontend/routes/procurement/credit-note/*).
+// Deleted (feature absent): Void 240001-4 and 520004 - cn-footer-action.tsx has Submit only, VOIDED is just a status
 // ═════════════════════════════════════════════════════════════════════════
-
-const skipBackend = (
-  testFn: typeof purchaseTest,
-  id: string,
-  title: string,
-  pre: string,
-  steps: string,
-  expected: string,
-  priority: string,
-  testType: string,
-) => {
-  testFn.skip(
-    `${id} ${title}`,
-    {
-      annotation: [
-        { type: "preconditions", description: pre },
-        { type: "steps", description: steps },
-        { type: "expected", description: expected },
-        { type: "priority", description: priority },
-        { type: "testType", description: testType },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-};
-
 purchaseTest.describe("Credit Note — Stock movement generation — Backend only", () => {
   purchaseTest.skip(
     "TC-CN-310001 Happy Path - Generate Stock Movements for Quantity-Based Credit Notes",
@@ -961,7 +1280,7 @@ purchaseTest.describe("Credit Note — Stock movement generation — Backend onl
         { type: "expected", description: "สร้าง stock movements สำเร็จ ลด inventory balance สำหรับ items ที่คืน" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Stock Movements' control in the CN UI: cn-footer-action.tsx offers Submit only. The backend writes the movements when the CN completes; the result is asserted from the Stock Movement tab in TC-CN-070001 and the opt-in doc-flow spec 603. This variant needs a backend data state (CN type, lots, inventory locations, status transition) no screen can set up." },
       ],
     },
     async () => {},
@@ -975,7 +1294,7 @@ purchaseTest.describe("Credit Note — Stock movement generation — Backend onl
         { type: "expected", description: "แสดง error message ว่าประเภท credit note ไม่รองรับการสร้าง stock movement" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Stock Movements' control in the CN UI: cn-footer-action.tsx offers Submit only. The backend writes the movements when the CN completes; the result is asserted from the Stock Movement tab in TC-CN-070001 and the opt-in doc-flow spec 603. This variant needs a backend data state (CN type, lots, inventory locations, status transition) no screen can set up." },
       ],
     },
     async () => {},
@@ -989,7 +1308,7 @@ purchaseTest.describe("Credit Note — Stock movement generation — Backend onl
         { type: "expected", description: "แสดง error message ว่าทุก items ต้องเลือก lots" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Stock Movements' control in the CN UI: cn-footer-action.tsx offers Submit only. The backend writes the movements when the CN completes; the result is asserted from the Stock Movement tab in TC-CN-070001 and the opt-in doc-flow spec 603. This variant needs a backend data state (CN type, lots, inventory locations, status transition) no screen can set up." },
       ],
     },
     async () => {},
@@ -1003,7 +1322,7 @@ purchaseTest.describe("Credit Note — Stock movement generation — Backend onl
         { type: "expected", description: "สร้าง stock movements สำเร็จ ลด inventory balance สำหรับ items ที่คืน" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Stock Movements' control in the CN UI: cn-footer-action.tsx offers Submit only. The backend writes the movements when the CN completes; the result is asserted from the Stock Movement tab in TC-CN-070001 and the opt-in doc-flow spec 603. This variant needs a backend data state (CN type, lots, inventory locations, status transition) no screen can set up." },
       ],
     },
     async () => {},
@@ -1017,7 +1336,7 @@ purchaseTest.describe("Credit Note — Stock movement generation — Backend onl
         { type: "expected", description: "แสดง error message ว่าต้องกำหนด inventory locations" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Stock Movements' control in the CN UI: cn-footer-action.tsx offers Submit only. The backend writes the movements when the CN completes; the result is asserted from the Stock Movement tab in TC-CN-070001 and the opt-in doc-flow spec 603. This variant needs a backend data state (CN type, lots, inventory locations, status transition) no screen can set up." },
       ],
     },
     async () => {},
@@ -1034,7 +1353,7 @@ purchaseTest.describe("Credit Note — Journal entries — Backend only", () => 
         { type: "expected", description: "สร้าง journal entries อัตโนมัติ ตัดบัญชี accounts payable และเครดิต inventory และ tax accounts" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Journal Entries' action in the CN UI. The journal voucher is produced by the backend on Submit and appears under the JV tab / opt-in doc-flow spec 603; GL-mapping, accounting-period and vendor-account preconditions are backend configuration." },
       ],
     },
     async () => {},
@@ -1048,7 +1367,7 @@ purchaseTest.describe("Credit Note — Journal entries — Backend only", () => 
         { type: "expected", description: "แสดง error message ว่า GL account mapping ไม่ถูกต้อง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Journal Entries' action in the CN UI. The journal voucher is produced by the backend on Submit and appears under the JV tab / opt-in doc-flow spec 603; GL-mapping, accounting-period and vendor-account preconditions are backend configuration." },
       ],
     },
     async () => {},
@@ -1062,7 +1381,7 @@ purchaseTest.describe("Credit Note — Journal entries — Backend only", () => 
         { type: "expected", description: "แสดง error message ว่า accounting period ปิดแล้ว" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Journal Entries' action in the CN UI. The journal voucher is produced by the backend on Submit and appears under the JV tab / opt-in doc-flow spec 603; GL-mapping, accounting-period and vendor-account preconditions are backend configuration." },
       ],
     },
     async () => {},
@@ -1076,7 +1395,7 @@ purchaseTest.describe("Credit Note — Journal entries — Backend only", () => 
         { type: "expected", description: "แสดง error message ว่าไม่มี vendor account" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Journal Entries' action in the CN UI. The journal voucher is produced by the backend on Submit and appears under the JV tab / opt-in doc-flow spec 603; GL-mapping, accounting-period and vendor-account preconditions are backend configuration." },
       ],
     },
     async () => {},
@@ -1090,7 +1409,7 @@ purchaseTest.describe("Credit Note — Journal entries — Backend only", () => 
         { type: "expected", description: "สร้าง journal entries สำหรับ credit notes ที่เลือกทั้งหมด" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate Journal Entries' action in the CN UI. The journal voucher is produced by the backend on Submit and appears under the JV tab / opt-in doc-flow spec 603; GL-mapping, accounting-period and vendor-account preconditions are backend configuration." },
       ],
     },
     async () => {},
@@ -1107,7 +1426,7 @@ purchaseTest.describe("Credit Note — Tax calculations — Backend only", () =>
         { type: "expected", description: "ระบบคำนวณการปรับ input VAT อัตโนมัติตาม credit note ที่แก้ไข ลดภาระภาษีตามจำนวน credit" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Tax calculation is a backend responsibility; the CN form only shows the stored tax amount (cn-item-cells/tax-cell.tsx) and has no tax-rate selector or vendor tax-registration check to drive from the UI." },
       ],
     },
     async () => {},
@@ -1121,7 +1440,7 @@ purchaseTest.describe("Credit Note — Tax calculations — Backend only", () =>
         { type: "expected", description: "ระบบไม่คำนวณการปรับภาษีใดๆ และแสดง error message ว่าต้องกำหนด tax rates" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Tax calculation is a backend responsibility; the CN form only shows the stored tax amount (cn-item-cells/tax-cell.tsx) and has no tax-rate selector or vendor tax-registration check to drive from the UI." },
       ],
     },
     async () => {},
@@ -1138,7 +1457,7 @@ purchaseTest.describe("Credit Note — Consumed-item processing — Backend only
         { type: "expected", description: "ปรับ cost of goods sold แต่ inventory balance ไม่เปลี่ยนแปลง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Process Credit Note' action in the CN UI (cn-footer-action.tsx has Submit only). Consumed-item processing is backend inventory logic with no screen entry point." },
       ],
     },
     async () => {},
@@ -1152,7 +1471,7 @@ purchaseTest.describe("Credit Note — Consumed-item processing — Backend only
         { type: "expected", description: "ระบบแสดง error message ว่าประเภท credit note ไม่รองรับ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Process Credit Note' action in the CN UI (cn-footer-action.tsx has Submit only). Consumed-item processing is backend inventory logic with no screen entry point." },
       ],
     },
     async () => {},
@@ -1166,7 +1485,7 @@ purchaseTest.describe("Credit Note — Consumed-item processing — Backend only
         { type: "expected", description: "ระบบแสดง permission error message" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Process Credit Note' action in the CN UI (cn-footer-action.tsx has Submit only). Consumed-item processing is backend inventory logic with no screen entry point." },
       ],
     },
     async () => {},
@@ -1180,7 +1499,7 @@ purchaseTest.describe("Credit Note — Consumed-item processing — Backend only
         { type: "expected", description: "ระบบแสดง error message ว่า credit note ประมวลผลได้เฉพาะกับ items ที่ถูกใช้หมดแล้วเท่านั้น" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Process Credit Note' action in the CN UI (cn-footer-action.tsx has Submit only). Consumed-item processing is backend inventory logic with no screen entry point." },
       ],
     },
     async () => {},
@@ -1197,7 +1516,7 @@ purchaseTest.describe("Credit Note — Partial-availability processing — Backe
         { type: "expected", description: "ระบบแบ่งการประมวลผล: 50 หน่วยย้ายไป COGS, 10 หน่วยยังไม่ได้ประมวลผล" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Process Credit Note' action in the CN UI. Partial-availability costing/inventory allocation is backend logic; the dataset has no way to stage lot availability from a screen." },
       ],
     },
     async () => {},
@@ -1211,7 +1530,7 @@ purchaseTest.describe("Credit Note — Partial-availability processing — Backe
         { type: "expected", description: "ระบบแสดง error message: 'Insufficient inventory available for Item A'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Process Credit Note' action in the CN UI. Partial-availability costing/inventory allocation is backend logic; the dataset has no way to stage lot availability from a screen." },
       ],
     },
     async () => {},
@@ -1225,7 +1544,7 @@ purchaseTest.describe("Credit Note — Partial-availability processing — Backe
         { type: "expected", description: "ระบบแสดง error message: 'Invalid credit note type. Only QUANTITY_RETURN allowed for this action'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Process Credit Note' action in the CN UI. Partial-availability costing/inventory allocation is backend logic; the dataset has no way to stage lot availability from a screen." },
       ],
     },
     async () => {},
@@ -1239,7 +1558,7 @@ purchaseTest.describe("Credit Note — Partial-availability processing — Backe
         { type: "expected", description: "ระบบประมวลผล 35 หน่วยทั้งหมดไปยัง COGS" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Process Credit Note' action in the CN UI. Partial-availability costing/inventory allocation is backend logic; the dataset has no way to stage lot availability from a screen." },
       ],
     },
     async () => {},
@@ -1256,7 +1575,7 @@ purchaseTest.describe("Credit Note — Retrospective discount — Backend only",
         { type: "expected", description: "ระบบประมวลผล credit note โดยจัดสรรส่วนลดตามสัดส่วนให้กับ receipts ในอดีตทั่ว GRNs" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No retrospective-discount processing screen: the CN form only supports quantity_return notes against one GRN (cn-form.tsx); amount_discount allocation across historical GRNs is backend-only." },
       ],
     },
     async () => {},
@@ -1270,7 +1589,7 @@ purchaseTest.describe("Credit Note — Retrospective discount — Backend only",
         { type: "expected", description: "ระบบประมวลผล credit note โดยไม่จัดสรรส่วนลดให้ GRNs อื่น เนื่องจากอ้างอิง GRN เพียงรายการเดียว" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No retrospective-discount processing screen: the CN form only supports quantity_return notes against one GRN (cn-form.tsx); amount_discount allocation across historical GRNs is backend-only." },
       ],
     },
     async () => {},
@@ -1284,7 +1603,7 @@ purchaseTest.describe("Credit Note — Retrospective discount — Backend only",
         { type: "expected", description: "ระบบแสดง error message ว่าไม่มี GRNs ในอดีตที่อ้างอิง" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No retrospective-discount processing screen: the CN form only supports quantity_return notes against one GRN (cn-form.tsx); amount_discount allocation across historical GRNs is backend-only." },
       ],
     },
     async () => {},
@@ -1301,7 +1620,7 @@ purchaseTest.describe("Credit Note — Server actions — Backend only", () => {
         { type: "expected", description: "สร้าง credit note สำเร็จด้วย atomic transaction และ validation ที่ถูกต้อง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Server-action level of the create flow. The UI path (New Credit Note -> Create) is covered by TC-CN-020001 / 530001; the atomic-transaction / concurrency semantics need API-level concurrent calls, not a browser." },
       ],
     },
     async () => {},
@@ -1315,7 +1634,7 @@ purchaseTest.describe("Credit Note — Server actions — Backend only", () => {
         { type: "expected", description: "ผู้ใช้ถูก redirect ไปหน้า login หรือถูกปฏิเสธการเข้าถึง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Server-action level of the create flow. The UI path (New Credit Note -> Create) is covered by TC-CN-020001 / 530001; the atomic-transaction / concurrency semantics need API-level concurrent calls, not a browser. The unauthenticated case is the generic auth redirect (spec 101); the role-based denial for CN is TC-CN-040003." },
       ],
     },
     async () => {},
@@ -1333,7 +1652,7 @@ purchaseTest.describe("Credit Note — Server actions — Backend only", () => {
         { type: "expected", description: "การสร้าง credit note ล้มเหลวเนื่องจากการลบพร้อมกัน พร้อม error message ที่เหมาะสม" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_CONCURRENCY },
+        { type: "note", description: "Server-action level of the create flow. The UI path (New Credit Note -> Create) is covered by TC-CN-020001 / 530001; the atomic-transaction / concurrency semantics need API-level concurrent calls, not a browser. Needs two simultaneous sessions deleting and creating; single-worker E2E cannot orchestrate it." },
       ],
     },
     async () => {},
@@ -1341,20 +1660,6 @@ purchaseTest.describe("Credit Note — Server actions — Backend only", () => {
 });
 
 purchaseTest.describe("Credit Note — Vendor/GRN data fetch — Backend only", () => {
-  purchaseTest.skip(
-    "TC-CN-220001 Fetch vendor and GRN data with valid input",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ได้รับการยืนยันตัวตนพร้อมสิทธิ์ purchasing, ข้อมูล vendor และ GRN มีอยู่ใน database" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. กด 'Fetch Vendor and GRN Data'\n3. เลือก vendor จาก dropdown\n4. กด 'Fetch'" },
-        { type: "expected", description: "ดึงและแสดงข้อมูล vendor และ GRN สำเร็จ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
   purchaseTest.skip(
     "TC-CN-220002 Fetch vendor and GRN data with invalid vendor selection",
     {
@@ -1364,7 +1669,7 @@ purchaseTest.describe("Credit Note — Vendor/GRN data fetch — Backend only", 
         { type: "expected", description: "แสดง error message ว่าเลือก vendor ไม่ถูกต้อง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Vendor/GRN lookup variants with no UI trigger: the form uses single-select pickers fed by backend filters (TC-CN-220001 covers the valid case); invalid / empty / multi-vendor selections cannot be produced through those pickers." },
       ],
     },
     async () => {},
@@ -1378,7 +1683,7 @@ purchaseTest.describe("Credit Note — Vendor/GRN data fetch — Backend only", 
         { type: "expected", description: "ไม่พบข้อมูล vendor และ GRN และแสดง message ที่เหมาะสม" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Vendor/GRN lookup variants with no UI trigger: the form uses single-select pickers fed by backend filters (TC-CN-220001 covers the valid case); invalid / empty / multi-vendor selections cannot be produced through those pickers." },
       ],
     },
     async () => {},
@@ -1392,7 +1697,7 @@ purchaseTest.describe("Credit Note — Vendor/GRN data fetch — Backend only", 
         { type: "expected", description: "แสดง access denied message" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Vendor/GRN lookup variants with no UI trigger: the form uses single-select pickers fed by backend filters (TC-CN-220001 covers the valid case); invalid / empty / multi-vendor selections cannot be produced through those pickers." },
       ],
     },
     async () => {},
@@ -1406,7 +1711,7 @@ purchaseTest.describe("Credit Note — Vendor/GRN data fetch — Backend only", 
         { type: "expected", description: "แสดง error message ว่าไม่สามารถเลือก vendors หลายรายการได้" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Vendor/GRN lookup variants with no UI trigger: the form uses single-select pickers fed by backend filters (TC-CN-220001 covers the valid case); invalid / empty / multi-vendor selections cannot be produced through those pickers." },
       ],
     },
     async () => {},
@@ -1423,7 +1728,7 @@ purchaseTest.describe("Credit Note — Commitment transaction — Backend only",
         { type: "expected", description: "transaction ดำเนินการสำเร็จ journal entries, stock movements, และ vendor balance อัปเดตตามที่คาดหวัง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "There is no 'Execute Commitment' control: Submit is the commit and is covered by TC-CN-100001 (happy path), 100003 (status) and 100002 (permission). Accounting-period rules are enforced by the backend and the CN Submit has no period check in the UI." },
       ],
     },
     async () => {},
@@ -1437,7 +1742,7 @@ purchaseTest.describe("Credit Note — Commitment transaction — Backend only",
         { type: "expected", description: "แสดง error message ว่าไม่มี draft credit note" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "There is no 'Execute Commitment' control: Submit is the commit and is covered by TC-CN-100001 (happy path), 100003 (status) and 100002 (permission). Accounting-period rules are enforced by the backend and the CN Submit has no period check in the UI." },
       ],
     },
     async () => {},
@@ -1451,7 +1756,7 @@ purchaseTest.describe("Credit Note — Commitment transaction — Backend only",
         { type: "expected", description: "แสดง error message ว่า accounting period ปิดแล้วสำหรับวันที่ในเอกสาร" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "There is no 'Execute Commitment' control: Submit is the commit and is covered by TC-CN-100001 (happy path), 100003 (status) and 100002 (permission). Accounting-period rules are enforced by the backend and the CN Submit has no period check in the UI." },
       ],
     },
     async () => {},
@@ -1465,7 +1770,7 @@ purchaseTest.describe("Credit Note — Commitment transaction — Backend only",
         { type: "expected", description: "แสดง error message ว่าวันที่ในเอกสารอยู่นอกช่วง accounting period ที่เปิดอยู่" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "There is no 'Execute Commitment' control: Submit is the commit and is covered by TC-CN-100001 (happy path), 100003 (status) and 100002 (permission). Accounting-period rules are enforced by the backend and the CN Submit has no period check in the UI." },
       ],
     },
     async () => {},
@@ -1479,66 +1784,7 @@ purchaseTest.describe("Credit Note — Commitment transaction — Backend only",
         { type: "expected", description: "แสดง error message ว่าไม่มีสิทธิ์เพียงพอในการดำเนินการ commitment transactions" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-});
-
-purchaseTest.describe("Credit Note — Void with reversal — Backend only", () => {
-  purchaseTest.skip(
-    "TC-CN-240001 Happy Path - Void Existing Credit Note",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ COMMITTED, accounting period เปิดอยู่สำหรับวันที่ void, ผู้ใช้มี manager role และสิทธิ์ void" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. คลิก credit note ที่ต้องการ void\n3. กดปุ่ม 'Void'\n4. ตรวจสอบว่า journal entries ถูก reverse\n5. ตรวจสอบว่า inventory balance ถูกคืน" },
-        { type: "expected", description: "Credit note ถูก void, journal entries ถูก reverse, และ inventory balance ถูกคืน" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-240002 Negative Case - No Void Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ COMMITTED, accounting period เปิดอยู่สำหรับวันที่ void, ผู้ใช้ไม่มีสิทธิ์ void" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. คลิก credit note ที่ต้องการ void\n3. กดปุ่ม 'Void'\n4. ตรวจสอบว่าระบบปฏิเสธการดำเนินการ" },
-        { type: "expected", description: "ระบบปฏิเสธการพยายาม void credit note ของผู้ใช้" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-240003 Negative Case - Dependent Transactions Exist",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ COMMITTED, มี dependent transactions, accounting period เปิดอยู่สำหรับวันที่ void, ผู้ใช้มี manager role และสิทธิ์ void" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. คลิก credit note ที่ต้องการ void\n3. กดปุ่ม 'Void'\n4. ตรวจสอบว่าระบบปฏิเสธการดำเนินการเนื่องจาก dependent transactions" },
-        { type: "expected", description: "ระบบปฏิเสธการพยายาม void credit note ของผู้ใช้เนื่องจากมี dependent transactions ที่มีอยู่" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-240004 Edge Case - Void During Closed Accounting Period",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ COMMITTED, accounting period ปิดแล้ว, ผู้ใช้มี manager role และสิทธิ์ void" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. คลิก credit note ที่ต้องการ void\n3. กดปุ่ม 'Void'\n4. ตรวจสอบว่าระบบปฏิเสธการดำเนินการเนื่องจาก accounting period ปิดแล้ว" },
-        { type: "expected", description: "ระบบปฏิเสธการพยายาม void credit note ของผู้ใช้เนื่องจาก accounting period ปิดแล้ว" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "There is no 'Execute Commitment' control: Submit is the commit and is covered by TC-CN-100001 (happy path), 100003 (status) and 100002 (permission). Accounting-period rules are enforced by the backend and the CN Submit has no period check in the UI. The insufficient-permission case for Submit is TC-CN-100002 (FC, pinned suspected bug)." },
       ],
     },
     async () => {},
@@ -1555,7 +1801,7 @@ purchaseTest.describe("Credit Note — FIFO costing — Backend only", () => {
         { type: "expected", description: "ใช้วิธี FIFO อย่างถูกต้อง และการคำนวณต้นทุนแม่นยำตาม lots ที่เลือก" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Calculate Costs' action and no lot selection in the CN UI (lots show only in the Stock Movement tab); FIFO costing is computed by the backend." },
       ],
     },
     async () => {},
@@ -1569,7 +1815,7 @@ purchaseTest.describe("Credit Note — FIFO costing — Backend only", () => {
         { type: "expected", description: "ระบบป้องกันการเลือก costing method ที่ไม่ถูกต้องและแสดง error message ที่เหมาะสม" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Calculate Costs' action and no lot selection in the CN UI (lots show only in the Stock Movement tab); FIFO costing is computed by the backend." },
       ],
     },
     async () => {},
@@ -1583,7 +1829,7 @@ purchaseTest.describe("Credit Note — FIFO costing — Backend only", () => {
         { type: "expected", description: "ระบบป้องกันการคำนวณต้นทุนโดยไม่มี lot selections และแสดง error message ที่เหมาะสม" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Calculate Costs' action and no lot selection in the CN UI (lots show only in the Stock Movement tab); FIFO costing is computed by the backend." },
       ],
     },
     async () => {},
@@ -1597,7 +1843,7 @@ purchaseTest.describe("Credit Note — FIFO costing — Backend only", () => {
         { type: "expected", description: "ระบบป้องกันการคำนวณต้นทุนเนื่องจากข้อมูลต้นทุน lot ขาดหายไป และแสดง error message ที่เหมาะสม" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Calculate Costs' action and no lot selection in the CN UI (lots show only in the Stock Movement tab); FIFO costing is computed by the backend." },
       ],
     },
     async () => {},
@@ -1614,7 +1860,7 @@ purchaseTest.describe("Credit Note — Tax adjustments — Backend only", () => 
         { type: "expected", description: "ระบบส่งคืน error message ว่าไม่สามารถใช้ tax rate ที่ไม่ถูกต้องได้" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Tax adjustment is derived server-side from the GRN (unit price and tax are read-only in cn-item-cells); the form exposes no tax-rate selector or vendor tax-registration field." },
       ],
     },
     async () => {},
@@ -1628,35 +1874,7 @@ purchaseTest.describe("Credit Note — Tax adjustments — Backend only", () => 
         { type: "expected", description: "ระบบส่งคืน error message ว่าต้องมีข้อมูลการลงทะเบียนภาษีของ vendor" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-260004 Edge Case - Large Credit Note Amount",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note ที่มีจำนวนเงินมาก, กำหนด tax rates สำหรับวันที่ในเอกสารแล้ว และมีข้อมูลการลงทะเบียนภาษีของ vendor" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. กรอกรายละเอียด credit note รวมถึง items และจำนวนเงินมาก\n4. กด 'Save'" },
-        { type: "expected", description: "คำนวณจำนวนภาษีได้อย่างแม่นยำสำหรับ credit note ที่มีจำนวนเงินมาก" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-260005 Edge Case - Zero Amount",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note ที่มีจำนวนเงิน item เท่ากับศูนย์, กำหนด tax rates สำหรับวันที่ในเอกสารแล้ว และมีข้อมูลการลงทะเบียนภาษีของ vendor" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. กรอกรายละเอียด credit note รวมถึง items ที่มีจำนวนเงินเป็นศูนย์\n4. กด 'Save'" },
-        { type: "expected", description: "จำนวนภาษีสำหรับ items ที่มีจำนวนเงินเป็นศูนย์ถูกตั้งเป็นศูนย์" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Tax adjustment is derived server-side from the GRN (unit price and tax are read-only in cn-item-cells); the form exposes no tax-rate selector or vendor tax-registration field." },
       ],
     },
     async () => {},
@@ -1673,7 +1891,7 @@ purchaseTest.describe("Credit Note — Journal entry generation (advanced) — B
         { type: "expected", description: "แสดง error message ว่า credit note ID ไม่ถูกต้อง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /journal-entries 'Generate Entries' screen that is not part of the credit-note module; the journal is generated by the backend on Submit." },
       ],
     },
     async () => {},
@@ -1687,7 +1905,7 @@ purchaseTest.describe("Credit Note — Journal entry generation (advanced) — B
         { type: "expected", description: "แสดง error message ว่าไม่มีสิทธิ์เพียงพอ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /journal-entries 'Generate Entries' screen that is not part of the credit-note module; the journal is generated by the backend on Submit. Role denial for CN actions is TC-CN-040003 / 050003 / 100002; there is no journal-entries generate screen here." },
       ],
     },
     async () => {},
@@ -1701,7 +1919,7 @@ purchaseTest.describe("Credit Note — Journal entry generation (advanced) — B
         { type: "expected", description: "สร้าง journal entries สำเร็จสำหรับทุก commitments โดยไม่มี errors" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /journal-entries 'Generate Entries' screen that is not part of the credit-note module; the journal is generated by the backend on Submit." },
       ],
     },
     async () => {},
@@ -1715,7 +1933,7 @@ purchaseTest.describe("Credit Note — Journal entry generation (advanced) — B
         { type: "expected", description: "ระบบจัดการ timeout อย่างมีประสิทธิภาพ อาจแจ้งให้ retry หรือแสดง warning message" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /journal-entries 'Generate Entries' screen that is not part of the credit-note module; the journal is generated by the backend on Submit." },
       ],
     },
     async () => {},
@@ -1732,7 +1950,7 @@ purchaseTest.describe("Credit Note — Stock movement (advanced) — Backend onl
         { type: "expected", description: "ระบบสร้าง stock movement เชิงลบ ลด inventory balance ตามจำนวนที่ระบุ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /stock/movements 'Generate Stock Movement' form outside the credit-note module; credit-note movements are created by the backend when the CN completes." },
       ],
     },
     async () => {},
@@ -1746,7 +1964,7 @@ purchaseTest.describe("Credit Note — Stock movement (advanced) — Backend onl
         { type: "expected", description: "ระบบแสดง error message ว่าจำนวนไม่ถูกต้องและไม่สร้าง stock movement" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /stock/movements 'Generate Stock Movement' form outside the credit-note module; credit-note movements are created by the backend when the CN completes." },
       ],
     },
     async () => {},
@@ -1760,7 +1978,7 @@ purchaseTest.describe("Credit Note — Stock movement (advanced) — Backend onl
         { type: "expected", description: "ระบบแสดง error message ว่า inventory ไม่เพียงพอและไม่สร้าง stock movement" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /stock/movements 'Generate Stock Movement' form outside the credit-note module; credit-note movements are created by the backend when the CN completes." },
       ],
     },
     async () => {},
@@ -1774,7 +1992,7 @@ purchaseTest.describe("Credit Note — Stock movement (advanced) — Backend onl
         { type: "expected", description: "ระบบแสดง error message ว่าไม่มีสิทธิ์เพียงพอและไม่อนุญาตให้สร้าง stock movement" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /stock/movements 'Generate Stock Movement' form outside the credit-note module; credit-note movements are created by the backend when the CN completes." },
       ],
     },
     async () => {},
@@ -1788,80 +2006,7 @@ purchaseTest.describe("Credit Note — Stock movement (advanced) — Backend onl
         { type: "expected", description: "ระบบสร้าง stock movement เชิงลบ ลด inventory balance ตาม lot quantity สูงสุดที่อนุญาต" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-});
-
-purchaseTest.describe("Credit Note — Attachments (advanced) — Backend only", () => {
-  purchaseTest.skip(
-    "TC-CN-290001 Upload valid attachment",
-    {
-      annotation: [
-        { type: "preconditions", description: "credit note มีอยู่แล้วและผู้ใช้มีสิทธิ์ upload" },
-        { type: "steps", description: "1. ไปที่หน้า credit note detail\n2. กด 'Add Attachment'\n3. กรอก file input ด้วย file ที่ถูกต้อง\n4. กด 'Upload'" },
-        { type: "expected", description: "Attachment ถูก upload และแสดงบนหน้า credit note detail" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-290002 Try to upload invalid attachment",
-    {
-      annotation: [
-        { type: "preconditions", description: "credit note มีอยู่แล้วและผู้ใช้มีสิทธิ์ upload" },
-        { type: "steps", description: "1. ไปที่หน้า credit note detail\n2. กด 'Add Attachment'\n3. กรอก file input ด้วย file ที่ไม่ถูกต้อง (เช่น image แทน pdf)\n4. กด 'Upload'" },
-        { type: "expected", description: "Error message แสดงขึ้นมาและ file ที่ไม่ถูกต้องไม่ถูก upload" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-290003 Delete attachment",
-    {
-      annotation: [
-        { type: "preconditions", description: "credit note มีอยู่แล้ว มี attachment และผู้ใช้มีสิทธิ์ delete" },
-        { type: "steps", description: "1. ไปที่หน้า credit note detail\n2. ค้นหา attachment ที่ต้องการ delete\n3. กด 'Delete' บน attachment\n4. ยืนยันการ delete" },
-        { type: "expected", description: "Attachment ถูกลบออกจากหน้า credit note detail" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-290004 Attempt to delete attachment without permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "credit note มีอยู่แล้ว มี attachment และผู้ใช้ไม่มีสิทธิ์ delete" },
-        { type: "steps", description: "1. ไปที่หน้า credit note detail\n2. ค้นหา attachment ที่ต้องการ delete\n3. พยายามกด 'Delete' บน attachment" },
-        { type: "expected", description: "ผู้ใช้ถูกปฏิเสธสิทธิ์หรือ error message แสดงขึ้นมา" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-290005 Upload large file",
-    {
-      annotation: [
-        { type: "preconditions", description: "credit note มีอยู่แล้ว ผู้ใช้มีสิทธิ์ upload และ storage service รองรับ file ขนาดใหญ่" },
-        { type: "steps", description: "1. ไปที่หน้า credit note detail\n2. กด 'Add Attachment'\n3. กรอก file input ด้วย file ขนาดใหญ่\n4. กด 'Upload'" },
-        { type: "expected", description: "Attachment ถูก upload และจัดเก็บโดยไม่มีปัญหา" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Targets a /stock/movements 'Generate Stock Movement' form outside the credit-note module; credit-note movements are created by the backend when the CN completes." },
       ],
     },
     async () => {},
@@ -1878,7 +2023,7 @@ purchaseTest.describe("Credit Note — Audit log — Backend only", () => {
         { type: "expected", description: "credit notes ทั้งหมดได้รับการประมวลผลและบันทึกใน audit trail โดยไม่มี error" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Audit-trail integrity under a large CN volume is a backend/data-volume property; the UI only lists the notes." },
       ],
     },
     async () => {},
@@ -1886,20 +2031,6 @@ purchaseTest.describe("Credit Note — Audit log — Backend only", () => {
 });
 
 purchaseTest.describe("Credit Note — CN number generation — Backend only", () => {
-  purchaseTest.skip(
-    "TC-CN-510001 Happy Path - Generate Valid CN Number",
-    {
-      annotation: [
-        { type: "preconditions", description: "Database sequence table มีอยู่ และ transaction context active" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note/new\n2. กด 'Generate CN Number'" },
-        { type: "expected", description: "CN number ที่ unique ในรูปแบบ CN-YYMM-NNNN ถูกสร้างและแสดงผล" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
   purchaseTest.skip(
     "TC-CN-510002 Negative Path - Generate CN Number When Sequence Table Does Not Exist",
     {
@@ -1909,7 +2040,7 @@ purchaseTest.describe("Credit Note — CN number generation — Backend only", (
         { type: "expected", description: "Error แสดงว่า database sequence table ไม่มีอยู่" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate CN Number' control: the number is assigned by the backend on create (TC-CN-510001 asserts the format and uniqueness). This variant needs a broken sequence table / missing transaction context / month rollover / maintenance window on the server." },
       ],
     },
     async () => {},
@@ -1923,7 +2054,7 @@ purchaseTest.describe("Credit Note — CN number generation — Backend only", (
         { type: "expected", description: "Error แสดงว่าต้องมี transaction context" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate CN Number' control: the number is assigned by the backend on create (TC-CN-510001 asserts the format and uniqueness). This variant needs a broken sequence table / missing transaction context / month rollover / maintenance window on the server." },
       ],
     },
     async () => {},
@@ -1937,7 +2068,7 @@ purchaseTest.describe("Credit Note — CN number generation — Backend only", (
         { type: "expected", description: "Sequence ของเดือนใหม่เริ่มต้นที่ 0001 และต่อจากเดือนที่แล้ว" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate CN Number' control: the number is assigned by the backend on create (TC-CN-510001 asserts the format and uniqueness). This variant needs a broken sequence table / missing transaction context / month rollover / maintenance window on the server." },
       ],
     },
     async () => {},
@@ -1951,7 +2082,7 @@ purchaseTest.describe("Credit Note — CN number generation — Backend only", (
         { type: "expected", description: "Error แสดงว่าระบบอยู่ในช่วง maintenance และไม่สามารถดำเนินการได้" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "No 'Generate CN Number' control: the number is assigned by the backend on create (TC-CN-510001 asserts the format and uniqueness). This variant needs a broken sequence table / missing transaction context / month rollover / maintenance window on the server." },
       ],
     },
     async () => {},
@@ -1968,7 +2099,7 @@ purchaseTest.describe("Credit Note — Vendor balance commitment — Backend onl
         { type: "expected", description: "Vendor balance ถูกอัปเดตตามที่กำหนด" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Vendor balance is updated by the backend on Submit; the CN UI shows no vendor-balance or vendor-account-status field to assert." },
       ],
     },
     async () => {},
@@ -1982,35 +2113,7 @@ purchaseTest.describe("Credit Note — Vendor balance commitment — Backend onl
         { type: "expected", description: "ระบบปฏิเสธการดำเนินการและแสดง error message" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-520003 Negative Case - Invalid Credit Note Amount",
-    {
-      annotation: [
-        { type: "preconditions", description: "Vendor account มีอยู่และ active จำนวน credit note ไม่ถูกต้อง และ transaction context active" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. สร้าง credit note ใหม่ด้วยจำนวนที่ไม่ถูกต้อง\n3. กด 'Commit Credit Note'" },
-        { type: "expected", description: "ระบบปฏิเสธการดำเนินการและแสดง error message" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-520004 Edge Case - Void Credit Note",
-    {
-      annotation: [
-        { type: "preconditions", description: "Vendor account มีอยู่และ active คำนวณจำนวน credit note แล้ว transaction context active และ credit note ที่ committed แล้ว" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. เลือก credit note ที่ committed แล้ว\n3. กด 'Void Credit Note'" },
-        { type: "expected", description: "Vendor balance ถูกอัปเดตและสถานะ credit note เปลี่ยนเป็น voided" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Vendor balance is updated by the backend on Submit; the CN UI shows no vendor-balance or vendor-account-status field to assert." },
       ],
     },
     async () => {},
@@ -2018,48 +2121,6 @@ purchaseTest.describe("Credit Note — Vendor balance commitment — Backend onl
 });
 
 purchaseTest.describe("Credit Note — Validation — Backend only", () => {
-  purchaseTest.skip(
-    "TC-CN-530001 Valid Credit Note Data",
-    {
-      annotation: [
-        { type: "preconditions", description: "credit note ที่ถูกต้องถูก submit พร้อม field ที่จำเป็นทั้งหมด" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. กรอก 'Invoice Number'\n4. กรอก 'Credit Amount'\n5. เลือก 'Supplier'\n6. กด 'Save'" },
-        { type: "expected", description: "ข้อมูล credit note ผ่านการตรวจสอบและบันทึกสำเร็จโดยไม่มี error" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-530002 Missing Required Fields",
-    {
-      annotation: [
-        { type: "preconditions", description: "credit note ถูก submit โดยขาด required fields" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. กด 'Save'" },
-        { type: "expected", description: "ระบบแสดง error messages สำหรับ required fields ที่ขาดหายไป" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-  purchaseTest.skip(
-    "TC-CN-530003 Invalid Credit Amount",
-    {
-      annotation: [
-        { type: "preconditions", description: "credit note ถูก submit ด้วยจำนวน credit ที่ไม่ถูกต้อง (ติดลบหรือเป็นศูนย์)" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. กรอก 'Invoice Number'\n4. กรอก 'Credit Amount' ด้วยค่าติดลบหรือศูนย์\n5. กด 'Save'" },
-        { type: "expected", description: "ระบบแสดง error message สำหรับจำนวน credit ที่ไม่ถูกต้อง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
   purchaseTest.skip(
     "TC-CN-530004 Expired Supplier",
     {
@@ -2069,7 +2130,7 @@ purchaseTest.describe("Credit Note — Validation — Backend only", () => {
         { type: "expected", description: "ระบบแสดง error message สำหรับ supplier ที่หมดอายุ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "Supplier validity is enforced when the vendor is picked; the vendor lookup lists active vendors only and an expired supplier cannot be created from a screen." },
       ],
     },
     async () => {},
@@ -2086,7 +2147,7 @@ purchaseTest.describe("Credit Note — Real-time sync — Backend only", () => {
         { type: "expected", description: "รายการและรายละเอียด credit note ถูกอัปเดต real-time" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "The CN list has no real-time subscription (WebSocket/SSE exists only for the notification bell, hooks/use-notification.ts), so there is no sync to disconnect or expire." },
       ],
     },
     async () => {},
@@ -2100,7 +2161,7 @@ purchaseTest.describe("Credit Note — Real-time sync — Backend only", () => {
         { type: "expected", description: "Real-time updates ไม่เกิดขึ้น และ cache ยังคงไม่เปลี่ยนแปลง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "The CN list has no real-time subscription (WebSocket/SSE exists only for the notification bell, hooks/use-notification.ts), so there is no sync to disconnect or expire." },
       ],
     },
     async () => {},
@@ -2114,7 +2175,7 @@ purchaseTest.describe("Credit Note — Real-time sync — Backend only", () => {
         { type: "expected", description: "ระบบแจ้งให้ยืนยันตัวตนใหม่ และ real-time updates ล้มเหลว" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
+        { type: "note", description: "The CN list has no real-time subscription (WebSocket/SSE exists only for the notification bell, hooks/use-notification.ts), so there is no sync to disconnect or expire." },
       ],
     },
     async () => {},
