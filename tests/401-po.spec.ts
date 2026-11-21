@@ -439,7 +439,7 @@ purchaseTest.describe("PO — Send to Vendor", () => {
           description:
             "1. ไปที่ All Documents ของ /procurement/purchase-order\n2. เปิด PO ที่ status Voided\n3. ตรวจปุ่มบน toolbar",
         },
-        { type: "expected", description: "หน้า PO แสดง status Voided และไม่มีปุ่ม 'Send to vendor' และ 'Close' (po-header.tsx: SEND_EMAIL_STATUSES ไม่รวม voided; Close เฉพาะ approved/sent)" },
+        { type: "expected", description: "ไม่มีปุ่ม 'Send to vendor' และ 'Close'; header แสดง chip Voided (ยังไม่แสดงใน FE ปัจจุบัน — pinned ด้วย test.fail เหมือน TC-PO-070311) (po-header.tsx: SEND_EMAIL_STATUSES ไม่รวม voided; Close เฉพาะ approved/sent)" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
       ],
@@ -454,6 +454,10 @@ purchaseTest.describe("PO — Send to Vendor", () => {
       await expect(page.getByRole("button", { name: /^comment/i }).first()).toBeVisible({ timeout: 15_000 });
       await expect(po.sendToVendorButton()).toHaveCount(0);
       await expect(po.closePOButton()).toHaveCount(0);
+      // PO_STATUS_CONFIG has no "voided" (constant/purchase-order.ts) so po-header.tsx renders no chip for it, while the
+      // list falls back to the raw status (use-po-table.tsx) - list shows Voided, detail header shows nothing.
+      purchaseTest.fail(true, "suspected bug: a voided PO's detail header shows no 'Voided' status chip (PO_STATUS_CONFIG lacks voided; po-header.tsx renders the chip only for configured statuses)");
+      await expect(po.headerStatus()).toHaveText(/voided/i, { timeout: 10_000 });
     },
   );
 });
@@ -601,13 +605,13 @@ purchaseTest.describe("PO — Dashboard", () => {
     "TC-PO-060004 PO list paginates and the page-size selector changes rows shown",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู PO; มี PO อย่างน้อย 2 ใบ" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู PO; มี PO อย่างน้อย 6 ใบ (data:reset)" },
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/purchase-order?view=all-document\n2. ตรวจ footer 'Showing 1–N of N'\n3. ตรวจว่ามีตัวเลือก Rows",
+            "1. ไปที่ /procurement/purchase-order?view=all-document\n2. ตรวจ footer 'Showing 1–N of N'\n3. เปลี่ยน Rows per page เป็น 5\n4. กดไปหน้าถัดไป",
         },
-        { type: "expected", description: "footer ระบุช่วงและจำนวนรวม และมีตัวเลือกจำนวนแถวต่อหน้า" },
+        { type: "expected", description: "footer ระบุช่วงและจำนวนรวม; เลือก 5 แถวต่อหน้าแล้วตารางเหลือ 5 แถวและ footer เป็น 1–5; หน้าถัดไปแสดงแถวชุดอื่น" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
@@ -616,8 +620,16 @@ purchaseTest.describe("PO — Dashboard", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoAllDocuments();
       await expect(page.getByText(/Showing\s+1.\s*\d+\s+of\s+\d+/i).first()).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByText(/^rows$/i).first()).toBeVisible();
-      await expect(page.locator("tbody tr").filter({ hasText: /PO\d{6,}/ }).nth(1)).toBeVisible();
+      const rows = page.locator("tbody tr").filter({ hasText: /PO\d{6,}/ });
+      await expect(rows.nth(5), "need at least 6 POs - run data:reset").toBeVisible({ timeout: 10_000 });
+      await page.getByRole("combobox", { name: /rows per page/i }).click();
+      await page.getByRole("option", { name: "5", exact: true }).click();
+      await expect(rows).toHaveCount(5, { timeout: 10_000 });
+      await expect(page.getByText(/Showing\s+1.\s*5\s+of\s+\d+/i).first()).toBeVisible({ timeout: 10_000 });
+      const firstPage = await rows.first().innerText();
+      await page.getByRole("button", { name: /next/i }).first().click();
+      await expect(rows.first(), "next page shows the same rows").not.toHaveText(firstPage, { timeout: 10_000 });
+      await expect(page.getByText(/Showing\s+6.\s*\d+\s+of\s+\d+/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 });

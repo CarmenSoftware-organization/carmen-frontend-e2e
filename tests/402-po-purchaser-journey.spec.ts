@@ -66,8 +66,8 @@ purchaseTest.describe("Step 1 — PO List", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า list ของ PO" },
-        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือก status = DRAFT\n3. Apply" },
-        { type: "expected", description: "URL ยังคงอยู่ที่หน้า list ของ PO หลัง apply filter" },
+        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือกฟิลด์ Status แล้วติ๊ก Draft (ไม่มีปุ่ม Apply)" },
+        { type: "expected", description: "ทุกแถวที่แสดงในตารางมีสถานะ Draft (ชุดข้อมูลทดสอบมี PO Draft)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -77,8 +77,9 @@ purchaseTest.describe("Step 1 — PO List", () => {
       await po.gotoList();
       const fb = po.filterButton();
       await expect(fb, "Filter button not present in this build").toBeVisible({ timeout: 10_000 });
-      await po.applyFilter({ status: "DRAFT" });
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 10_000 });
+      await po.tabAllDocuments().click();
+      await po.applyFilter({ status: "Draft" });
+      await po.expectEveryRowStatus(/^draft$/i);
     },
   );
 
@@ -87,8 +88,8 @@ purchaseTest.describe("Step 1 — PO List", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า list ของ PO" },
-        { type: "steps", description: "1. พิมพ์ reference บางส่วนในช่องค้นหา" },
-        { type: "expected", description: "URL ยังคงอยู่ที่หน้า list ของ PO หลังพิมพ์ในช่องค้นหา" },
+        { type: "steps", description: "1. อ่านเลข PO ของแถวแรกใน All documents\n2. พิมพ์เลขนั้นในช่องค้นหา\n3. พิมพ์ข้อความที่ไม่มีอยู่" },
+        { type: "expected", description: "ค้นเลข PO ของแถวแรกแล้วทุกแถวที่เหลือมีเลข PO นั้น; ค้นข้อความที่ไม่มีอยู่แล้วไม่เหลือแถว" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -98,8 +99,17 @@ purchaseTest.describe("Step 1 — PO List", () => {
       await po.gotoList();
       const input = po.searchInput();
       await expect(input, "Search input not present in this build").toBeVisible({ timeout: 10_000 });
-      await po.searchFor("PO");
-      await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      await po.tabAllDocuments().click();
+      const rows = recordRows(page);
+      await expect(rows.first(), "PO list has no rows - data:reset seeds POs").toBeVisible({ timeout: 10_000 });
+      const ref = (await rows.first().innerText()).match(/PO\d{6,}/)?.[0];
+      expect(ref, "first row shows no PO number").toBeTruthy();
+      await po.searchFor(ref!);
+      await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+      await expect.poll(async () => (await rows.allInnerTexts()).filter((t) => !t.includes(ref!)), { message: "a row without the searched PO number", timeout: 10_000 }).toEqual([]);
+      await expect(rows.first()).toContainText(ref!);
+      await po.searchFor("zzzqqq999");
+      await expect(rows).toHaveCount(0, { timeout: 10_000 });
     },
   );
 
@@ -109,7 +119,7 @@ purchaseTest.describe("Step 1 — PO List", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า list ของ PO" },
         { type: "steps", description: "1. คลิกหัวคอลัมน์ Date เพื่อเรียงลำดับ\n2. ตรวจสอบว่ารายการเรียงลำดับใหม่" },
-        { type: "expected", description: "URL ยังคงอยู่ที่หน้า list ของ PO หลังคลิก sort" },
+        { type: "expected", description: "หลังคลิกหัวคอลัมน์ Date แถวแรกของตารางเปลี่ยน (list เรียงลำดับใหม่)" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Functional" },
       ],
@@ -117,8 +127,12 @@ purchaseTest.describe("Step 1 — PO List", () => {
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
+      await po.tabAllDocuments().click();
+      const rows = recordRows(page);
+      await expect(rows.first(), "PO list has no rows - data:reset seeds POs").toBeVisible({ timeout: 10_000 });
+      const before = await rows.first().innerText();
       await po.sortBy("date");
-      await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      await expect(rows.first(), "list did not re-sort").not.toHaveText(before, { timeout: 10_000 });
     },
   );
 });
@@ -416,8 +430,8 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
     {
       annotation: [
         { type: "preconditions", description: "มี Draft PO สำหรับ Purchaser นี้ (seeded ผ่าน submitPOAsPurchaser)" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ Draft PO\n2. ตรวจสอบว่า URL ตรงกับ PO ref" },
-        { type: "expected", description: "URL เป็น /procurement/purchase-order/<ref>" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ Draft PO\n2. ดู header และตารางรายการ" },
+        { type: "expected", description: "URL เป็น /procurement/purchase-order/<ref>; header แสดงเลข PO และสถานะ Draft; ตารางรายการมีอย่างน้อยหนึ่งแถว (มีปุ่ม Expand all)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -426,6 +440,9 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
       const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
+      await expect(page.locator("main")).toContainText(created.poNo);
+      await expect(new PurchaseOrderPage(page).headerStatus()).toHaveText(/draft/i, { timeout: 15_000 });
+      await expect(page.getByRole("button", { name: /expand all/i }), "items table has no rows").toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -460,8 +477,8 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า detail ของ Draft PO" },
-        { type: "steps", description: "1. ตรวจสอบ action toolbar" },
-        { type: "expected", description: "ปุ่ม Edit visible (ความ visible ของปุ่ม Submit ขึ้นอยู่กับ UI variant)" },
+        { type: "steps", description: "1. ตรวจสอบ action toolbar\n2. กด Edit" },
+        { type: "expected", description: "ปุ่ม Edit และ Submit visible; หลังกด Edit ปุ่ม Delete ปรากฏ (Delete อยู่ใน edit mode เท่านั้น)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
@@ -475,6 +492,8 @@ purchaseTest.describe("Step 3 — PO Detail", () => {
       await gotoPODetail(page, created.ref);
       await expect(po.editModeButton()).toBeVisible({ timeout: 10_000 });
       await expect(po.submitButton()).toBeVisible({ timeout: 10_000 });
+      await po.enterEditMode();
+      await expect(po.deleteButton(), "Delete is offered in edit mode of a Draft").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -529,7 +548,7 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       annotation: [
         { type: "preconditions", description: "edit mode active บน Draft PO ที่มีอย่างน้อยหนึ่งรายการ" },
         { type: "steps", description: "1. เข้าสู่ edit mode\n2. แก้ไข quantity input\n3. กดบันทึก" },
-        { type: "expected", description: "หลังบันทึก URL ยังคงอยู่ที่ /procurement/purchase-order/<ref>" },
+        { type: "expected", description: "หลังบันทึก URL ยังคงอยู่ที่ /procurement/purchase-order/<ref> และ backend ตอบ PATCH สำเร็จ; โหลดหน้าใหม่แล้วบรรทัดแรกแสดง quantity 5" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -543,8 +562,13 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       const qty = page.locator('input[name$=".order_qty"]').first();
       await expect(qty, "line quantity input not present in edit mode").toBeVisible({ timeout: 10_000 });
       await qty.fill("5");
+      const write = page.waitForResponse((r) => r.request().method() === "PATCH" && r.url().includes("purchase-orders"), { timeout: 15_000 });
       await po.saveButton().click({ timeout: 5_000 });
+      expect((await write).ok(), "saving the quantity edit was refused").toBe(true);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await page.reload();
+      await po.enterEditMode();
+      await expect(page.locator('input[name$=".order_qty"]').first()).toHaveValue(/^5(\.0+)?$/, { timeout: 15_000 });
     },
   );
 
@@ -612,20 +636,29 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       annotation: [
         { type: "preconditions", description: "มี Draft PO ที่มี ≥1 รายการ" },
         { type: "steps", description: "1. เปิด Draft PO\n2. กด Submit\n3. ยืนยัน dialog" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PO ref; text ของ status badge อัปเดต (best effort)" },
+        { type: "expected", description: "URL ยังคงอยู่ที่ PO ref; chip สถานะใน header เปลี่ยนจาก Draft เป็น In progress" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
     },
     async ({ page, browser }) => {
+      purchaseTest.setTimeout(90_000);
       const po = new PurchaseOrderPage(page);
       const created = await createDraftPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
       const submit = po.submitButton();
       await expect(submit, "Submit button not present (Draft may already be In Progress)").toBeVisible({ timeout: 10_000 });
       await submit.click({ timeout: 5_000 });
+      await expect(po.headerStatus()).toHaveText(/draft/i, { timeout: 10_000 });
+      const submitted = page.waitForResponse(
+        (r) => /\/purchase-orders\/[^/]+\/submit/.test(r.url()) && r.request().method() === "PATCH",
+        { timeout: 30_000 },
+      );
       await po.confirmDialogButton(/confirm|submit|ok|yes/i).click({ timeout: 5_000 });
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 15_000 });
+      const res = await submitted;
+      expect(res.ok(), `PATCH .../submit was refused (${res.status()})`).toBe(true);
+      await gotoPODetail(page, created.ref);
+      await expect(po.headerStatus(), "status did not move to In progress").toHaveText(/in progress/i, { timeout: 20_000 });
     },
   );
 
@@ -635,7 +668,7 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       annotation: [
         { type: "preconditions", description: "มี PO สถานะ Draft ที่ Purchaser สร้างเอง (หลัง submit แล้วผู้สร้างเป็น view_only ลบไม่ได้)" },
         { type: "steps", description: "1. เปิด PO\n2. กด Edit\n3. กด Delete\n4. ยืนยัน" },
-        { type: "expected", description: "URL navigate กลับไปยัง list (PO ถูกลบ)" },
+        { type: "expected", description: "URL navigate กลับไปยัง list และค้นเลข PO นั้นใน All documents แล้วไม่พบ (PO ถูกลบ)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -652,6 +685,9 @@ purchaseTest.describe("Step 4 — Edit Mode", () => {
       await del.click({ timeout: 5_000 });
       await po.confirmDialogButton(/confirm|delete|yes/i).click({ timeout: 5_000 });
       await expect(page).toHaveURL(/\/procurement\/purchase-order($|\?)/, { timeout: 10_000 });
+      await po.gotoAllDocuments();
+      await po.searchFor(created.poNo);
+      await expect(recordRows(page).filter({ hasText: created.poNo }), `${created.poNo} is still in the list`).toHaveCount(0, { timeout: 10_000 });
     },
   );
 });
@@ -663,7 +699,7 @@ purchaseTest.describe("Step 5 — Post-approval", () => {
       annotation: [
         { type: "preconditions", description: "มี PO ที่ approved (seeded ผ่าน seedApprovedPO: submit + FC + GM)" },
         { type: "steps", description: "1. Seed Approved PO\n2. เปิดหน้า detail\n3. ตรวจสอบ action toolbar" },
-        { type: "expected", description: "ปุ่ม Send to Vendor visible ความ visible ของปุ่ม Close เป็นรอง (ไม่ assert hard ถ้าไม่มี)" },
+        { type: "expected", description: "ทั้งปุ่ม Send to Vendor และปุ่ม Close visible บน PO ที่ Approved (Close มีเฉพาะสถานะ approved/sent)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
@@ -672,8 +708,9 @@ purchaseTest.describe("Step 5 — Post-approval", () => {
       const po = new PurchaseOrderPage(page);
       const created = await seedApprovedPO(browser);
       await gotoPODetail(page, created.ref);
-      const send = po.sendToVendorButton();
-      await expect(send).toBeVisible({ timeout: 15_000 });
+      await expect(po.headerStatus()).toHaveText(/approved/i, { timeout: 15_000 });
+      await expect(po.sendToVendorButton()).toBeVisible({ timeout: 15_000 });
+      await expect(po.closePOButton(), "Close is offered on an approved PO").toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -717,6 +754,7 @@ purchaseTest.describe("Step 5 — Post-approval", () => {
       ],
     },
     async ({ page, browser }) => {
+      purchaseTest.setTimeout(90_000);
       const po = new PurchaseOrderPage(page);
       const created = await seedApprovedPO(browser);
       await gotoPODetail(page, created.ref);
@@ -732,12 +770,7 @@ purchaseTest.describe("Step 5 — Post-approval", () => {
       // waited for a badge the app never renders). Re-open the record because
       // confirming routes back to the list.
       await gotoPODetail(page, created.ref);
-      await expect(
-        page
-          .locator("[data-slot='status'], [data-slot='badge'], [class*='badge']")
-          .filter({ hasText: /closed/i })
-          .first(),
-      ).toBeVisible({ timeout: 15_000 });
+      await expect(new PurchaseOrderPage(page).headerStatus()).toHaveText(/closed/i, { timeout: 15_000 });
     },
   );
 });

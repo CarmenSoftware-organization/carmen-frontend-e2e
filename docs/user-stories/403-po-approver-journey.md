@@ -353,7 +353,7 @@ Send Back dialog เปิดอยู่
 
 **Expected**
 
-URL ยังคงอยู่ที่ PO ref หลังการยืนยัน
+การยืนยันยิง PATCH .../review สำเร็จ (200) และขึ้น toast 'Purchase order sent back'
 
 ---
 
@@ -449,4 +449,4 @@ PATCH .../approve ของ FC ตอบ ok และหลัง GM อนุ�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 9d79c62</sub>
+<sub>Last regenerated: 2026-11-21 · git 1107d0c</sub>

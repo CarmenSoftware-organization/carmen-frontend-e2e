@@ -410,7 +410,7 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       annotation: [
         { type: "preconditions", description: "Send Back dialog เปิดอยู่" },
         { type: "steps", description: "1. ทำเครื่องหมายรายการว่า Review\n2. กด Send Back\n3. กรอกเหตุผล\n4. ยืนยัน" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PO ref หลังการยืนยัน" },
+        { type: "expected", description: "การยืนยันยิง PATCH .../review สำเร็จ (200) และขึ้น toast 'Purchase order sent back'" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -444,8 +444,14 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
 
       const confirm = po.confirmDialogButton(/^send back$|^send$|confirm|ok|yes/i);
       await expect(confirm).toBeEnabled({ timeout: 10_000 });
+      const sent = page.waitForResponse(
+        (r) => /\/purchase-orders\/[^/]+\/review/.test(r.url()) && r.request().method() === "PATCH",
+        { timeout: 20_000 },
+      );
       await confirm.click({ timeout: 10_000 });
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 15_000 });
+      const res = await sent;
+      expect(res.ok(), `PATCH .../review was refused (${res.status()})`).toBe(true);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /purchase order sent back/i })).toBeVisible({ timeout: 15_000 });
     },
   );
 

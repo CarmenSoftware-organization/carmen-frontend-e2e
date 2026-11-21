@@ -99,12 +99,11 @@ URL อยู่ที่หน้า list ของ PO; ปุ่ม My Pending
 **Steps**
 
 1. เปิดแผง Filter
-2. เลือก status = DRAFT
-3. Apply
+2. เลือกฟิลด์ Status แล้วติ๊ก Draft (ไม่มีปุ่ม Apply)
 
 **Expected**
 
-URL ยังคงอยู่ที่หน้า list ของ PO หลัง apply filter
+ทุกแถวที่แสดงในตารางมีสถานะ Draft (ชุดข้อมูลทดสอบมี PO Draft)
 
 ---
 
@@ -120,11 +119,13 @@ URL ยังคงอยู่ที่หน้า list ของ PO หลั
 
 **Steps**
 
-1. พิมพ์ reference บางส่วนในช่องค้นหา
+1. อ่านเลข PO ของแถวแรกใน All documents
+2. พิมพ์เลขนั้นในช่องค้นหา
+3. พิมพ์ข้อความที่ไม่มีอยู่
 
 **Expected**
 
-URL ยังคงอยู่ที่หน้า list ของ PO หลังพิมพ์ในช่องค้นหา
+ค้นเลข PO ของแถวแรกแล้วทุกแถวที่เหลือมีเลข PO นั้น; ค้นข้อความที่ไม่มีอยู่แล้วไม่เหลือแถว
 
 ---
 
@@ -145,7 +146,7 @@ URL ยังคงอยู่ที่หน้า list ของ PO หลั
 
 **Expected**
 
-URL ยังคงอยู่ที่หน้า list ของ PO หลังคลิก sort
+หลังคลิกหัวคอลัมน์ Date แถวแรกของตารางเปลี่ยน (list เรียงลำดับใหม่)
 
 ---
 
@@ -417,11 +418,11 @@ Login เป็น Purchaser; อยู่ที่หน้า list ของ P
 **Steps**
 
 1. เปิดหน้า detail ของ Draft PO
-2. ตรวจสอบว่า URL ตรงกับ PO ref
+2. ดู header และตารางรายการ
 
 **Expected**
 
-URL เป็น /procurement/purchase-order/<ref>
+URL เป็น /procurement/purchase-order/<ref>; header แสดงเลข PO และสถานะ Draft; ตารางรายการมีอย่างน้อยหนึ่งแถว (มีปุ่ม Expand all)
 
 ---
 
@@ -459,10 +460,11 @@ URL เป็น /procurement/purchase-order/<ref>
 **Steps**
 
 1. ตรวจสอบ action toolbar
+2. กด Edit
 
 **Expected**
 
-ปุ่ม Edit visible (ความ visible ของปุ่ม Submit ขึ้นอยู่กับ UI variant)
+ปุ่ม Edit และ Submit visible; หลังกด Edit ปุ่ม Delete ปรากฏ (Delete อยู่ใน edit mode เท่านั้น)
 
 ---
 
@@ -527,7 +529,7 @@ edit mode active บน Draft PO ที่มีอย่างน้อยห�
 
 **Expected**
 
-หลังบันทึก URL ยังคงอยู่ที่ /procurement/purchase-order/<ref>
+หลังบันทึก URL ยังคงอยู่ที่ /procurement/purchase-order/<ref> และ backend ตอบ PATCH สำเร็จ; โหลดหน้าใหม่แล้วบรรทัดแรกแสดง quantity 5
 
 ---
 
@@ -592,7 +594,7 @@ edit mode active บน Draft PO โดยไม่มีการเปลี�
 
 **Expected**
 
-URL ยังคงอยู่ที่ PO ref; text ของ status badge อัปเดต (best effort)
+URL ยังคงอยู่ที่ PO ref; chip สถานะใน header เปลี่ยนจาก Draft เป็น In progress
 
 ---
 
@@ -615,7 +617,7 @@ URL ยังคงอยู่ที่ PO ref; text ของ status badge อ
 
 **Expected**
 
-URL navigate กลับไปยัง list (PO ถูกลบ)
+URL navigate กลับไปยัง list และค้นเลข PO นั้นใน All documents แล้วไม่พบ (PO ถูกลบ)
 
 ---
 
@@ -637,7 +639,7 @@ URL navigate กลับไปยัง list (PO ถูกลบ)
 
 **Expected**
 
-ปุ่ม Send to Vendor visible ความ visible ของปุ่ม Close เป็นรอง (ไม่ assert hard ถ้าไม่มี)
+ทั้งปุ่ม Send to Vendor และปุ่ม Close visible บน PO ที่ Approved (Close มีเฉพาะสถานะ approved/sent)
 
 ---
 
@@ -711,4 +713,4 @@ lifecycle ครบ (Create → Draft → Submit → FC → GM → Approved) แ
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git e958dbc</sub>
+<sub>Last regenerated: 2026-11-21 · git 1107d0c</sub>

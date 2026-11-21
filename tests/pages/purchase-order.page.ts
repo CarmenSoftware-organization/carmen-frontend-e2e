@@ -91,30 +91,42 @@ export class PurchaseOrderPage extends BasePage {
   async searchFor(text: string) {
     const input = this.searchInput();
     await input.fill(text);
+    await input.press("Enter"); // SearchInput fires onSearch on Enter
     await this.page.waitForLoadState("networkidle").catch(() => {});
   }
 
-  async applyFilter(opts: { status?: string }) {
+  /** Status filter: Filter menu -> "Status" field -> tick the option (no Apply button). Fails if any control is missing. */
+  async applyFilter(opts: { status: string }) {
     await this.filterButton().click();
-    if (opts.status) {
-      const trigger = this.page
-        .getByRole("dialog")
-        .getByLabel(/status/i)
-        .first()
-        .or(this.page.getByLabel(/status/i).first());
-      if ((await trigger.count()) > 0) {
-        await trigger.click();
-        await this.page.getByRole("option", { name: new RegExp(opts.status, "i") }).first().click();
-      }
-    }
-    const apply = this.page.getByRole("button", { name: /^apply$|^ok$/i }).first();
-    if ((await apply.count()) > 0) await apply.click({ timeout: 5_000 }).catch(() => {});
+    const menu = this.page.getByRole("dialog");
+    await expect(menu, "filter menu did not open").toBeVisible({ timeout: 10_000 });
+    await menu.getByRole("button", { name: /^status$/i }).first().click({ timeout: 5_000 });
+    // The options open in a flyout next to the menu: each row is a clickable label around a presentational checkbox.
+    const option = this.page
+      .locator("div, label, button")
+      .filter({ has: this.page.getByRole("checkbox"), hasText: new RegExp(`^${opts.status}$`, "i") })
+      .last();
+    await expect(option, `Status filter offers no "${opts.status}" option`).toBeVisible({ timeout: 5_000 });
+    await option.click();
   }
 
+  /** Every status chip in the list matches `status`; fails when the list shows none. */
+  async expectEveryRowStatus(status: RegExp) {
+    const chips = this.page.locator("tbody tr").locator("[data-slot='status-chip']");
+    await expect(chips.first(), "filtered list shows no status chip").toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(async () => (await chips.allInnerTexts()).map((t) => t.trim()).filter((t) => t && !status.test(t)), {
+        message: "a row outside the status filter",
+        timeout: 10_000,
+      })
+      .toEqual([]);
+  }
+
+  /** Click the column header's sort button; fails when the header is absent. */
   async sortBy(column: string) {
     const header = this.page.getByRole("columnheader", { name: new RegExp(column, "i") }).first();
-    if ((await header.count()) > 0) await header.click();
-    await this.page.waitForLoadState("networkidle").catch(() => {});
+    await expect(header, `column "${column}" has no header`).toBeVisible({ timeout: 10_000 });
+    await header.getByRole("button").first().click();
   }
 
   // ── Form ─────────────────────────────────────────────────────────────
@@ -217,6 +229,11 @@ export class PurchaseOrderPage extends BasePage {
   }
 
   // ── Status / verification ────────────────────────────────────────────
+  /** The document status chip in the detail header (the first status chip on the page). */
+  headerStatus(): Locator {
+    return this.page.locator("[data-slot='status-chip']").first();
+  }
+
   // override: filters to PO-specific status text
   statusBadge(): Locator {
     return this.page
@@ -451,14 +468,16 @@ export class PurchaseOrderPage extends BasePage {
    */
   async cancelEditMode() {
     const cancel = this.page.getByRole("button", { name: /^cancel$/i }).first();
-    if ((await cancel.count()) === 0) return;
+    await expect(cancel, "Cancel button missing - the page is not in edit mode").toBeVisible({ timeout: 5_000 });
     await cancel.click({ timeout: 5_000 });
+    // Some states ask "Keep editing / Discard", others leave edit mode at once; either way Cancel must be gone.
     const discard = this.page
       .locator('[role="dialog"], [role="alertdialog"]')
       .last()
       .getByRole("button", { name: /^discard$/i })
       .first();
-    await discard.click({ timeout: 5_000 }).catch(() => {});
+    if (await discard.isVisible({ timeout: 3_000 }).catch(() => false)) await discard.click({ timeout: 5_000 });
+    await expect(cancel, "edit mode was not left").toBeHidden({ timeout: 10_000 });
   }
 
   // ── Submit / Delete (Edit Mode actions) ──────────────────────────────
