@@ -137,3 +137,17 @@ export async function profilePermissions(role: Role): Promise<unknown> {
   });
   return (await r.json()).data;
 }
+
+/** GET on a gateway path that is not BU-prefixed (`/purchase-requests` -> `/api/purchase-requests`, the cross-BU list). */
+export async function rootGet<T = any>(role: Role, path: string): Promise<ApiResult<T>> {
+  const { url, appId } = await (backend ??= resolveBackend());
+  const r = await fetch(`${url}/api${path}`, { headers: { "x-app-id": appId, Authorization: `Bearer ${await tokenFor(role)}` } });
+  const text = await r.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = text;
+  }
+  return { status: r.status, body: parsed as T };
+}
