@@ -300,28 +300,18 @@ row ถูกลบออกและตารางกลับสู่ empty 
 
 **Preconditions**
 
-Login เป็น Procurement Manager และมีสิทธิ์แก้ไข template
+Login เป็น Procurement Manager และมีสิทธิ์แก้ไข template; สเปคสร้าง template ของตัวเองก่อน (ไม่แตะ template STD)
 
 **Steps**
 
-1. ไปที่ /vendor-management/price-list-template/[id]
+1. สร้าง template ใหม่แล้วเปิด /vendor-management/price-list-template/[id]
 2. คลิก 'Edit'
-3. กรอกชื่อ template
-4. กรอก description
-5. เลือก currency
-6. กรอก validity period
-7. กรอก vendor instructions
-8. สลับ switch allow multi-MOQ
-9. สลับ switch require lead time
-10. กรอก max items per submission
-11. สลับ switch send reminders
-12. เลือก 14 และ 7 วันใน reminder checkboxes
-13. กรอก escalation days
-14. คลิก 'Save Changes'
+3. เปลี่ยนชื่อ template
+4. คลิก 'Save'
 
 **Expected**
 
-template บันทึกสำเร็จ doc_version เพิ่มขึ้น แสดงข้อความสำเร็จ และบันทึกการเปลี่ยนแปลงใน audit trail
+template บันทึกสำเร็จ แสดง toast สำเร็จ
 
 ---
 
@@ -334,7 +324,7 @@ template บันทึกสำเร็จ doc_version เพิ่มขึ�
 
 **Preconditions**
 
-Login เป็น Procurement Manager และมีสิทธิ์แก้ไข template
+Login เป็น Procurement Manager; สเปคสร้าง template ของตัวเองก่อน
 
 **Steps**
 
@@ -358,7 +348,7 @@ validity 0 ถูก reject โดย native min=1 constraint (rangeUnderflow): 
 
 **Preconditions**
 
-Procurement Manager มีสิทธิ์แก้ไข template และไม่มี product เชื่อมโยงกับ template
+Login เป็น Procurement Manager; สเปคสร้าง template ของตัวเองซึ่งไม่มีสินค้า
 
 **Steps**
 
@@ -381,7 +371,7 @@ Procurement Manager มีสิทธิ์แก้ไข template และ�
 
 **Preconditions**
 
-Login เป็น Procurement Manager และมีสิทธิ์แก้ไข template
+Login เป็น Procurement Manager; สเปคสร้าง template ของตัวเองก่อน
 
 **Steps**
 
@@ -392,7 +382,7 @@ Login เป็น Procurement Manager และมีสิทธิ์แก�
 
 **Expected**
 
-template บันทึกสำเร็จ doc_version เพิ่มขึ้น และบันทึกการเปลี่ยนแปลงใน audit trail
+template บันทึกสำเร็จ (toast) และเปิดดูอีกครั้งแล้ว validity period เป็น 1 วัน
 
 ---
 
@@ -405,17 +395,18 @@ template บันทึกสำเร็จ doc_version เพิ่มขึ�
 
 **Preconditions**
 
-Procurement Manager มีสิทธิ์แก้ไข template; template อยู่ในสถานะ default โดยไม่มีการเปลี่ยนแปลง
+Login เป็น Procurement Manager; สเปคสร้าง template ของตัวเองก่อน
 
 **Steps**
 
-1. ไปที่ /vendor-management/price-list-template/[id]
+1. สร้าง template ใหม่แล้วเปิด detail
 2. คลิก 'Edit'
-3. คลิก 'Save Changes'
+3. ไม่แก้ไขอะไร
+4. คลิก 'Cancel'
 
 **Expected**
 
-template ไม่มีการเปลี่ยนแปลง doc_version คงเดิม และไม่มีการบันทึกการเปลี่ยนแปลงใน audit trail
+กลับสู่โหมดดูโดยไม่มี dialog ยืนยันทิ้งการแก้ไข ชื่อ template เหมือนเดิม และไม่มี toast บันทึก
 
 ---
 
@@ -835,4 +826,4 @@ TC-PT-040050 ผ่านแล้ว → template ADMIN_NAME_UPDATED มีอ�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>
+<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>

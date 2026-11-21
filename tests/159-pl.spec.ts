@@ -402,143 +402,11 @@ purchaseTest.describe("Price List — Edit", () => {
     },
   );
 
-  // Not reachable through this UI any more — do not restore the silent version.
-  // Effective From / To are calendar pickers ("Pick a date" buttons), so a
-  // malformed date cannot be entered at all: fillHeader now opens the calendar
-  // and takes a real day, and the form saves happily. Testing "invalid date
-  // format" needs either a typeable date field or an API-level test.
-  purchaseTest.fixme(
-    "TC-PL-040002 Negative: Invalid Date Input",
-    {
-      annotation: [
-        { type: "preconditions", description: "price list มีอยู่และแก้ไขได้; ผู้ใช้มีสิทธิ์แก้ไข; ผู้ใช้กรอกรูปแบบวันที่ที่ไม่ถูกต้อง" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/price-list\n2. คลิกปุ่ม 'Edit' ที่หน้า detail ของ price list\n3. กรอกวันที่ valid from ด้วยรูปแบบที่ไม่ถูกต้อง\n4. กรอกวันที่ valid to ด้วยรูปแบบที่ไม่ถูกต้อง\n5. คลิก 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความ error สำหรับรูปแบบวันที่ที่ไม่ถูกต้อง และ price list ไม่ถูกอัปเดต" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pl = new PriceListPage(page);
-      await pl.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      // A <tr> is not clickable — open the record from its own button.
-      await row.getByRole("button").first().click({ timeout: 10_000 });
-      await pl.editButton().click({ timeout: 10_000 });
-      await pl.fillHeader({ validFrom: "not-a-date", validTo: "also-bad" });
-      await pl.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(pl.anyError().first()).toBeVisible({ timeout: 5_000 });
-    },
-  );
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-PL-900005 — Duplicate
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Price List — Duplicate", () => {
-  // Feature is gone from the UI — do not restore the silent version.
-  // Neither the row-actions menu (Activity / Delete only) nor the detail page
-  // (Edit / Delete / Activity) offers Duplicate or Mark-as-Expired any more, and
-  // no such wording appears on either screen. These only ever "passed" because
-  // both the action click and the toast assertion sat inside .catch(() => {}).
-  // Re-point them at whatever replaces the feature, or drop them — but do not let
-  // them assert nothing again.
-  purchaseTest.fixme(
-    "TC-PL-050001 Happy Path - Duplicate Price List",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ login แล้วพร้อม session ที่ถูกต้อง; มี source price list อยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/price-list\n2. คลิก 'Duplicate' จาก actions menu\n3. ตรวจสอบว่าฟอร์มกรอกข้อมูลจากการคัดลอกล่วงหน้า\n4. แก้ไขตามต้องการ (วันที่, ราคา, รายการ)\n5. คลิก 'Save'\n6. ตรวจสอบข้อความสำเร็จและหน้า detail ของ price list ใหม่",
-        },
-        { type: "expected", description: "price list ใหม่สร้างสำเร็จพร้อมข้อมูลที่กรอกล่วงหน้า; ผู้ใช้สามารถดูหน้า detail ของ price list ใหม่" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pl = new PriceListPage(page);
-      await pl.gotoList();
-      const row = page.getByRole("row").nth(1);
-      expect(await row.count(), "No price list to duplicate").toBeGreaterThan(0);
-      const trigger = row.getByRole("button", { name: /actions|more|menu/i }).first();
-      expect(await trigger.count(), "Actions menu not exposed").toBeGreaterThan(0);
-      await trigger.click().catch(() => {});
-      await pl.actionMenuItem(/duplicate/i).click({ timeout: 5_000 }).catch(() => {});
-      await pl.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await pl.expectSavedToast();
-    },
-  );
-
-  purchaseTest(
-    "TC-PL-050003 Edge Case - Duplicate with No Source Price List",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ login แล้วพร้อม session ที่ถูกต้องแต่ไม่มี source price list อยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/price-list\n2. พยายามคลิก 'Duplicate' จาก actions menu\n3. ตรวจสอบข้อความ error หรือไม่มี option 'Duplicate'",
-        },
-        { type: "expected", description: "ผู้ใช้เห็นข้อความ error ที่เหมาะสมหรือไม่มี option 'Duplicate'" },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const pl = new PriceListPage(page);
-      await pl.gotoList();
-      // Best-effort: check empty state vs duplicate availability
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) {
-        await expect(pl.emptyState()).toBeVisible({ timeout: 5_000 });
-      }
-    },
-  );
-});
-
-requestorTest.describe("Price List — Duplicate — Permission denial", () => {
-  requestorTest(
-    "TC-PL-050002 Negative - No Permission to Duplicate",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ login แล้วแต่ไม่มีสิทธิ์ duplicate price list" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/price-list\n2. พยายามคลิก 'Duplicate' จาก actions menu\n3. ตรวจสอบข้อความ error หรือไม่มี option 'Duplicate'",
-        },
-        { type: "expected", description: "ผู้ใช้เห็นข้อความ error ที่เหมาะสมหรือไม่มี option 'Duplicate'" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const pl = new PriceListPage(page);
-      await pl.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      const trigger = row.getByRole("button", { name: /actions|more|menu/i }).first();
-      if ((await trigger.count()) === 0) {
-        expect(true).toBe(true);
-        return;
-      }
-      await trigger.click().catch(() => {});
-      const item = pl.actionMenuItem(/duplicate/i);
-      // Either menu item is hidden (correct) or click yields permission error
-      if ((await item.count()) === 0) {
-        expect(true).toBe(true);
-      }
-    },
-  );
-});
+// TC-PL-900005 (Duplicate) and TC-PL-900008 (Mark as Expired) were removed: neither the
+// row-actions menu (Activity / Delete) nor the detail page (Edit / Delete / Activity) offers
+// Duplicate or Mark-as-Expired any more, and no such wording appears on either screen.
 
 // ═════════════════════════════════════════════════════════════════════════
 // TC-PL-900006 — Export
@@ -603,7 +471,7 @@ requestorTest.describe("Price List — Export — Permission denial", () => {
   // vendor-management routes carry no guard, and requestor@ can open the create
   // form directly. Whether that is intended is a product decision — un-fixme once
   // it is settled, and assert whatever the answer turns out to be.
-requestorTest.fixme(
+requestorTest(
     "TC-PL-060002 Negative - Invalid Export Permission",
     {
       annotation: [
@@ -619,15 +487,10 @@ requestorTest.fixme(
       ],
     },
     async ({ page }) => {
+      requestorTest.fail(true, "suspected bug: requestor sees an enabled Export button on the price-list list (no role gate on vendor-management)");
       const pl = new PriceListPage(page);
       await pl.gotoList();
-      const exp = pl.exportButton();
-      // Either button is hidden (correct) or disabled
-      if ((await exp.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(exp).toBeDisabled({ timeout: 5_000 });
-      }
+      await expect(pl.exportButton()).toBeDisabled({ timeout: 5_000 });
     },
   );
 });
@@ -685,100 +548,13 @@ requestorTest.describe("Price List — Delete — Permission denial", () => {
     async ({ page }) => {
       const pl = new PriceListPage(page);
       await pl.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      const trigger = row.getByRole("button", { name: /actions|more|menu/i }).first();
-      if ((await trigger.count()) === 0) {
-        expect(true).toBe(true);
-        return;
-      }
-      await trigger.click().catch(() => {});
-      const item = pl.actionMenuItem(/delete/i);
-      // Either menu item is hidden (correct) or click yields permission error
-      if ((await item.count()) === 0) {
-        expect(true).toBe(true);
-      }
+      const row = page.locator("tbody tr:has(button)").first();
+      await expect(row, "no price list seeded — run `bun run data:reset`").toBeVisible({ timeout: 10_000 });
+      await row.getByRole("button", { name: /row actions/i }).click();
+      await expect(page.getByRole("menuitem", { name: /^Activity$/i })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: /^Delete$/i })).toHaveCount(0);
     },
   );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-PL-900008 — Mark as Expired
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Price List — Mark as Expired", () => {
-  // Feature is gone from the UI — do not restore the silent version.
-  // Neither the row-actions menu (Activity / Delete only) nor the detail page
-  // (Edit / Delete / Activity) offers Duplicate or Mark-as-Expired any more, and
-  // no such wording appears on either screen. These only ever "passed" because
-  // both the action click and the toast assertion sat inside .catch(() => {}).
-  // Re-point them at whatever replaces the feature, or drop them — but do not let
-  // them assert nothing again.
-  purchaseTest.fixme(
-    "TC-PL-080001 Happy Path - Mark Price List as Expired",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ login แล้ว; มี price list ที่มีสถานะยังไม่หมดอายุ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/price-list\n2. คลิก action 'Mark as Expired' ที่ price list ที่ต้องการ\n3. รอให้สถานะอัปเดต\n4. ตรวจสอบ success toast: 'Price list marked as expired'",
-        },
-        { type: "expected", description: "สถานะ price list อัปเดตเป็น expired และแสดง success toast" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const pl = new PriceListPage(page);
-      await pl.gotoList();
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: /active|valid/i }).first();
-      expect(await row.count(), "No active price list available").toBeGreaterThan(0);
-      const trigger = row.getByRole("button", { name: /actions|more|menu/i }).first();
-      expect(await trigger.count(), "Actions menu not exposed").toBeGreaterThan(0);
-      await trigger.click().catch(() => {});
-      await pl.actionMenuItem(/mark.*expired/i).click({ timeout: 5_000 }).catch(() => {});
-      await pl.expectSavedToast();
-    },
-  );
-
-  purchaseTest(
-    "TC-PL-080003 Edge Case - Multiple Price Lists",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี price list หลายรายการโดยอย่างน้อย 1 รายการมีสถานะยังไม่หมดอายุ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/price-list\n2. เลือกและคลิก action 'Mark as Expired' ที่แต่ละ price list ทีละรายการ\n3. รอให้แต่ละสถานะอัปเดตและตรวจสอบ success toast สำหรับแต่ละ action",
-        },
-        { type: "expected", description: "สถานะของแต่ละ price list ที่เลือกอัปเดตเป็น expired และแสดง success toast ที่สอดคล้องกัน" },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const pl = new PriceListPage(page);
-      await pl.gotoList();
-      const rows = page.locator("tbody").getByRole("row").filter({ hasText: /active|valid/i });
-      const total = await rows.count();
-      if (total < 2) {
-        // A fixture gap, not a product failure: this BU's price lists are all
-        // DRAFT, and nothing in this suite promotes one to active. Stated as a
-        // skip rather than a hard expect so it reads as "not exercised" instead
-        // of "the app is broken".
-        adminTest.skip(true, `Need at least 2 active price lists, found ${total}`);
-        return;
-      }
-      // Best-effort: cycle through first few active rows
-      for (let i = 0; i < Math.min(total, 2); i++) {
-        const trigger = rows.nth(i).getByRole("button", { name: /actions|more|menu/i }).first();
-        if ((await trigger.count()) === 0) break;
-        await trigger.click().catch(() => {});
-        await pl.actionMenuItem(/mark.*expired/i).click({ timeout: 5_000 }).catch(() => {});
-      }
-    },
-  );
-
 });
 
 // ── carmensoftware.dev+admin@gmail.com + BLAVG ──────────────────────────────────────────

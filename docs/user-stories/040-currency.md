@@ -457,9 +457,9 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG
 
 **Expected**
 
-รายการที่สองไม่ถูกสร้าง: dialog ยังเปิดอยู่ (backend reject name ซ้ำ)
+รายการที่สองไม่ถูกสร้าง: dialog (ช่อง name) ยังเปิดอยู่ (backend reject name ซ้ำ)
 
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>

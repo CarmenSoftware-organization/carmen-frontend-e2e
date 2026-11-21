@@ -240,9 +240,8 @@ test.describe("Operation Plan Category — Smoke & CRUD", () => {
       await page.waitForLoadState("networkidle");
       // In view mode, Edit button should be present
       await expect(h.editButton()).toBeVisible({ timeout: 10_000 });
-      // The name field should be in read-only / plain-text form
-      const viewValue = h.viewFieldFor(opts.nameInputId);
-      await expect(viewValue).toBeVisible({ timeout: 5_000 });
+      // View mode shows the name as the page title (no label[for] field any more) — no editable input yet
+      await expect(h.nameInput()).toHaveCount(0);
       // Click Edit
       await h.editButton().click();
       await page.waitForLoadState("networkidle");

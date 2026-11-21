@@ -1,40 +1,100 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { CampaignPage, LIST_PATH } from "./pages/campaign.page";
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
-import { fakeName } from "./helpers/test-data";
-import { openRecordFromRow, recordRows } from "./helpers/list-row";
+import { uid } from "./helpers/test-data";
+import { field, pickDate, pickLookup } from "./helpers/movement/ui";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Multi-role auth — Procurement Staff/Manager == carmensoftware.dev+purchase@gmail.com.
-// Permission denial uses carmensoftware.dev+requestor@gmail.com.
-// requestor declared LAST so doc default role reads "Purchase".
+// Request for Pricing (a.k.a. "Campaign") — master-data group, Task 2.
 //
-// Note: CSV mixes 'TC-CAM-' (3 letters) and 'TC-RP-' (2 letters) prefixes
-// for the same Campaign / Request-for-Pricing module. Both flatten to a
-// unified 'TC-CAM<area3><sub2>' (5 digits) for cross-module consistency.
-// Mapping: TC-CAM-900001-01 → TC-CAM-010001, TC-RP-007-01 → TC-CAM-070001.
+// FE reality (carmen-frontend routes/vendor-management/request-price-list, 70be9b6e / 73556698):
+//   - list: search, template/date filter, rows open the record; Export / Print / New Price Request
+//   - /new and /:id are ONE single-page form (name, template, start/end date, vendors, custom
+//     message). The old 4-step wizard (priority → template → vendors → launch) is gone.
+//   - there is no status filter, priority, duplicate, reminder, mark-as-expired or per-week quota.
+//     The "status" is derived from the request window (Upcoming / N days left / Closed).
+//   - Seeded by `bun run data:reset` (STD campaign.draft / .active / .expired, one vendor each).
+//
+// Purchase = carmensoftware.dev+purchase@gmail.com; permission denial uses
+// carmensoftware.dev+requestor@gmail.com — which today can open, edit, delete and export
+// (no client-side gate; reported as a suspected bug, each denial case is test.fail).
 // ─────────────────────────────────────────────────────────────────────────
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 
+const SEED_ACTIVE = "STD campaign.active";
+const SEED_DRAFT = "STD campaign.draft";
+const SEED_TEMPLATE = "STD campaign template";
+
+const iso = (offsetDays: number) => {
+  const d = new Date(Date.now() + offsetDays * 86_400_000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
+const RFP_NAME = `E2E RFP ${uid}`;
+const RFP_NAME_EDITED = `E2E RFP edited ${uid}`;
+
+/** Open the detail page of the seeded campaign called `name`. */
+async function openSeeded(page: Page, name: string) {
+  const cam = new CampaignPage(page);
+  await cam.gotoList();
+  await page.getByRole("button", { name, exact: true }).click({ timeout: 10_000 });
+  await expect(page).toHaveURL(/request-price-list\/[0-9a-f-]{36}/, { timeout: 10_000 });
+  await page.waitForLoadState("networkidle");
+  // Wait for the record itself — "button is absent" assertions pass on a half-rendered page.
+  await expect(page.getByText(SEED_TEMPLATE).first()).toBeVisible({ timeout: 15_000 });
+}
+
+/** Fill the single-page create form (no vendors) and press Create. */
+async function createRfp(page: Page, name: string) {
+  const cam = new CampaignPage(page);
+  await cam.gotoNew();
+  await page.locator("#rfp-name").fill(name);
+  await pickLookup(page, field(page, "Template").locator("button").first(), "STD campaign");
+  expect(await pickDate(page, field(page, "Start Date").locator("button").first(), iso(10))).toBe(true);
+  expect(await pickDate(page, field(page, "End Date").locator("button").first(), iso(40))).toBe(true);
+  await page.getByRole("button", { name: /^Create$/ }).click();
+}
+
+/**
+ * Make sure the E2E record named `name` exists (the worker may have restarted, so `uid` can differ)
+ * and leave the page on the list filtered to it.
+ */
+async function ensureRfp(page: Page, name: string) {
+  const cam = new CampaignPage(page);
+  const row = () => page.getByRole("button", { name, exact: true }).first();
+  const filterToName = async () => {
+    await cam.gotoList();
+    await cam.searchInput().fill(name);
+    await cam.searchInput().press("Enter");
+    await page.waitForLoadState("networkidle");
+  };
+  await filterToName();
+  const found = await row()
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (found) return;
+  await createRfp(page, name);
+  await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 15_000 });
+  await filterToName();
+  await expect(row()).toBeVisible({ timeout: 10_000 });
+}
+
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900001 — View Campaign List
+// List
 // ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("Campaign — List", () => {
   purchaseTest(
     "TC-CAM-010001 View Campaign List - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี permission ดู campaign list" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. ตรวจสอบว่าหน้า Campaign List แสดงขึ้นมา\n3. ตรวจสอบว่า campaigns ทั้งหมดโหลดและแสดงใน default table view\n4. คลิก campaign name\n5. ตรวจสอบว่าหน้า campaign details แสดงขึ้นมา",
-        },
-        { type: "expected", description: "หน้า campaign details แสดงอย่างถูกต้องพร้อมข้อมูลที่เกี่ยวข้องทั้งหมด" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; BU มี campaign STD ที่ data:reset สร้างไว้ 3 รายการ (draft / active / expired)" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. ตรวจสอบตารางแสดง campaign ที่ seed ไว้\n3. คลิกชื่อ 'STD campaign.active'" },
+        { type: "expected", description: "ตารางแสดงแถว STD campaign.draft / .active / .expired; คลิกชื่อแล้วไปหน้า /request-price-list/<id> ที่แสดงชื่อ campaign และสถานะรอบ 'days left'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -43,98 +103,50 @@ purchaseTest.describe("Campaign — List", () => {
       const cam = new CampaignPage(page);
       await cam.gotoList();
       await expect(page).toHaveURL(/request-price-list/);
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-010003 View Campaign List - Empty Campaign List",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ดู campaign list แต่ไม่มี campaigns" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. ตรวจสอบว่าไม่มี campaigns แสดงรายการ",
-        },
-        { type: "expected", description: "ผู้ใช้เห็น message ว่าไม่มี campaigns ในขณะนี้" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-010004 View Campaign List - Filter by Status",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ดู campaign list" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด filter options\n3. เลือกสถานะ 'Active'\n4. ตรวจสอบว่าแสดงเฉพาะ campaigns ที่ active",
-        },
-        { type: "expected", description: "แสดงเฉพาะ campaigns ที่มีสถานะ active" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const filter = cam.statusFilter();
-      if ((await filter.count()) > 0) {
-        await filter.click().catch(() => {});
-        await cam.statusOption(/active/i).click({ timeout: 5_000 }).catch(() => {});
+      for (const name of [SEED_DRAFT, SEED_ACTIVE, "STD campaign.expired"]) {
+        await expect(page.getByRole("button", { name, exact: true }), `seeded row ${name} (bun run data:reset)`).toBeVisible({ timeout: 15_000 });
       }
+      await page.getByRole("button", { name: SEED_ACTIVE, exact: true }).click();
+      await expect(page).toHaveURL(/request-price-list\/[0-9a-f-]{36}/, { timeout: 10_000 });
+      await expect(page.getByText(SEED_ACTIVE).first()).toBeVisible();
+      await expect(page.getByText(/days? left/i).first()).toBeVisible();
     },
   );
 });
 
 requestorTest.describe("Campaign — List — Permission denial", () => {
+  // Suspected bug: vendor-management routes carry no role gate — requestor@ opens the list.
   requestorTest(
     "TC-CAM-010002 View Campaign List - Invalid Permissions",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่มี permission ดู campaign list" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. ตรวจสอบ error message หรือ redirect ไปยัง home page",
-        },
-        { type: "expected", description: "ผู้ใช้เห็น error message หรือถูก redirect ไปยัง home page" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ดู campaign list" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. ตรวจสอบ error message หรือ redirect" },
+        { type: "expected", description: "ผู้ใช้ถูก redirect ออกจากหน้า list หรือเห็น permission denied (ไม่เห็นตาราง campaign)" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
+      requestorTest.fail(true, "suspected bug: requestor can open the Request for Pricing list (no role gate on vendor-management routes)");
       await page.goto(LIST_PATH);
-      const url = page.url();
-      const onListPage = /request-price-list/.test(url);
-      const onUnauthorized = /unauthorized|denied|403|login/i.test(url);
-      expect(onListPage || onUnauthorized).toBeTruthy();
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByRole("button", { name: SEED_ACTIVE, exact: true })).toHaveCount(0);
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900002 — Create Campaign (Wizard)
+// Create / Edit / Delete — one serial chain on a record this spec creates itself
 // ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Campaign — Create wizard", () => {
+purchaseTest.describe("Campaign — Create", () => {
   purchaseTest(
     "TC-CAM-020001 Happy Path - Create Campaign with All Valid Inputs",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com พร้อม permissions ที่จำเป็น" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Create New Campaign'\n3. กรอก 'Campaign name' ด้วยข้อความที่ถูกต้อง\n4. กรอก 'Campaign description' ด้วยข้อความที่ถูกต้อง\n5. เลือก 'Normal' จาก priority level\n6. กรอก 'Scheduled start date' ด้วยวันที่ที่ถูกต้อง\n7. กด 'Next'\n8. คลิก template ชื่อ 'Template A'\n9. กด 'Next'\n10. ค้นหา vendor 'Vendor X'\n11. เลือก checkbox vendor 'Vendor X'\n12. กด 'Next'\n13. ตรวจสอบรายละเอียดทั้งหมดใน summary\n14. กด 'Launch Campaign'",
-        },
-        { type: "expected", description: "Campaign ถูกสร้างด้วยสถานะ 'active' และ vendors ถูก invite ผู้ใช้ถูกนำทางไปยัง campaign detail page พร้อม success message" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี template 'STD campaign template'" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list แล้วกด 'New Price Request'\n2. กรอก Name\n3. เลือก Template\n4. เลือก Start Date (อีก 10 วัน) และ End Date (อีก 40 วัน)\n5. กด 'Create'" },
+        { type: "expected", description: "แสดง toast 'created successfully'; campaign ใหม่ค้นเจอในตารางหน้า list พร้อมสถานะรอบ 'Upcoming'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -142,11 +154,17 @@ purchaseTest.describe("Campaign — Create wizard", () => {
     async ({ page }) => {
       const cam = new CampaignPage(page);
       await cam.gotoList();
-      await cam.newCampaignButton().click({ timeout: 5_000 }).catch(() => {});
-      const name = cam.campaignNameInput();
-      if ((await name.count()) > 0) await name.fill(fakeName({ tag: "Campaign" })).catch(() => {});
-      const desc = cam.campaignDescriptionInput();
-      if ((await desc.count()) > 0) await desc.fill("E2E test campaign").catch(() => {});
+      await cam.newCampaignButton().click();
+      await expect(page).toHaveURL(/request-price-list\/new/);
+      await createRfp(page, RFP_NAME);
+      await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 15_000 });
+      await cam.gotoList();
+      await cam.searchInput().fill(RFP_NAME);
+      await cam.searchInput().press("Enter");
+      await page.waitForLoadState("networkidle");
+      const row = page.getByRole("row").filter({ hasText: RFP_NAME }).first();
+      await expect(row).toBeVisible({ timeout: 10_000 });
+      await expect(row).toContainText(/upcoming/i);
     },
   );
 
@@ -154,101 +172,48 @@ purchaseTest.describe("Campaign — Create wizard", () => {
     "TC-CAM-020002 Negative Path - Missing Required Fields",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permissions ที่จำเป็น" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Create New Campaign'\n3. กรอก 'Campaign name' ด้วยข้อความที่ถูกต้อง\n4. กด 'Next'",
-        },
-        { type: "expected", description: "ระบบแสดง error message สำหรับ 'Campaign description' และ 'Scheduled start date' ที่ขาดหายไป ผู้ใช้ยังคงอยู่ที่ step 1" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; อยู่ที่ /vendor-management/request-price-list/new" },
+        { type: "steps", description: "1. กรอกเฉพาะ Name\n2. กด 'Create' โดยไม่เลือก Template / Start Date / End Date" },
+        { type: "expected", description: "ฟอร์มไม่ถูกบันทึก: ยังอยู่ที่ /new และ Template / Start Date / End Date แสดง error required" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       const cam = new CampaignPage(page);
-      await cam.gotoList();
-      await cam.newCampaignButton().click({ timeout: 5_000 }).catch(() => {});
-      const name = cam.campaignNameInput();
-      if ((await name.count()) > 0) await name.fill("Partial Campaign").catch(() => {});
-      await cam.nextButton().click({ timeout: 5_000 }).catch(() => {});
+      await cam.gotoNew();
+      await page.locator("#rfp-name").fill("Partial Campaign");
+      await page.getByRole("button", { name: /^Create$/ }).click();
+      await expect(page).toHaveURL(/request-price-list\/new/);
       await expect(cam.anyError().first()).toBeVisible({ timeout: 5_000 });
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-020003 Negative Path - No Vendor Selected",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permissions ที่จำเป็น" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Create New Campaign'\n3. กรอก 'Campaign name' ด้วยข้อความที่ถูกต้อง\n4. กรอก 'Campaign description' ด้วยข้อความที่ถูกต้อง\n5. เลือก 'Normal' จาก priority level\n6. กรอก 'Scheduled start date' ด้วยวันที่ที่ถูกต้อง\n7. กด 'Next'\n8. คลิก template ชื่อ 'Template A'\n9. กด 'Next'\n10. ตรวจสอบว่าไม่มี vendors ถูกเลือก\n11. กด 'Next'",
-        },
-        { type: "expected", description: "ระบบแสดง error message สำหรับการไม่เลือก vendor ผู้ใช้ยังคงอยู่ที่ step 3" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      await cam.newCampaignButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-020004 Edge Case - Maximum Campaigns Per Week",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ถึงจำนวน campaigns สูงสุดต่อสัปดาห์แล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Create New Campaign'",
-        },
-        { type: "expected", description: "ระบบแสดง message ว่าผู้ใช้ถึงจำนวน campaigns สูงสุดต่อสัปดาห์แล้วและไม่สามารถดำเนินต่อ" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      await cam.newCampaignButton().click({ timeout: 5_000 }).catch(() => {});
+      await expect(page.getByText(/created successfully/i)).toHaveCount(0);
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900003 — Campaign Detail
+// Detail (read-only, against the seeded campaigns)
 // ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("Campaign — Detail", () => {
   purchaseTest(
     "TC-CAM-030001 View active campaign detail",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี active campaign อยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก active campaign name\n3. รอให้หน้าโหลด",
-        },
-        { type: "expected", description: "หน้า campaign detail แสดงพร้อมข้อมูล campaign ที่ถูกต้อง" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign 'STD campaign.active' (รอบรับราคากำลังเปิด)" },
+        { type: "steps", description: "1. เปิดหน้า list แล้วคลิก 'STD campaign.active'" },
+        { type: "expected", description: "หน้ารายละเอียดแสดงชื่อ, template 'STD campaign template', ช่วง Request Period, ป้าย 'N days left', ตาราง Vendors มี 1 แถว และปุ่ม Edit / Delete" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const activeRow = recordRows(page).filter({ hasText: /active/i }).first();
-      if ((await activeRow.count()) === 0) {
-        purchaseTest.skip(true, "No active campaign available");
-        return;
-      }
-      await openRecordFromRow(activeRow);
+      await openSeeded(page, SEED_ACTIVE);
+      await expect(page.getByText(SEED_TEMPLATE).first()).toBeVisible();
+      await expect(page.getByText(/\d{4}-\d{2}-\d{2} - \d{4}-\d{2}-\d{2}/).first()).toBeVisible();
+      await expect(page.getByText(/days? left/i).first()).toBeVisible();
+      await expect(page.getByText(/0 of 1 vendor has submitted/i)).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Edit$/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Delete$/ })).toBeVisible();
     },
   );
 
@@ -256,23 +221,17 @@ purchaseTest.describe("Campaign — Detail", () => {
     "TC-CAM-030003 Campaign detail with draft status",
     {
       annotation: [
-        { type: "preconditions", description: "Campaign อยู่ใน draft status และ Login เป็น carmensoftware.dev+purchase@gmail.com" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก draft campaign name\n3. ตรวจสอบว่า edit button มีอยู่ และ buttons อื่นไม่ visible",
-        },
-        { type: "expected", description: "หน้า campaign detail แสดงพร้อม edit button ที่ visible และ duplicate button ไม่ visible" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign 'STD campaign.draft' (รอบยังไม่เริ่ม)" },
+        { type: "steps", description: "1. เปิดหน้า list แล้วคลิก 'STD campaign.draft'" },
+        { type: "expected", description: "ป้ายสถานะรอบเป็น 'Upcoming' (ไม่ใช่ 'days left' หรือ 'Closed')" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Alternate Flow" },
       ],
     },
     async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const draftRow = recordRows(page).filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
+      await openSeeded(page, SEED_DRAFT);
+      await expect(page.getByText(/^upcoming$/i).first()).toBeVisible();
+      await expect(page.getByText(/days? left/i)).toHaveCount(0);
     },
   );
 
@@ -280,23 +239,17 @@ purchaseTest.describe("Campaign — Detail", () => {
     "TC-CAM-030004 View campaign detail with empty performance summary",
     {
       annotation: [
-        { type: "preconditions", description: "Campaign ไม่มี submissions และ Login เป็น carmensoftware.dev+purchase@gmail.com" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก campaign name\n3. ตรวจสอบว่า performance summary cards ไม่แสดงข้อมูล",
-        },
-        { type: "expected", description: "Performance summary cards แสดงค่าศูนย์หรือ placeholders สำหรับข้อมูล" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; campaign STD ยังไม่มี vendor ตอบราคา" },
+        { type: "steps", description: "1. เปิดรายละเอียด 'STD campaign.active'\n2. ดูสรุปส่วน Vendors" },
+        { type: "expected", description: "สรุปแสดง '0 of 1 vendor has submitted prices' และคอลัมน์ Price List ของ vendor เป็น '—'" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
+      await openSeeded(page, SEED_ACTIVE);
+      await expect(page.getByText(/0 of 1 vendor has submitted prices/i)).toBeVisible();
+      await expect(page.getByRole("row").filter({ hasText: /pending/i }).first()).toContainText("—");
     },
   );
 
@@ -304,20 +257,18 @@ purchaseTest.describe("Campaign — Detail", () => {
     "TC-CAM-030005 Campaign detail with future start date",
     {
       annotation: [
-        { type: "preconditions", description: "Campaign มี future start date และ Login เป็น carmensoftware.dev+purchase@gmail.com" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก campaign ที่มี future start date\n3. ตรวจสอบว่า campaign detail ยังสามารถเข้าถึงได้",
-        },
-        { type: "expected", description: "หน้า campaign detail แสดงพร้อมข้อมูล campaign รวมถึง future start date" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; 'STD campaign.draft' เริ่มในอนาคต" },
+        { type: "steps", description: "1. เปิดรายละเอียด 'STD campaign.draft'\n2. อ่านช่วง Request Period" },
+        { type: "expected", description: "วันเริ่มต้นของ Request Period อยู่หลังวันนี้" },
+        { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
+      await openSeeded(page, SEED_DRAFT);
+      const text = await page.getByText(/\d{4}-\d{2}-\d{2} - \d{4}-\d{2}-\d{2}/).first().innerText();
+      const start = text.match(/\d{4}-\d{2}-\d{2}/)![0];
+      expect(start > iso(0), `start ${start} should be after today ${iso(0)}`).toBe(true);
     },
   );
 });
@@ -327,53 +278,52 @@ requestorTest.describe("Campaign — Detail — Permission denial", () => {
     "TC-CAM-030002 User with no permission to view campaign detail",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ด้วย role ที่ไม่มี permission ดู campaign details" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. พยายามคลิก campaign name\n3. ตรวจสอบ error message ว่าไม่มีสิทธิ์เพียงพอ",
-        },
-        { type: "expected", description: "ผู้ใช้ถูก redirect ไปยังหน้า permission denied หรือ error message แสดงขึ้นมา" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ดู campaign" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. เปิดรายละเอียด campaign" },
+        { type: "expected", description: "ไม่สามารถเปิดรายละเอียดได้ (permission denied / redirect)" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await row.click().catch(() => {});
+      requestorTest.fail(true, "suspected bug: requestor can open a Request for Pricing detail page (no role gate on vendor-management routes)");
+      await page.goto(LIST_PATH);
+      await page.waitForLoadState("networkidle");
+      await page.getByRole("button", { name: SEED_ACTIVE, exact: true }).click({ timeout: 10_000 });
+      // Positive denial signal (a "not on detail" check would pass before the navigation lands).
+      await expect(page.getByText(/permission denied|restricted|not authori[sz]ed/i).first()).toBeVisible({ timeout: 5_000 });
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900004 — Edit Campaign
+// Edit — on the record TC-CAM-020001 creates
 // ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("Campaign — Edit", () => {
   purchaseTest(
     "TC-CAM-040001 Edit Existing Campaign with Valid Data",
     {
       annotation: [
-        { type: "preconditions", description: "Campaign ถูกสร้างและบันทึกในระบบแล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก link 'Campaign Detail'\n3. กด 'Edit' button\n4. กรอก campaign name, description, priority, dates และเลือก template\n5. เลือก vendor และ configure settings\n6. กด 'Save Changes'",
-        },
-        { type: "expected", description: "Campaign ถูกอัปเดตสำเร็จและระบบนำทางไปยัง campaign detail page ที่อัปเดตแล้วพร้อม success message" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign E2E ที่ TC-CAM-020001 สร้าง (สร้างให้ถ้ายังไม่มี)" },
+        { type: "steps", description: "1. เปิดรายละเอียด campaign E2E\n2. กด 'Edit'\n3. เปลี่ยน Name\n4. กด 'Save'" },
+        { type: "expected", description: "แสดง toast 'updated successfully' และชื่อใหม่ปรากฏในตารางหน้า list" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
       const cam = new CampaignPage(page);
+      await ensureRfp(page, RFP_NAME);
+      await page.getByRole("button", { name: RFP_NAME, exact: true }).first().click();
+      await expect(page).toHaveURL(/request-price-list\/[0-9a-f-]{36}/, { timeout: 10_000 });
+      await page.getByRole("button", { name: /^Edit$/ }).click();
+      await page.locator("#rfp-name").fill(RFP_NAME_EDITED);
+      await page.getByRole("button", { name: /^Save$/ }).click();
+      await expect(page.getByText(/updated successfully/i).first()).toBeVisible({ timeout: 15_000 });
       await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      await cam.editButton().click({ timeout: 5_000 }).catch(() => {});
+      await cam.searchInput().fill(RFP_NAME_EDITED);
+      await cam.searchInput().press("Enter");
+      await expect(page.getByRole("button", { name: RFP_NAME_EDITED, exact: true })).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -381,20 +331,24 @@ purchaseTest.describe("Campaign — Edit", () => {
     "TC-CAM-040002 Edit Campaign with Invalid Priority Value",
     {
       annotation: [
-        { type: "preconditions", description: "Campaign ถูกสร้างและบันทึกในระบบแล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก link 'Campaign Detail'\n3. กด 'Edit' button\n4. กรอก campaign name, description และ dates\n5. กรอก 'Invalid' ใน priority field\n6. เลือก template, vendor และ configure settings\n7. กด 'Save Changes'",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่า priority field ไม่ถูกต้อง" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; อยู่ที่ฟอร์มสร้าง campaign (ไม่มีช่อง priority แล้ว — ใช้วันที่สิ้นสุดก่อนวันเริ่มแทน)" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list/new\n2. กรอก Name และเลือก Template\n3. เลือก Start Date อีก 40 วัน แล้วเลือก End Date ก่อนหน้านั้น\n4. กด 'Create'" },
+        { type: "expected", description: "ไม่บันทึก: ยังอยู่ที่ /new และช่อง End Date ถูกเลือกไม่ได้ย้อนก่อนวันเริ่ม (ปฏิทินปิดวันก่อน Start Date)" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       const cam = new CampaignPage(page);
-      await cam.gotoList();
+      await cam.gotoNew();
+      await page.locator("#rfp-name").fill(`E2E bad dates ${uid}`);
+      await pickLookup(page, field(page, "Template").locator("button").first(), "STD campaign");
+      expect(await pickDate(page, field(page, "Start Date").locator("button").first(), iso(40))).toBe(true);
+      // End Date calendar starts at Start Date (fromDate) — an earlier day cannot be picked.
+      expect(await pickDate(page, field(page, "End Date").locator("button").first(), iso(10))).toBe(false);
+      await page.getByRole("button", { name: /^Create$/ }).click();
+      await expect(page).toHaveURL(/request-price-list\/new/);
+      await expect(page.getByText(/created successfully/i)).toHaveCount(0);
     },
   );
 
@@ -402,20 +356,20 @@ purchaseTest.describe("Campaign — Edit", () => {
     "TC-CAM-040004 Edit Campaign with No Data Changes",
     {
       annotation: [
-        { type: "preconditions", description: "Campaign ถูกสร้างและบันทึกในระบบแล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก link 'Campaign Detail'\n3. กด 'Edit' button\n4. ตรวจสอบว่า fields ทั้งหมดแสดงข้อมูลปัจจุบัน\n5. กด 'Save Changes'",
-        },
-        { type: "expected", description: "ระบบแสดง confirmation ว่าไม่มีการเปลี่ยนแปลง" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; เปิดรายละเอียด 'STD campaign.active'" },
+        { type: "steps", description: "1. กด 'Edit'\n2. ไม่แก้ไขอะไร\n3. กด 'Cancel'" },
+        { type: "expected", description: "กลับสู่โหมดดู (มีปุ่ม Edit) โดยไม่มี dialog ยืนยันทิ้งการแก้ไข และไม่มี toast บันทึก" },
+        { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
+      await openSeeded(page, SEED_ACTIVE);
+      await page.getByRole("button", { name: /^Edit$/ }).click();
+      await page.getByRole("button", { name: /^Cancel$/ }).click();
+      await expect(page.getByRole("button", { name: /^Edit$/ })).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByRole("alertdialog")).toHaveCount(0);
+      await expect(page.getByText(/updated successfully/i)).toHaveCount(0);
     },
   );
 });
@@ -425,454 +379,52 @@ requestorTest.describe("Campaign — Edit — Permission denial", () => {
     "TC-CAM-040003 Edit Campaign with No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com Campaign ถูกสร้างและบันทึกแล้ว และผู้ใช้ไม่มี permission แก้ไข campaigns" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก link 'Campaign Detail'\n3. กด 'Edit' button",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่าผู้ใช้ไม่มี permission แก้ไข campaigns" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์แก้ไข campaign" },
+        { type: "steps", description: "1. เปิดรายละเอียด 'STD campaign.active'" },
+        { type: "expected", description: "ไม่มีปุ่ม Edit (หรือปุ่มถูก disable)" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const edit = cam.editButton();
-      // Either button is hidden (correct) or disabled
-      if ((await edit.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(edit).toBeDisabled({ timeout: 5_000 });
-      }
+      requestorTest.fail(true, "suspected bug: requestor sees an enabled Edit button on a Request for Pricing (no write gate)");
+      await openSeeded(page, SEED_ACTIVE);
+      // The toolbar is rendered (Activity is there) — only then is "no Edit button" meaningful.
+      await expect(page.getByRole("button", { name: /^Activity$/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Edit$/ })).toHaveCount(0);
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900005 — Duplicate Campaign
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Campaign — Duplicate", () => {
-  purchaseTest(
-    "TC-CAM-050001 Duplicate Campaign - Happy Path",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมีสิทธิ์เข้าถึง campaign list" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก campaign จาก list\n3. กด 'Duplicate' button\n4. รอให้ campaign ใหม่ถูกสร้าง\n5. ตรวจสอบว่า campaign name ใหม่มี suffix '(Copy)'\n6. ตรวจสอบว่าสถานะถูกตั้งเป็น 'Draft'\n7. ตรวจสอบว่า settings, vendor selections และ template selection ทั้งหมดถูก copy\n8. ไปยังหน้า campaign detail ใหม่",
-        },
-        { type: "expected", description: "campaign ใหม่ถูก duplicate สำเร็จและผู้ใช้ถูกนำทางไปยังหน้า campaign detail ใหม่" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      await cam.duplicateButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-050003 Duplicate Campaign - Empty Campaign List",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และ campaign list ว่างเปล่า" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. ตรวจสอบว่า campaign list ว่างเปล่า\n3. กด 'Duplicate' button\n4. ตรวจสอบว่าระบบแจ้งให้ผู้ใช้สร้าง campaign ใหม่ก่อน",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับแจ้งว่าต้องสร้าง campaign ใหม่ก่อนจึงจะ duplicate ได้" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-050004 Duplicate Campaign - Campaign with Attached Files",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี campaign ที่มี attached files อยู่ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก campaign ที่มี attached files\n3. กด 'Duplicate' button\n4. ตรวจสอบว่า settings, vendor selections, template selection และ files ทั้งหมดถูก copy ไปยัง campaign ใหม่",
-        },
-        { type: "expected", description: "campaign ใหม่ถูก duplicate พร้อม settings, vendor selections, template และ attached files ทั้งหมดที่ถูก copy" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("Campaign — Duplicate — Permission denial", () => {
-  requestorTest(
-    "TC-CAM-050002 Duplicate Campaign - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com และไม่มี permission duplicate campaigns" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก campaign จาก list\n3. พยายามกด 'Duplicate' button\n4. ตรวจสอบว่า error message แสดงว่าสิทธิ์ไม่เพียงพอ",
-        },
-        { type: "expected", description: "ผู้ใช้ถูกป้องกันไม่ให้ duplicate campaign และเห็น error message" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const dup = cam.duplicateButton();
-      // Either button is hidden (correct) or disabled
-      if ((await dup.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(dup).toBeDisabled({ timeout: 5_000 });
-      }
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900006 — Send Reminder
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Campaign — Send Reminder", () => {
-  purchaseTest(
-    "TC-CAM-060001 Send Reminder - Happy Path",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมีสิทธิ์เข้าถึง vendor reminder feature" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิกหน้า campaign detail\n3. กด tab 'Vendors'\n4. ระบุ vendor ที่มีสถานะ 'pending' หรือ 'in_progress'\n5. กด 'Send Reminder' button\n6. ตรวจสอบ success message: 'Reminder sent successfully'",
-        },
-        { type: "expected", description: "Reminder ถูกส่งไปยัง vendor reminder count เพิ่มขึ้น และวันที่ส่ง reminder ล่าสุดถูกอัปเดต" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = cam.vendorsTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
-      await cam.sendReminderButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-060003 Send Reminder - Invalid Vendor Status",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิกหน้า campaign detail\n3. กด tab 'Vendors'\n4. ระบุ vendor ที่มีสถานะ 'complete'\n5. พยายามกด 'Send Reminder' button",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่าสถานะ vendor ไม่ถูกต้องสำหรับการส่ง reminders" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-060004 Send Reminder - Reminder Already Sent",
-    {
-      annotation: [
-        { type: "preconditions", description: "Vendor ได้รับ reminder ไปแล้วภายใน 24 ชั่วโมงที่ผ่านมา" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิกหน้า campaign detail\n3. กด tab 'Vendors'\n4. ระบุ vendor ที่มีสถานะ 'pending' หรือ 'in_progress' แต่ได้รับ reminder ไปแล้วภายใน 24 ชั่วโมงที่ผ่านมา\n5. กด 'Send Reminder' button",
-        },
-        { type: "expected", description: "ระบบแสดง warning message ว่า reminder ถูกส่งไปแล้วภายใน 24 ชั่วโมงที่ผ่านมา" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-
-  // Feature is not in this build — do not restore the silent version.
-  // The campaign (Request for Pricing) detail toolbar offers only Edit / Delete /
-  // Activity / Print; there is no Send Reminder control and no vendors tab, and
-  // grepping the frontend for "reminder" finds nothing at all. This only ever
-  // "passed" because the button click and the assertion were both swallowed.
-  purchaseTest.fixme(
-    "TC-CAM-060005 Send Reminder - Empty Reminder Message",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิกหน้า campaign detail\n3. กด tab 'Vendors'\n4. ระบุ vendor ที่มีสถานะ 'pending' หรือ 'in_progress'\n5. กด 'Send Reminder' button โดยไม่กรอก message\n6. กด 'Send' ใน reminder dialog",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่า reminder message field ต้องไม่ว่างเปล่า" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = cam.vendorsTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
-      await cam.sendReminderButton().click({ timeout: 5_000 }).catch(() => {});
-      await cam.confirmDialogButton(/^send$/i).click({ timeout: 5_000 });
-      await expect(cam.anyError().first()).toBeVisible({ timeout: 5_000 });
-    },
-  );
-});
-
-requestorTest.describe("Campaign — Send Reminder — Permission denial", () => {
-  requestorTest(
-    "TC-CAM-060002 Send Reminder - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ใช่ Procurement Staff" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิกหน้า campaign detail\n3. กด tab 'Vendors'\n4. พยายามกด 'Send Reminder' button สำหรับ vendor",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับ error message ว่าไม่มี permission ส่ง reminders" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900007 (was TC-RP-007) — Mark as Expired
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Campaign — Mark as Expired", () => {
-  purchaseTest(
-    "TC-CAM-070001 Mark campaign as expired - Happy Path",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์เข้าถึง campaign ที่ยังไม่ expired" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก campaign เพื่อเปิดหน้า detail\n3. กด actions dropdown menu\n4. กด 'Mark as Expired'\n5. ยืนยันการดำเนินการ",
-        },
-        { type: "expected", description: "สถานะ campaign อัปเดตเป็น 'Expired' และ success toast 'Campaign marked as expired' แสดง" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const dropdown = cam.actionsDropdown();
-      if ((await dropdown.count()) > 0) await dropdown.click().catch(() => {});
-      await cam.actionMenuItem(/mark.*expired/i).click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-070003 Mark campaign as expired - Campaign already expired",
-    {
-      annotation: [
-        { type: "preconditions", description: "campaign ที่เลือกถูก mark เป็น expired ไปแล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก campaign เพื่อเปิดหน้า detail\n3. กด actions dropdown menu\n4. กด 'Mark as Expired'",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับการแจ้งเตือนว่า campaign นี้ expired ไปแล้วและไม่มีการดำเนินการใด ๆ" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const expiredRow = recordRows(page).filter({ hasText: /expired/i }).first();
-      if ((await expiredRow.count()) === 0) return;
-      await openRecordFromRow(expiredRow);
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-070004 Mark campaign as expired - Empty campaign list",
-    {
-      annotation: [
-        { type: "preconditions", description: "รายการ campaign ว่างเปล่า" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. พยายามคลิก campaign เพื่อเปิดหน้า detail\n3. กด actions dropdown menu\n4. กด 'Mark as Expired'",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับข้อความแจ้งว่าไม่มี campaign ให้ใช้งาน" },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("Campaign — Mark as Expired — Permission denial", () => {
-  requestorTest(
-    "TC-CAM-070002 Mark campaign as expired - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่มีสิทธิ์ mark campaign เป็น expired" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิก campaign เพื่อเปิดหน้า detail\n3. กด actions dropdown menu\n4. กด 'Mark as Expired'",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับข้อความ error แจ้งว่าไม่มีสิทธิ์ดำเนินการนี้" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900008 (was TC-RP-008) — Delete Campaign
+// Delete — on the record this spec created
 // ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("Campaign — Delete", () => {
-  // Works, but destroys the file's shared fixture — needs its own seeded record
-  // before it can be re-enabled.
-  // The Delete button on the detail page is real and this test drives it
-  // correctly (it was previously a no-op: the body opened an actions dropdown
-  // that does not exist, and both the click and the confirm were swallowed).
-  // Turning it on deletes the BU's only Request-for-Pricing record, and the eight
-  // tests after it — detail, edit, duplicate, send reminder, mark expired and the
-  // permission cases — then find an empty list. There is no create flow to seed
-  // from either: TC-CAM-020001 fills name and description and never saves.
-  // Un-fixme once this test creates the campaign it deletes.
-  purchaseTest.fixme(
+  purchaseTest(
     "TC-CAM-080001 Happy Path - Delete Campaign",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มี role Procurement Manager และมี campaign อยู่ในรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิกชื่อ campaign\n3. กด 'Actions' dropdown\n4. กด 'Delete'\n5. กด 'Delete' ใน confirmation dialog",
-        },
-        { type: "expected", description: "campaign ถูกลบออกจากฐานข้อมูลและรายการ และ success toast 'Campaign deleted successfully' แสดง" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign E2E ที่สร้างเองโดยสเปคนี้ (สร้างให้ถ้ายังไม่มี) — ไม่แตะ campaign STD" },
+        { type: "steps", description: "1. เปิดรายละเอียด campaign E2E\n2. กด 'Delete'\n3. ยืนยัน 'Delete' ใน dialog" },
+        { type: "expected", description: "แสดง toast 'deleted successfully'; กลับหน้า list และ campaign E2E ไม่อยู่ในตารางอีก" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
       const cam = new CampaignPage(page);
+      const target = RFP_NAME_EDITED;
+      await ensureRfp(page, target);
+      await page.getByRole("button", { name: target, exact: true }).first().click();
+      await expect(page).toHaveURL(/request-price-list\/[0-9a-f-]{36}/, { timeout: 10_000 });
+      await page.getByRole("button", { name: /^Delete$/ }).first().click();
+      await cam.confirmDialogButton(/^delete$/i).click();
+      await expect(page.getByText(/deleted successfully/i).first()).toBeVisible({ timeout: 15_000 });
       await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      // Delete is a plain button on the detail toolbar (Edit / Delete / Activity /
-      // Print) — there is no actions dropdown here, so the old body opened nothing
-      // and then waited out a confirm dialog that never appeared.
-      const del = page.getByRole("button", { name: /^delete$/i }).first();
-      await expect(del).toBeVisible({ timeout: 10_000 });
-      await del.click({ timeout: 10_000 });
-      await cam.confirmDialogButton(/^delete$/i).click({ timeout: 10_000 });
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-080002 Negative - No Campaign Selected",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มี role Procurement Manager" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Actions' dropdown โดยไม่ได้เลือก campaign ใด\n3. กด 'Delete'",
-        },
-        { type: "expected", description: "ระบบแสดง error message 'Please select a campaign to delete'" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-080003 Edge Case - Multiple Campaigns Selected",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มี role Procurement Manager และมีการเลือก campaign หลายรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. เลือก campaign หลายรายการ\n3. กด 'Actions' dropdown\n4. กด 'Delete'",
-        },
-        { type: "expected", description: "ระบบแสดง error message 'Please select one campaign to delete'" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
+      await cam.searchInput().fill(target);
+      await cam.searchInput().press("Enter");
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByRole("button", { name: target, exact: true })).toHaveCount(0);
     },
   );
 });
@@ -882,81 +434,43 @@ requestorTest.describe("Campaign — Delete — Permission denial", () => {
     "TC-CAM-080004 Negative - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com มี role Regular User" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. คลิกชื่อ campaign\n3. กด 'Actions' dropdown\n4. กด 'Delete'",
-        },
-        { type: "expected", description: "ระบบแสดง error message 'You do not have permission to delete campaigns'" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ลบ campaign" },
+        { type: "steps", description: "1. เปิดรายละเอียด 'STD campaign.active'" },
+        { type: "expected", description: "ไม่มีปุ่ม Delete (หรือปุ่มถูก disable)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const row = recordRows(page).first();
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const dropdown = cam.actionsDropdown();
-      // Either dropdown is hidden (correct) or delete is disabled
-      if ((await dropdown.count()) === 0) {
-        expect(true).toBe(true);
-      }
+      requestorTest.fail(true, "suspected bug: requestor sees an enabled Delete button on a Request for Pricing (no write gate)");
+      await openSeeded(page, SEED_ACTIVE);
+      await expect(page.getByRole("button", { name: /^Activity$/ })).toBeVisible();
+      await expect(page.getByRole("button", { name: /^Delete$/ })).toHaveCount(0);
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900009 (was TC-RP-009) — Export
+// Export
 // ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("Campaign — Export", () => {
   purchaseTest(
     "TC-CAM-090001 Export campaign data - happy path",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มีสิทธิ์ export ข้อมูล campaign" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Export' button\n3. รอการสร้างไฟล์\n4. ตรวจสอบว่าการ download ไฟล์เริ่มต้น",
-        },
-        { type: "expected", description: "การ download ไฟล์เริ่มต้นและผู้ใช้ได้รับ success message" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign อย่างน้อย 1 รายการ" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Export'" },
+        { type: "expected", description: "เบราว์เซอร์ดาวน์โหลดไฟล์ .xlsx และแสดง toast ส่งออกสำเร็จ" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
       const cam = new CampaignPage(page);
       await cam.gotoList();
-      const exp = cam.exportButton();
-      if ((await exp.count()) === 0) {
-        purchaseTest.skip(true, "Export UI not exposed");
-        return;
-      }
-      await exp.click().catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-090003 Export campaign data - large dataset",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มีสิทธิ์ export ข้อมูล campaign และมีชุดข้อมูลขนาดใหญ่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Export' button\n3. รอการสร้างไฟล์\n4. ตรวจสอบว่าการ download ไฟล์เริ่มต้น",
-        },
-        { type: "expected", description: "การ download ไฟล์เริ่มต้นโดยไม่มีปัญหาและผู้ใช้ได้รับ success message" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
+      await expect(cam.exportButton()).toBeVisible({ timeout: 10_000 });
+      const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), cam.exportButton().click()]);
+      expect(download.suggestedFilename()).toMatch(/\.xlsx$/i);
     },
   );
 
@@ -964,134 +478,69 @@ purchaseTest.describe("Campaign — Export", () => {
     "TC-CAM-090004 Export campaign data - multiple exports",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มีสิทธิ์ export ข้อมูล campaign" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Export' button 5 ครั้งภายใน 5 นาที\n3. รอการสร้างไฟล์หลังกดแต่ละครั้ง\n4. ตรวจสอบว่าการ download ไฟล์เริ่มต้นทุกครั้ง",
-        },
-        { type: "expected", description: "การ download ไฟล์เริ่มต้นหลังแต่ละคำขอ export และผู้ใช้ได้รับ success message สำหรับแต่ละครั้ง" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign อย่างน้อย 1 รายการ" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Export' 3 ครั้งติดกัน รอดาวน์โหลดทุกครั้ง" },
+        { type: "expected", description: "ทุกครั้งดาวน์โหลดไฟล์ .xlsx สำเร็จ (ปุ่ม Export กลับมากดได้อีกหลังแต่ละครั้ง)" },
+        { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
       const cam = new CampaignPage(page);
       await cam.gotoList();
+      for (let i = 0; i < 3; i++) {
+        await expect(cam.exportButton()).toBeEnabled({ timeout: 15_000 });
+        const [download] = await Promise.all([page.waitForEvent("download", { timeout: 30_000 }), cam.exportButton().click()]);
+        expect(download.suggestedFilename()).toMatch(/\.xlsx$/i);
+      }
     },
   );
 });
 
 requestorTest.describe("Campaign — Export — Permission denial", () => {
-    // App finding, not a test bug — do not restore the silent version.
-  // The button is present and **enabled** for this role; the assertion only ever
-  // "passed" because it was wrapped in .catch(() => {}) (the other branch was the
-  // equally empty `expect(true).toBe(true)`). These modules have no client-side
-  // role gate at all: unlike Purchase Order, whose /new route is wrapped in
-  // `CreateWorkflowGate` and answers "RESTRICTED — Permission Denied", the
-  // vendor-management routes carry no guard, and requestor@ can open the create
-  // form directly. Whether that is intended is a product decision — un-fixme once
-  // it is settled, and assert whatever the answer turns out to be.
-requestorTest.fixme(
+  requestorTest(
     "TC-CAM-090002 Export campaign data - no permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่มีสิทธิ์ export ข้อมูล campaign" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /vendor-management/request-price-list\n2. กด 'Export' button\n3. ตรวจสอบว่า error message แสดง",
-        },
-        { type: "expected", description: "ผู้ใช้เห็น error message แจ้งว่าไม่มีสิทธิ์ export ข้อมูล campaign" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com ซึ่งไม่ควรมีสิทธิ์ export ข้อมูล campaign" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list" },
+        { type: "expected", description: "ไม่มีปุ่ม Export หรือปุ่มถูก disable" },
         { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
+      requestorTest.fail(true, "suspected bug: requestor sees an enabled Export button on the Request for Pricing list (no role gate)");
       const cam = new CampaignPage(page);
       await cam.gotoList();
-      const exp = cam.exportButton();
-      // Either button is hidden (correct) or disabled
-      if ((await exp.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(exp).toBeDisabled({ timeout: 5_000 });
-      }
+      await expect(cam.exportButton()).toBeDisabled();
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CAM-900010 — Filter / Search
+// Search
 // ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Campaign — Filter / Search", () => {
-  purchaseTest(
-    "TC-CAM-100001 Filter by Status - Active",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มี role Procurement Staff และอยู่ที่หน้า Campaigns" },
-        {
-          type: "steps",
-          description:
-            "1. กด status filter dropdown\n2. เลือก 'Active'\n3. ตรวจสอบว่าแสดงเฉพาะ campaign ที่ Active\n4. ตรวจสอบว่าจำนวนผลลัพธ์ตรงกับจำนวน campaign ที่ Active",
-        },
-        { type: "expected", description: "แสดงเฉพาะ campaign ที่ Active พร้อมจำนวนผลลัพธ์ที่ถูกต้อง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const filter = cam.statusFilter();
-      if ((await filter.count()) > 0) {
-        await filter.click().catch(() => {});
-        await cam.statusOption(/^active$/i).click({ timeout: 5_000 }).catch(() => {});
-      }
-    },
-  );
-
+purchaseTest.describe("Campaign — Search", () => {
   purchaseTest(
     "TC-CAM-100002 Search by Text - Valid Term",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มี role Procurement Staff และอยู่ที่หน้า Campaigns" },
-        {
-          type: "steps",
-          description:
-            "1. พิมพ์ 'Inventory' ใน search input\n2. ตรวจสอบว่า campaign ที่เกี่ยวข้องถูก filter และแสดง\n3. ตรวจสอบว่าจำนวนผลลัพธ์ตรงกับจำนวน campaign ที่มีคำว่า 'Inventory'",
-        },
-        { type: "expected", description: "campaign ที่มีคำว่า 'Inventory' ถูก filter และแสดงพร้อมจำนวนผลลัพธ์ที่ถูกต้อง" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; มี campaign STD 3 รายการ" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/request-price-list\n2. พิมพ์ 'STD campaign.active' ในช่อง Search แล้วกด Enter" },
+        { type: "expected", description: "ตารางเหลือ 'STD campaign.active' และไม่แสดง .draft / .expired" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
+        { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
       const cam = new CampaignPage(page);
       await cam.gotoList();
-      const search = cam.searchInput();
-      if ((await search.count()) > 0) await search.fill("Inventory").catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-100003 Filter by Status - No Campaigns",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และอยู่ที่หน้า Campaigns ที่ไม่มี campaign ที่ Active" },
-        {
-          type: "steps",
-          description:
-            "1. กด status filter dropdown\n2. เลือก 'Active'\n3. ตรวจสอบว่าไม่มี campaign แสดง\n4. ตรวจสอบว่าจำนวนผลลัพธ์เป็น 0",
-        },
-        { type: "expected", description: "ไม่มี campaign แสดงและจำนวนผลลัพธ์เป็น 0" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
+      await cam.searchInput().fill(SEED_ACTIVE);
+      await cam.searchInput().press("Enter");
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByRole("button", { name: SEED_ACTIVE, exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("button", { name: SEED_DRAFT, exact: true })).toHaveCount(0);
     },
   );
 
@@ -1100,48 +549,18 @@ purchaseTest.describe("Campaign — Filter / Search", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และอยู่ที่หน้า Campaigns" },
-        {
-          type: "steps",
-          description:
-            "1. พิมพ์ 'NonexistentTerm' ใน search input\n2. ตรวจสอบว่าไม่มี campaign แสดง\n3. ตรวจสอบว่าจำนวนผลลัพธ์เป็น 0",
-        },
-        { type: "expected", description: "ไม่มี campaign แสดงและจำนวนผลลัพธ์เป็น 0" },
-        { type: "priority", description: "High" },
+        { type: "steps", description: "1. พิมพ์ 'NonexistentTerm' ใน search input แล้วกด Enter\n2. ตรวจสอบว่าไม่มี campaign แสดง" },
+        { type: "expected", description: "ไม่มี campaign แสดงและเห็น empty state" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       const cam = new CampaignPage(page);
       await cam.gotoList();
-      const search = cam.searchInput();
-      if ((await search.count()) > 0) await search.fill("__NONEXISTENT_CAM_TERM__").catch(() => {});
+      await cam.searchInput().fill("__NONEXISTENT_CAM_TERM__");
+      await cam.searchInput().press("Enter");
       await expect(cam.emptyState()).toBeVisible({ timeout: 10_000 });
-    },
-  );
-
-  purchaseTest(
-    "TC-CAM-100005 Filter by Status - All Statuses",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และอยู่ที่หน้า Campaigns" },
-        {
-          type: "steps",
-          description:
-            "1. กด status filter dropdown\n2. เลือก 'All'\n3. ตรวจสอบว่า campaign ทั้งหมดแสดง\n4. ตรวจสอบว่าจำนวนผลลัพธ์ตรงกับจำนวน campaign ทั้งหมด",
-        },
-        { type: "expected", description: "campaign ทั้งหมดแสดงพร้อมจำนวนผลลัพธ์ที่ถูกต้อง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cam = new CampaignPage(page);
-      await cam.gotoList();
-      const filter = cam.statusFilter();
-      if ((await filter.count()) > 0) {
-        await filter.click().catch(() => {});
-        await cam.statusOption(/^all$/i).click({ timeout: 5_000 }).catch(() => {});
-      }
     },
   );
 });

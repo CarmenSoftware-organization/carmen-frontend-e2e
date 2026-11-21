@@ -416,7 +416,8 @@ test.describe("Department — Smoke & CRUD", () => {
       await h.list.goto();
       await h.list.search(name);
       await h.clickRowName(name);
-      await expect(h.activeSwitch()!).toHaveAttribute("aria-checked", "false");
+      // Detail opens in view mode: the status is a StatusBadge there, not the switch (FE department-form.tsx).
+      await expect(page.getByText("Inactive", { exact: true }).first()).toBeVisible({ timeout: 5_000 });
 
       // cleanup
       await h.editButton().click();
@@ -614,12 +615,12 @@ test.describe("Department — Smoke & CRUD", () => {
   );
 
   test(
-    "TC-DEP-040004 assign user เข้า department members",
+    "TC-DEP-040004 ย้ายสมาชิกออก/กลับเข้า department members แล้วบันทึกคงอยู่",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; ต้องมี user ที่ assign ได้ ไม่งั้น skip" },
-        { type: "steps", description: "1. สร้าง record\n2. เปิด record จาก list แล้วกด Edit\n3. ใน section 'Department Members' เลือก user ตัวแรกแล้วย้ายไปขวา\n4. Save\n5. reload เปิด detail เช็คว่า user ปรากฏใน members" },
-        { type: "expected", description: "user ที่ถูก assign แสดงใน section members หลัง reload — หรือ skip ถ้าไม่มี user ว่างให้ assign" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user" },
+        { type: "steps", description: "1. เปิด department แรกจาก list แล้วกด Edit\n2. ย้ายสมาชิกคนแรกจาก Department Members กลับไป Available Users\n3. Save แล้ว reload เปิด Edit ดูว่ามี user ใน Available\n4. ย้าย user กลับเข้า Department Members แล้ว Save (คืนค่าเดิม)" },
+        { type: "expected", description: "การย้ายสมาชิกถูกบันทึกจริง (user ปรากฏใน Available หลัง reload) และย้ายกลับแล้ว Available กลับเป็นว่างเหมือนเดิม" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -627,49 +628,32 @@ test.describe("Department — Smoke & CRUD", () => {
     async ({ page }) => {
       const h = new PageFormCrudHelper(page, opts);
       const members = new DepartmentMembersHelper(page);
-      const code = fakeCode("D19");
-      const name = fakeName({ tag: "DEP010019" });
-
-      await h.gotoNew();
-      await h.codeInput().fill(code);
-      await h.nameInput().fill(name);
-      await h.saveButton().click();
-      await expect(page.getByText(/created|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-
-      // open fresh from the list before editing (avoids the create-toast/update-toast
-      // overlap racing the reload — see TC-DEP-040002)
+      // data:reset maps every user into a department, so the "available" list is empty on a new
+      // department. Exercise the transfer on a seeded department instead: move a member out,
+      // save, check it persisted, then move the same member back (restores the dataset).
       await h.list.goto();
-      await h.list.search(name);
-      await h.clickRowName(name);
+      await page.locator("tbody tr").first().getByRole("button").first().click();
+      await page.waitForLoadState("networkidle");
       await h.editButton().click();
-
-      const available = await members.availableCount("Department Members");
-      if (available === 0) {
-        await h.deleteButton().click();
-        await h.deleteConfirmButton().click();
-        await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-        test.skip(true, "No assignable users in BLAVG — skipping member-assignment test.");
-        return;
-      }
-
-      const moved = await members.assignFirstAvailable("Department Members");
-      expect(moved).not.toBeNull();
+      expect(await members.availableUsers("Department Members"), "dataset: available list is expected to start empty").toBe(0);
+      const moved = await members.unassignFirstAssigned("Department Members");
+      expect(moved, "seeded department should have at least one member").not.toBeNull();
       await h.saveButton().click();
       await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-
       await page.reload();
       await page.waitForLoadState("networkidle");
-      // assigned user's name is now shown in the (view-mode) members section
-      await expect(page.getByText(moved!.split("\n")[0].trim(), { exact: false }).first()).toBeVisible({ timeout: 10_000 });
-
-      // cleanup
-      await h.list.goto();
-      await h.list.search(name);
-      await h.clickRowName(name);
       await h.editButton().click();
-      await h.deleteButton().click();
-      await h.deleteConfirmButton().click();
-      await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+      expect(await members.availableUsers("Department Members"), "the removed member is now available").toBe(1);
+
+      // restore: assign the freed user again
+      const back = await members.assignFirstAvailable("Department Members");
+      expect(back).not.toBeNull();
+      await h.saveButton().click();
+      await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+      await page.reload();
+      await page.waitForLoadState("networkidle");
+      await h.editButton().click();
+      expect(await members.availableUsers("Department Members")).toBe(0);
     },
   );
 
@@ -677,9 +661,9 @@ test.describe("Department — Smoke & CRUD", () => {
     "TC-DEP-040005 assign user เป็น Head of Department",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; ต้องมี user ที่ assign ได้ ไม่งั้น skip" },
-        { type: "steps", description: "1. สร้าง record\n2. เปิด record จาก list แล้วกด Edit\n3. ใน section 'Head of Department' เลือก user ตัวแรกแล้วย้ายไปขวา\n4. Save\n5. reload เปิด detail เช็คว่า user ปรากฏใน HOD" },
-        { type: "expected", description: "user ที่ถูก assign แสดงใน section HOD หลัง reload — หรือ skip ถ้าไม่มี user ให้ assign" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user" },
+        { type: "steps", description: "1. เปิด department แรกจาก list แล้วกด Edit\n2. ใน section 'Head of Department' เลือก user ตัวแรกแล้วย้ายไปขวา\n3. Save\n4. reload เช็คว่า user ปรากฏใน HOD\n5. เปิด Edit ย้าย user กลับออกแล้ว Save (คืนค่าเดิม)" },
+        { type: "expected", description: "user ที่ถูก assign แสดงใน section HOD หลัง reload และคืนค่าเดิมได้" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "CRUD" },
       ],
@@ -687,31 +671,19 @@ test.describe("Department — Smoke & CRUD", () => {
     async ({ page }) => {
       const h = new PageFormCrudHelper(page, opts);
       const members = new DepartmentMembersHelper(page);
-      const code = fakeCode("D20");
-      const name = fakeName({ tag: "DEP010020" });
-
-      await h.gotoNew();
-      await h.codeInput().fill(code);
-      await h.nameInput().fill(name);
-      await h.saveButton().click();
-      await expect(page.getByText(/created|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-
+      // A department's HOD candidates are its own members, so a new (member-less) department has
+      // none. Use the seeded first department (data:reset puts every user in it): set an HOD, check
+      // it persisted, then clear it again to restore the dataset.
       await h.list.goto();
-      await h.list.search(name);
-      await h.clickRowName(name);
+      await page.locator("tbody tr").first().getByRole("button").first().click();
+      await page.waitForLoadState("networkidle");
       await h.editButton().click();
-
-      const available = await members.availableCount("Head of Department");
-      if (available === 0) {
-        await h.deleteButton().click();
-        await h.deleteConfirmButton().click();
-        await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
-        test.skip(true, "No assignable users in BLAVG — skipping HOD-assignment test.");
-        return;
-      }
+      const hodBefore = await members.availableUsers("Head of Department");
+      expect(hodBefore, "seeded department should offer members as HOD candidates — run `bun run data:reset`").toBeGreaterThan(0);
 
       const moved = await members.assignFirstAvailable("Head of Department");
       expect(moved).not.toBeNull();
+      console.log("MOVED=", JSON.stringify(moved));
       await h.saveButton().click();
       await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
 
@@ -719,14 +691,12 @@ test.describe("Department — Smoke & CRUD", () => {
       await page.waitForLoadState("networkidle");
       await expect(page.getByText(moved!.split("\n")[0].trim(), { exact: false }).first()).toBeVisible({ timeout: 10_000 });
 
-      // cleanup
-      await h.list.goto();
-      await h.list.search(name);
-      await h.clickRowName(name);
+      // restore: move the new HOD back out so the dataset keeps its original head
       await h.editButton().click();
-      await h.deleteButton().click();
-      await h.deleteConfirmButton().click();
-      await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+      expect(await members.availableUsers("Head of Department")).toBe(hodBefore - 1);
+      await members.unassignFirstAssigned("Head of Department");
+      await h.saveButton().click();
+      await expect(page.getByText(/updated|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 });

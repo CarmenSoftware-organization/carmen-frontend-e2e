@@ -1,6 +1,7 @@
 import type { Page, Locator } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { BasePage } from "./base.page";
+import { pickTaxProfile } from "../helpers/tax-profile-lookup";
 
 export const LIST_PATH = "/product-management/category";
 
@@ -84,9 +85,8 @@ export class ProductCategoryPage extends BasePage {
 
   /** Open the required Tax Profile select and pick the first option. */
   async selectFirstTaxProfile() {
-    const trigger = this.dialog().getByRole("combobox").first();
-    await trigger.click();
-    await this.page.getByRole("option").first().click();
+    // Popover lookup (FE LookupTaxProfile), a "Select Tax Profile" button — not a combobox.
+    await pickTaxProfile(this.page, this.dialog().getByRole("button", { name: /tax profile/i }).first());
   }
 
   saveButton(): Locator {

@@ -48,6 +48,26 @@ const opts = {
   descriptionInputId: "cuisine-description",
 };
 
+/**
+ * The list is empty after `data:reset` (cuisine types are not part of the standard dataset), and
+ * the detail/back cases run before the create case. Make sure one record exists, creating it
+ * through the real form (same steps as TC-CUIS-030001) when the list is empty.
+ */
+async function ensureCuisine(page: import("@playwright/test").Page) {
+  const h = new PageFormCrudHelper(page, opts);
+  await h.list.goto();
+  const rows = page.locator("tbody tr:has(button)");
+  const hasRow = await rows.first().waitFor({ state: "visible", timeout: 4_000 }).then(() => true, () => false);
+  if (hasRow) return;
+  await h.list.addButton().click();
+  await page.waitForURL(new RegExp(`${PATH}/new`), { timeout: 10_000 });
+  await page.waitForLoadState("networkidle");
+  await h.nameInput().fill(`${NAME} seed`);
+  await h.saveButton().click();
+  await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
+  await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+}
+
 test.describe("Cuisine Type — Smoke & CRUD", () => {
   test.beforeEach(async ({ page }) => {
     await ensureActiveBu(page, BU_CODE);
@@ -181,7 +201,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
     },
     async ({ page }) => {
       const h = new PageFormCrudHelper(page, opts);
-      await h.list.goto();
+      await ensureCuisine(page);
       const firstDataRow = page.getByRole("row").nth(1);
       await expect(firstDataRow).toBeVisible({ timeout: 10_000 });
       const cellBtn = firstDataRow.getByRole("button").filter({ hasText: /\S/ }).first();
@@ -236,7 +256,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
     },
     async ({ page }) => {
       const h = new PageFormCrudHelper(page, opts);
-      await h.list.goto();
+      await ensureCuisine(page);
       const firstDataRow = page.getByRole("row").nth(1);
       await expect(firstDataRow).toBeVisible({ timeout: 10_000 });
       await firstDataRow.getByRole("button").filter({ hasText: /\S/ }).first().click();
@@ -279,6 +299,9 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       await h.saveButton().click();
       // Should redirect back to list
       await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
+      await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      await h.list.search(NAME);
+      await expect(page.getByRole("button", { name: NAME, exact: true }).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 

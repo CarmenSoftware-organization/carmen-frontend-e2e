@@ -261,7 +261,7 @@ table แสดง empty state เมื่อไม่มีผลลัพธ�
 
 **Expected**
 
-table แสดงผลที่ผ่าน filter (count >= 0) โดยไม่ crash
+table แสดงเฉพาะ delivery point ที่ Status = Active (ทุกแถวมีสถานะ Active และไม่มีแถว Inactive)
 
 ---
 
@@ -1215,4 +1215,4 @@ name input ตัดข้อความให้ยาวไม่เกิน
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>

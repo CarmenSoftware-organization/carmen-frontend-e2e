@@ -36,9 +36,10 @@ const secOpts = {
 // BU-assert and validation cases all pass as carmensoftware.dev+admin@gmail.com — only the
 // writes fail, and they fail on the payload contract, not on permissions.
 //
-// Flip the 9 `test.fixme` below back to `test` once certification-dialog.tsx
-// sends the metadata-wrapped payload (that change also supplies doc_version,
-// which TC-CERT-040003 needs on PATCH).
+// The 9 write cases below are `test.fail(true, "suspected bug: ...")`: certification-dialog.tsx posts
+// without `metadata`, so the backend answers 400 "metadata field is required" (verified live on dev,
+// 2026-11-21). They flip red ("expected to fail but passed") when the payload is fixed — then drop the marker.
+// (that change also supplies doc_version, which TC-CERT-040003 needs on PATCH).
 test.describe("Certification — Smoke & CRUD", () => {
   test.beforeEach(async ({ page }) => {
     await ensureActiveBu(page, BU_CODE);
@@ -160,7 +161,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-030001 สร้างรายการใหม่และปรากฏในตาราง",
     {
       annotation: [
@@ -172,6 +173,7 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       await cert.list.goto();
       await cert.createCertification(CODE, NAME);
@@ -183,7 +185,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-040001 แก้ไขชื่อและบันทึก",
     {
       annotation: [
@@ -195,6 +197,7 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       await cert.list.goto();
       await cert.list.search(CODE);
@@ -208,7 +211,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-200002 แก้ไข: clear name แล้วบันทึก ต้องแสดง error",
     {
       annotation: [
@@ -220,6 +223,7 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       await cert.list.goto();
       await cert.list.search(CODE);
@@ -231,7 +235,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-050001 ลบรายการ",
     {
       annotation: [
@@ -243,9 +247,12 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       await cert.list.goto();
       await cert.list.search(CODE);
+      // fail fast when TC-CERT-030001's record is missing (a bare timeout is not an "expected failure")
+      await expect(page.getByRole("row", { name: new RegExp(CODE) }).first()).toBeVisible({ timeout: 5_000 });
       await cert.deleteRow(CODE);
       await cert.deleteConfirmButton().click();
       await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({
@@ -254,7 +261,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-040002 toggle is_active แล้ว persist",
     {
       annotation: [
@@ -266,6 +273,7 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       const code = fakeCode("EC42");
       const name = fakeName({ tag: "CERT042" });
@@ -285,7 +293,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-040003 แก้ไขชื่อแล้ว persist",
     {
       annotation: [
@@ -297,6 +305,7 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       const code = fakeCode("EC43");
       const name = fakeName({ tag: "CERT043" });
@@ -326,7 +335,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-040004 ยกเลิกการแก้ไข ค่าต้องไม่ถูกบันทึก",
     {
       annotation: [
@@ -338,6 +347,7 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       const code = fakeCode("EC44");
       const name = fakeName({ tag: "CERT044" });
@@ -365,7 +375,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-200003 สร้าง code ซ้ำ ต้องถูก reject",
     {
       annotation: [
@@ -377,6 +387,7 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       const code = fakeCode("EC20");
       const name = fakeName({ tag: "CERT200" });
@@ -409,7 +420,7 @@ test.describe("Certification — Smoke & CRUD", () => {
     },
   );
 
-  test.fixme(
+  test(
     "TC-CERT-050002 ยกเลิกการลบ record ต้องยังอยู่",
     {
       annotation: [
@@ -421,6 +432,7 @@ test.describe("Certification — Smoke & CRUD", () => {
       ],
     },
     async ({ page }) => {
+      test.fail(true, "suspected bug: POST /vendor-master-certificates answers 400 \"metadata field is required\" — certification-dialog.tsx sends {code,name,description,is_active} without metadata, so no certification can be created");
       const cert = new CertificationPage(page);
       const code = fakeCode("EC50");
       const name = fakeName({ tag: "CERT050" });

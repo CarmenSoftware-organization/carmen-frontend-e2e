@@ -35,7 +35,7 @@ const dataRows = (page: Page) =>
 const NO_DATA_REASON =
   "BU ทดสอบไม่มีแถว account mapping และ Generate (Everything in advance) สร้างไม่ได้ — BU ไม่มี location/item group";
 
-// ตั้งใน beforeAll — เคสที่ต้องมีข้อมูลจะ skip พร้อมเหตุผลแทนการแดงแบบอ่านไม่ออก
+// ตั้งใน beforeAll — เคสที่ต้องมีข้อมูลจะ fail พร้อมเหตุผลที่ชี้ไปที่ข้อมูลที่ขาด (ไม่ skip เงียบ ๆ)
 let hasData = false;
 
 async function gotoLoaded(page: Page) {
@@ -48,7 +48,8 @@ async function gotoLoaded(page: Page) {
 
 /** จำนวนรวมจากแถบ pagination ("Showing 1–10 of 686") */
 async function paginationTotal(page: Page): Promise<number> {
-  const text = await page.locator("p", { hasText: /^Showing\b/ }).first().innerText();
+  // "Showing 50 of 5120" is a plain text node of the grid footer now (not a <p>)
+  const text = await page.getByText(/^Showing\b.*\bof\b/).first().innerText();
   const m = text.match(/of\s+([\d,]+)/);
   if (!m) throw new Error(`pagination text not recognised: ${text}`);
   return Number(m[1].replace(/,/g, ""));
@@ -91,7 +92,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       await gotoLoaded(page);
       await expect(page).toHaveURL(new RegExp(PATH));
       // FE #294 เติม s — regex รับทั้งชื่อเก่า/ใหม่
@@ -119,7 +120,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       await gotoLoaded(page);
       const header = page.locator("table thead").first();
       for (const name of [/^Location$/i, /Location type/i, /^Category$/i, /Item Group/i, /Movement/i, /Cost center/i, /^Account$/i, /^Status$/i]) {
@@ -143,10 +144,12 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       await gotoLoaded(page);
       const totalBefore = await paginationTotal(page);
-      const location = (await dataRows(page).first().getByRole("button").first().innerText()).trim();
+      // The Location cell reads "<code>\n\n<name>" now — search by the name (last line)
+      const locationCell = await dataRows(page).first().getByRole("button").first().innerText();
+      const location = locationCell.split("\n").map((l) => l.trim()).filter(Boolean).pop() ?? "";
       expect(location.length).toBeGreaterThan(0);
 
       const list = new ConfigListPage(page, PATH);
@@ -198,7 +201,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       const list = new ConfigListPage(page, PATH);
       await list.goto();
       await list.search(`__NOPE__${uid}`);
@@ -319,7 +322,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       await gotoLoaded(page);
       const heading = page.getByRole("heading", { name: /Chart of Accounts? Mapping/i }).first();
       const countText = await heading.locator("xpath=..").innerText();
@@ -344,7 +347,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       await gotoLoaded(page);
       const chip = page
         .getByRole("group", { name: /Filter by status/i })
@@ -381,7 +384,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       await gotoLoaded(page);
       await expect(page.getByRole("button", { name: /Generate mapping rows/i })).toBeVisible();
       const editSelected = page.getByRole("button", { name: /^Edit\s*\(1\)$/i });
@@ -413,7 +416,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       await gotoLoaded(page);
       await dataRows(page).first().getByRole("button").first().click();
       const sheet = page.getByRole("dialog");
@@ -438,7 +441,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
       ],
     },
     async ({ page }) => {
-      test.skip(!hasData, NO_DATA_REASON);
+      expect(hasData, NO_DATA_REASON).toBe(true);
       await gotoLoaded(page);
       const rowsBefore = await dataRows(page).count();
       const totalBefore = await paginationTotal(page);
