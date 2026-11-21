@@ -133,7 +133,7 @@ export async function bulkReject(page: Page, reason: string): Promise<void> {
 export async function bulkSendForReview(
   page: Page,
   reason: string,
-  stage: string,
+  stage: string = "",
 ): Promise<void> {
   const pr = new PurchaseRequestPage(page);
   await pr.selectAllInEditMode();
@@ -145,9 +145,10 @@ export async function bulkSendForReview(
 
   const dialog = page.locator('[role="dialog"], [role="alertdialog"]').last();
   await expect(dialog).toBeVisible({ timeout: 10_000 });
-  // The dialog lists every stage this PR can go back to; pick the requested one by name.
+  // The dialog lists every stage this PR can go back to; pick the requested one by name
+  // (an empty `stage` = the first stage offered, the earliest one the PR can return to).
   const target = dialog.getByRole("radio", { name: new RegExp(stage, "i") }).first();
-  await expect(target, `Send Back dialog offers no "${stage}" stage to return to`).toBeVisible({ timeout: 10_000 });
+  await expect(target, `Send Back dialog offers no "${stage || "(any)"}" stage to return to`).toBeVisible({ timeout: 10_000 });
   await target.check({ force: true, timeout: 10_000 });
   await pr.reasonInput().fill(reason, { timeout: 10_000 });
 
@@ -179,8 +180,8 @@ export async function approveAsHOD(browser: Browser, ref: string): Promise<void>
 
 /**
  * Cross-context helper: opens a fresh BrowserContext as HOD, opens the PR at `ref`, enters Edit
- * Mode and sends it back for review — routing the PR to the Requestor (Creator). Used by the PR
- * Returned Flow spec to seed PRs in the Returned status.
+ * Mode and sends it back for review to the first stage the dialog offers (the creator's stage).
+ * Used by the PR Returned Flow spec to seed PRs the creator gets back.
  */
 export async function sendForReviewAsHOD(
   browser: Browser,
@@ -195,7 +196,7 @@ export async function sendForReviewAsHOD(
       `sendForReviewAsHOD: no Edit button on PR ${ref} — it is not at the HOD stage`,
     ).toBeVisible({ timeout: 15_000 });
     await pr.enterEditMode();
-    await bulkSendForReview(page, reason, "Requestor");
+    await bulkSendForReview(page, reason);
   });
 }
 
