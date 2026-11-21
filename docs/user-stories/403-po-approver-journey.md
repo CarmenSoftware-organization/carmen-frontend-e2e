@@ -27,7 +27,7 @@ _Generated from `tests/403-po-approver-journey.spec.ts` annotations. Edit annota
 | TC-PO-070308 | Click Send Back → dialog with stage selector + per-item reason | Medium | Smoke |
 | TC-PO-070309 | Confirm Send Back → PO returned (status updates) | Medium | CRUD |
 | TC-PO-070310 | Click Reject → dialog with optional reason field | Medium | Smoke |
-| TC-PO-070311 | Confirm Reject → PO marked REJECTED | Medium | CRUD |
+| TC-PO-070311 | Confirm Reject → PO ends Voided (the app's rejected end state) | Medium | CRUD |
 | TC-PO-070312 | Cancel edit mode (no item marked) → exits without saving | Low | Functional |
 | TC-PO-070901 | Full FC flow: My Approval → open PO → Edit → mark all items Approved → Document Approve → GM approve → APPROVED | High | Smoke |
 
@@ -45,12 +45,12 @@ Login เป็น FC (carmensoftware.dev+fc@gmail.com)
 
 **Steps**
 
-1. ไปที่ My Approvals (หรือ FC dashboard ที่เหมาะสม)
-2. ตรวจสอบว่า indicator total-pending ถูก render
+1. ไปที่ /procurement/my-approval
+2. ตรวจสอบการ์ด 'Total Pending'
 
 **Expected**
 
-URL มี 'approval' หรือ 'dashboard'; count/badge หรือ row count visible
+URL เป็น /procurement/my-approval และการ์ด 'Total Pending N' visible
 
 ---
 
@@ -378,7 +378,7 @@ Reject dialog visible
 
 ---
 
-## TC-PO-070311 — Confirm Reject → PO marked REJECTED
+## TC-PO-070311 — Confirm Reject → PO ends Voided (the app's rejected end state)
 
 > **As a** FC user, **I want** to manage Po Approver Journey records via CRUD, **so that** the data stays correct over time.
 
@@ -397,7 +397,7 @@ Reject dialog เปิดอยู่
 
 **Expected**
 
-text ของ status badge ตรงกับ /rejected/i หลังการยืนยัน (ปัจจุบันการยืนยันไม่ยิง request ใด ๆ — บั๊กแอป)
+การยืนยันยิง PATCH .../reject สำเร็จ และ PO ที่เปิดใหม่มี status chip Voided (PO ไม่มี status Rejected — STD dataset po.rejected ก็จบที่ Voided). ปักหมุด test.fail: ปัจจุบัน confirm ไม่ยิง request ใด ๆ (suspected bug)
 
 ---
 
@@ -449,4 +449,4 @@ PATCH .../approve ของ FC ตอบ ok และหลัง GM อนุ�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 3480104</sub>
+<sub>Last regenerated: 2026-11-21 · git e958dbc</sub>

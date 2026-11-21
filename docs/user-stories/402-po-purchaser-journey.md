@@ -5,7 +5,7 @@ _Generated from `tests/402-po-purchaser-journey.spec.ts` annotations. Edit annot
 **Module:** Po Purchaser Journey
 **Spec:** `tests/402-po-purchaser-journey.spec.ts`
 **Default role:** Purchase
-**Total test cases:** 32 (14 High / 15 Medium / 3 Low)
+**Total test cases:** 31 (14 High / 14 Medium / 3 Low)
 
 ## Test Cases at a Glance
 
@@ -19,10 +19,10 @@ _Generated from `tests/402-po-purchaser-journey.spec.ts` annotations. Edit annot
 | TC-PO-060201 | Open Create dropdown → Blank → form loads | High | Smoke |
 | TC-PO-060202 | Fill header (vendor, delivery date, description) + add 1 line item | High | CRUD |
 | TC-PO-060203 | Save Draft → redirect to detail with PO number | High | CRUD |
-| TC-PO-060204 | Save without items → button disabled or stays on /new | Medium | Validation |
+| TC-PO-060204 | Save without items → refused, stays on /new | Medium | Validation |
 | TC-PO-060205 | Open Create → From Price List → wizard step 1 (Select Vendors) | Medium | Smoke |
 | TC-PO-060206 | Select vendor → wizard step 2 (Review items) | Medium | Functional |
-| TC-PO-060207 | Submit Price List wizard → POs created (URL changes from /new to detail) | High | CRUD |
+| TC-PO-060207 | Confirm Price List wizard → PO created and opened | High | CRUD |
 | TC-PO-060208 | Wizard step 1 lists vendors that have an active price list on the delivery date | Low | Functional |
 | TC-PO-060209 | Open Create → From PR → wizard step 1 (Select Approved PRs) | Medium | Smoke |
 | TC-PO-060210 | Select approved PR → wizard step 2 (Review POs grouped by vendor) | Medium | Functional |
@@ -40,7 +40,6 @@ _Generated from `tests/402-po-purchaser-journey.spec.ts` annotations. Edit annot
 | TC-PO-060406 | Delete DRAFT PO via Edit Mode | Medium | CRUD |
 | TC-PO-060501 | Approved PO has Send to Vendor + Close buttons (seeded via seedApprovedPO) | High | Functional |
 | TC-PO-060502 | Click Send to Vendor → compose dialog opens bound to the PO | High | CRUD |
-| TC-PO-060503 | Close PO with items received → COMPLETED | Medium | CRUD |
 | TC-PO-060504 | Close PO without items received → CLOSED | Medium | CRUD |
 | TC-PO-060901 | Full Purchaser flow: Create blank → Save Draft → Submit → FC approves → Send to Vendor | High | Smoke |
 
@@ -214,7 +213,7 @@ URL เปลี่ยนเป็น /procurement/purchase-order/<id> (ไม�
 
 ---
 
-## TC-PO-060204 — Save without items → button disabled or stays on /new
+## TC-PO-060204 — Save without items → refused, stays on /new
 
 > **As a** Purchase user, **I want** the system to block invalid Po Purchaser Journey submissions, **so that** data quality is preserved.
 
@@ -222,7 +221,7 @@ URL เปลี่ยนเป็น /procurement/purchase-order/<id> (ไม�
 
 **Preconditions**
 
-อยู่ที่ form สร้าง PO พร้อม header แต่ยังไม่มีรายการ
+อยู่ที่ form สร้าง PO (blank) ยังไม่ได้กรอกอะไรและไม่มีรายการ
 
 **Steps**
 
@@ -230,7 +229,7 @@ URL เปลี่ยนเป็น /procurement/purchase-order/<id> (ไม�
 
 **Expected**
 
-ปุ่มบันทึกถูก disable หรือ form ไม่ navigate ออกจาก /new
+ปุ่ม Save กดได้แต่ระบบไม่บันทึก: toast "Some fields aren't filled in correctly", ช่องที่ผิดถูกมาร์ก aria-invalid และ URL ยังเป็น /new
 
 ---
 
@@ -246,12 +245,12 @@ Login เป็น Purchaser; อยู่ที่หน้า list ของ P
 
 **Steps**
 
-1. กดปุ่ม dropdown New PO
-2. เลือก From Price List
+1. กดปุ่ม 'New Purchase Order'
+2. เลือกการ์ด 'From Price List'
 
 **Expected**
 
-Wizard step 1 แสดง (URL เปลี่ยนหรือ dialog ปรากฏพร้อมการเลือก vendor)
+ไปที่หน้าเต็ม /procurement/purchase-order/from-price-list (ไม่ใช่ dialog) และ step rail แสดง 'Order & Vendor' กับ 'Select Items'
 
 ---
 
@@ -267,16 +266,17 @@ Wizard From Price List step 1 เปิดอยู่
 
 **Steps**
 
-1. เลือก vendor แรก
-2. กด Next/Continue
+1. เปิด /procurement/purchase-order/from-price-list
+2. เลือก workflow, วันที่ส่งของ และ vendor แรก
+3. กด Next
 
 **Expected**
 
-Wizard ไปยัง step 2 (หน้า review visible)
+Wizard ไป step 2 'Select Items' ซึ่งแสดงแถวรายการจาก price list (เลข PL) ของ vendor ที่เลือก
 
 ---
 
-## TC-PO-060207 — Submit Price List wizard → POs created (URL changes from /new to detail)
+## TC-PO-060207 — Confirm Price List wizard → PO created and opened
 
 > **As a** Purchase user, **I want** to create a new Po Purchaser Journey record, **so that** it becomes available for downstream operations.
 
@@ -288,11 +288,12 @@ Wizard From Price List step 2 (Review) เปิดอยู่
 
 **Steps**
 
-1. กด Create/Submit บน step สุดท้ายของ wizard
+1. ไปจนถึง step 3 (Order details / summary)
+2. กด Confirm (ไม่มี dialog ยืนยันเพิ่ม)
 
 **Expected**
 
-URL เปลี่ยนออกจาก /new ไปยัง PO detail หรือ list ที่ถูกสร้าง
+ยิง POST purchase-orders สำเร็จ แล้ว navigate ไปที่ /procurement/purchase-order/<id> ของ PO ที่สร้าง
 
 ---
 
@@ -330,12 +331,12 @@ Login เป็น Purchaser; อยู่ที่หน้า list ของ P
 
 **Steps**
 
-1. กดปุ่ม dropdown New PO
-2. เลือก From PR
+1. กดปุ่ม 'New Purchase Order'
+2. เลือกการ์ด 'From Purchase Request'
 
 **Expected**
 
-Wizard step 1 แสดง (รายการเลือก PR visible หรือ dialog ปรากฏ)
+ไปที่หน้าเต็ม /procurement/purchase-order/from-pr (ไม่ใช่ dialog) และแสดง step 1 พร้อมช่องเลือก workflow
 
 ---
 
@@ -351,12 +352,13 @@ Wizard From PR step 1 เปิดอยู่พร้อม PR ที่ appro
 
 **Steps**
 
-1. เลือก PR ที่ approved แรก
-2. กด Next/Continue
+1. เปิด /procurement/purchase-order/from-pr แล้วเลือก workflow
+2. ติ๊ก PR ที่ approved แรก
+3. กด Next
 
 **Expected**
 
-Wizard ไปยัง step 2 (review PO ที่จัดกลุ่มตาม vendor)
+Wizard ไป step 2 'Review POs' แสดงแถวของ PR ที่เลือก 1 แถว (PO จัดกลุ่มตาม vendor)
 
 ---
 
@@ -661,31 +663,6 @@ dialog 'Send purchase order to vendor' เปิดพร้อมเลข PO; 
 
 ---
 
-## TC-PO-060503 — Close PO with items received → COMPLETED
-
-> **As a** Purchase user, **I want** to manage Po Purchaser Journey records via CRUD, **so that** the data stays correct over time.
-
-**Priority:** Medium · **Test Type:** CRUD
-
-**Preconditions**
-
-มี SENT PO ที่มีรายการที่รับแล้ว (best-effort; เชื่อ DB)
-
-**Steps**
-
-1. ค้นหา SENT PO ที่มีรายการที่รับแล้วในรายการ
-2. เปิดหน้า detail
-3. กด Close
-4. ยืนยัน
-
-**Expected**
-
-text ของ status ตรงกับ /completed/i หลัง close
-
-> _Note: fixme (data): ต้องมี PO ที่ Sent และรับของแล้ว — Send ต้องมี email profile ที่เปิดใช้ ซึ่ง TEST BU ไม่มี และ STD receiving ใช้ PO หมด_
-
----
-
 ## TC-PO-060504 — Close PO without items received → CLOSED
 
 > **As a** Purchase user, **I want** to manage Po Purchaser Journey records via CRUD, **so that** the data stays correct over time.
@@ -694,19 +671,17 @@ text ของ status ตรงกับ /completed/i หลัง close
 
 **Preconditions**
 
-มี Approved/SENT PO ที่ยังไม่มีรายการที่รับ
+Login เป็น Purchaser; เคสสร้าง PO ที่ Approved เองผ่าน seedApprovedPO (ไม่พึ่งข้อมูลเดิม)
 
 **Steps**
 
-1. ค้นหา PO ที่เข้าเกณฑ์
-2. กด Close
-3. ยืนยัน
+1. Seed PO ที่ Approved (submit + FC + GM)
+2. เปิดหน้า detail แล้วกด Close
+3. ยืนยันใน dialog
 
 **Expected**
 
-text ของ status ตรงกับ /voided|cancelled/i หลัง close Skip ถ้าไม่มี PO ที่เข้าเกณฑ์
-
-> _Note: Dynamically skipped when no eligible PO exists._
+เปิด PO ใหม่แล้ว status chip เป็น Closed (PO ไม่มี voided/cancelled จากการ Close)
 
 ---
 
@@ -736,4 +711,4 @@ lifecycle ครบ (Create → Draft → Submit → FC → GM → Approved) แ
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 3480104</sub>
+<sub>Last regenerated: 2026-11-21 · git e958dbc</sub>

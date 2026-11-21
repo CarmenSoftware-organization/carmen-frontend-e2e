@@ -5,8 +5,6 @@ import { BU_CODE } from "../test-users";
 import { authFile } from "../fixtures/auth.paths";
 import { ensureActiveBu } from "../helpers/bu";
 
-const FUTURE_DATE = "2099-12-31";
-
 export interface CreatedPO {
   /** Record id (uuid) from the detail URL. */
   ref: string;
@@ -55,21 +53,22 @@ async function createDraftOnPage(
   await po.gotoNew();
   await expect(page).toHaveURL(/purchase-order\/new/, { timeout: 10_000 });
 
+  // addItemToPO (on a blank form) picks the workflow, the vendor and the delivery date.
+  // `opts.vendor` was only ever typed into a trigger that is a dialog button now, so it
+  // is not honoured: fail loudly rather than silently seed with the wrong vendor.
   if (opts?.vendor) {
-    const trigger = po.vendorTrigger();
-    if ((await trigger.count()) > 0) await trigger.fill(opts.vendor).catch(() => {});
+    throw new Error(`${who}: opts.vendor is not supported — the vendor is picked from a dialog (first vendor)`);
   }
   const desc = po.descriptionInput();
-  if ((await desc.count()) > 0) {
-    await desc.fill(opts?.description ?? "[E2E-POP] approver-fixture").catch(() => {});
-  }
-  const date = po.deliveryDateInput();
-  if ((await date.count()) > 0) await date.fill(FUTURE_DATE).catch(() => {});
+  await expect(desc, `${who}: Description input not present`).toBeVisible({ timeout: 10_000 });
+  await desc.fill(opts?.description ?? "[E2E-POP] approver-fixture");
 
   await po.addItemToPO({ product: "Test Item", quantity: 1, uom: "ea", unitPrice: 100 });
 
-  await po.saveButton().click({ timeout: 5_000 }).catch(() => {});
-  await page.waitForURL(/purchase-order\/(?!new$)[^\/?#]+$/, { timeout: 15_000 }).catch(() => {});
+  await po.saveButton().click({ timeout: 10_000 });
+  await page.waitForURL(/purchase-order\/(?!new$)[^\/?#]+$/, { timeout: 20_000 }).catch(() => {
+    // fall through: the explicit URL check below reports what the page is actually on
+  });
 
   const url = page.url();
   if (url.endsWith("/new") || url.includes("/new?")) {

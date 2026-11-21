@@ -272,6 +272,11 @@ export class PurchaseOrderPage extends BasePage {
    * popover (role=dialog) holding a virtualised list of <button> rows ("A023 <name>").
    * Without a vendor the line product lookup stays empty.
    */
+  /** The header's "Select vendor" trigger (opens the vendor dialog). */
+  vendorPickerButton(): Locator {
+    return this.page.getByRole("button", { name: /select vendor/i }).first();
+  }
+
   async selectFirstVendor() {
     // The form re-renders right after the workflow is chosen, so the trigger may be
     // briefly absent: wait for it instead of reading count() (a /new form never has a
@@ -296,7 +301,7 @@ export class PurchaseOrderPage extends BasePage {
     await trigger.waitFor({ state: "visible", timeout: 10_000 });
     await trigger.click({ timeout: 10_000 });
     const dialog = this.page.getByRole("dialog").last();
-    await dialog.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
+    await expect(dialog, "delivery-date picker did not open").toBeVisible({ timeout: 5_000 });
     // Any selectable day works; take the last enabled one so the date lands in the
     // future rather than on a past day the picker disables. `:not([disabled])` has
     // to be part of the CSS — Locator.filter({hasNot}) tests descendants, not the
@@ -304,7 +309,7 @@ export class PurchaseOrderPage extends BasePage {
     const day = dialog.locator('button:not([disabled])').filter({ hasText: /^\d{1,2}$/ }).last();
     await day.waitFor({ state: "visible", timeout: 5_000 });
     await day.click({ timeout: 10_000 });
-    await dialog.waitFor({ state: "hidden", timeout: 5_000 }).catch(() => {});
+    await expect(dialog, "delivery-date picker stayed open after picking a day").toBeHidden({ timeout: 5_000 });
   }
 
   /**

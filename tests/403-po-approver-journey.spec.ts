@@ -15,7 +15,6 @@ import {
 const fcTest = createAuthTest("carmensoftware.dev+fc@gmail.com");
 
 const SEND_BACK_REASON = "Please verify pricing";
-const REJECT_REASON = "Vendor pricing exceeds budget";
 
 fcTest.describe("Step 1 — My Approval", () => {
   fcTest(
@@ -23,19 +22,18 @@ fcTest.describe("Step 1 — My Approval", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น FC (carmensoftware.dev+fc@gmail.com)" },
-        { type: "steps", description: "1. ไปที่ My Approvals (หรือ FC dashboard ที่เหมาะสม)\n2. ตรวจสอบว่า indicator total-pending ถูก render" },
-        { type: "expected", description: "URL มี 'approval' หรือ 'dashboard'; count/badge หรือ row count visible" },
+        { type: "steps", description: "1. ไปที่ /procurement/my-approval\n2. ตรวจสอบการ์ด 'Total Pending'" },
+        { type: "expected", description: "URL เป็น /procurement/my-approval และการ์ด 'Total Pending N' visible" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
     },
     async ({ page }) => {
-      // FC My Approval dashboard route may differ — try both common paths
-      await page.goto("/procurement/my-approvals").catch(async () => {
-        await page.goto("/procurement/purchase-requests/my-approvals");
-      });
-      await page.waitForLoadState("networkidle").catch(() => {});
-      await expect(page).toHaveURL(/approval|dashboard/i);
+      const approvals = new MyApprovalsPage(page);
+      await approvals.gotoList();
+      await expect(page).toHaveURL(/\/procurement\/my-approval/);
+      // "Total Pending N" summary card + the pagination total are the dashboard's own elements.
+      await expect(approvals.pendingCountBadge()).toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -154,11 +152,7 @@ fcTest.describe("Step 2 — PO Detail (FC view)", () => {
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
       await expect(po.editModeButton()).toBeVisible({ timeout: 10_000 });
-      // Comment button is optional in some builds — assert when present
-      const comment = po.commentButton();
-      if ((await comment.count()) > 0) {
-        await expect(comment).toBeVisible();
-      }
+      await expect(po.commentButton()).toBeVisible({ timeout: 10_000 });
     },
   );
 });
@@ -441,12 +435,12 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       // required field is unset".
       const dialog = page.locator('[role="dialog"], [role="alertdialog"]').last();
       const stage = dialog.getByRole("radio").first();
-      if ((await stage.count()) > 0) await stage.check({ force: true, timeout: 10_000 });
+      await expect(stage, "Send for Review dialog offers no stage to send back to").toBeVisible({ timeout: 10_000 });
+      await stage.check({ force: true, timeout: 10_000 });
 
       const reason = po.reasonInput();
-      if ((await reason.count()) > 0) {
-        await reason.fill(SEND_BACK_REASON, { timeout: 10_000 });
-      }
+      await expect(reason, "Send for Review dialog has no reason field").toBeVisible({ timeout: 10_000 });
+      await reason.fill(SEND_BACK_REASON, { timeout: 10_000 });
 
       const confirm = po.confirmDialogButton(/^send back$|^send$|confirm|ok|yes/i);
       await expect(confirm).toBeEnabled({ timeout: 10_000 });
@@ -493,20 +487,15 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
     },
   );
 
-  // App bug, not a test bug — do not work around it.
-  // Confirming the document-level Reject fires **no request at all**: no
-  // PATCH .../reject, no toast, and the PO keeps its status. Its dialog also
-  // contradicts itself — the copy reads "Please provide a reason." while the
-  // dialog contains zero inputs (verified against the DOM), unlike the per-item
-  // reject dialog which does carry a REASON field. TC-PO-070310 still covers the
-  // dialog opening; un-fixme this once the confirm actually submits.
-  fcTest.fixme(
-    "TC-PO-070311 Confirm Reject → PO marked REJECTED",
+  // Document-level Reject (item reject -> Document Reject -> confirm). Was a static fixme;
+  // revived: its outcome is pinned below.
+  fcTest(
+    "TC-PO-070311 Confirm Reject → PO ends Voided (the app's rejected end state)",
     {
       annotation: [
         { type: "preconditions", description: "Reject dialog เปิดอยู่" },
         { type: "steps", description: "1. ทำเครื่องหมายรายการว่า Reject\n2. กด Document Reject\n3. กรอกเหตุผล (optional)\n4. ยืนยัน" },
-        { type: "expected", description: "text ของ status badge ตรงกับ /rejected/i หลังการยืนยัน (ปัจจุบันการยืนยันไม่ยิง request ใด ๆ — บั๊กแอป)" },
+        { type: "expected", description: "การยืนยันยิง PATCH .../reject สำเร็จ และ PO ที่เปิดใหม่มี status chip Voided (PO ไม่มี status Rejected — STD dataset po.rejected ก็จบที่ Voided). ปักหมุด test.fail: ปัจจุบัน confirm ไม่ยิง request ใด ๆ (suspected bug)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -538,20 +527,25 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
         { timeout: 20_000 },
       );
       await docReject.click({ timeout: 5_000 });
-      const reason = po.reasonInput();
-      if ((await reason.count()) > 0) {
-        await reason.fill(REJECT_REASON, { timeout: 10_000 });
-      }
+      // The document-level Reject dialog carries no reason field (its copy still says
+      // "Please provide a reason") — nothing to fill; the item-level reject has one.
       await po.confirmDialogButton(/confirm|reject|ok|yes/i).click({ timeout: 10_000 });
-      expect((await rejected).ok()).toBe(true);
+      const rejectRes = await rejected.catch(() => null);
+      // Pinned suspected bug (cluster: FE bug): confirming the document-level Reject fires
+      // no request at all — no PATCH .../reject, no toast, PO keeps its status — while the
+      // same transition works through the API (data:reset po.rejected). Flips red ("expected
+      // to fail but passed") once the confirm submits.
+      fcTest.fail(true, "suspected bug: Document Reject confirm sends no PATCH .../reject");
+      expect(rejectRes, "confirming Document Reject sent no PATCH .../reject").not.toBeNull();
+      expect(rejectRes!.ok()).toBe(true);
 
       // Re-open the record: confirming an action routes back to the PO list, so a
       // plain reload() would re-read the list instead of this document.
       await gotoPODetail(page, created.ref);
       await expect(
         page
-          .locator("[data-slot='status'], [data-slot='badge'], [class*='badge']")
-          .filter({ hasText: /rejected/i })
+          .locator("[data-slot='status-chip'], [data-slot='status'], [data-slot='badge']")
+          .filter({ hasText: /voided/i })
           .first(),
       ).toBeVisible({ timeout: 15_000 });
     },
