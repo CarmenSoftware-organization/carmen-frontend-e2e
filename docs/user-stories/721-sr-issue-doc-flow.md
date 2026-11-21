@@ -58,7 +58,7 @@ GRN สถานะ saved และยอดคงเหลือ 11020001 ท�
 
 **Preconditions**
 
-TC-SI-700001 ผ่านแล้ว; Login เป็น requestor@carmen.com; workflow "SR Test Flow v2 (with Issue)" มีสินค้าแล้ว; E2E_DB_URL ตั้งไว้ (อ่านงวด active)
+TC-SI-700001 ผ่านแล้ว; Login เป็น requestor@carmen.com; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว; E2E_DB_URL ตั้งไว้ (อ่านงวด active)
 
 **Steps**
 
@@ -314,4 +314,4 @@ TC-SI-710006 ผ่านแล้ว — ใบที่สองอยู่�
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-21 · git 4a3cb23</sub>

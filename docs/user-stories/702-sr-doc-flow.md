@@ -27,12 +27,12 @@ _Generated from `tests/702-sr-doc-flow.spec.ts` annotations. Edit annotations, n
 
 **Preconditions**
 
-Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG; workflow "SR Test Flow v2 (with Issue)" มีสินค้าแล้ว (bun run movement:setup-workflows); requestor มีคลัง LCX013 และ 1FO02
+Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว (bun run movement:setup-workflows); requestor มีคลัง LCX013 และ 1FO02
 
 **Steps**
 
 1. เปิด /store-operation/store-requisition/new
-2. เลือก workflow "SR Test Flow v2 (with Issue)", Request From LCX013, Deliver To 1FO02, ใส่คำอธิบาย
+2. เลือก workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev), Request From LCX013, Deliver To 1FO02, ใส่คำอธิบาย
 3. Add Item: กร๊อบกรอบ รสสาหร่าย (11020001) × 3
 4. กด Save
 
@@ -124,7 +124,7 @@ GET ใบนั้นไม่พบแล้ว และหน้าจออ
 
 **Preconditions**
 
-Login เป็น requestor@carmen.com; BU CARMEN-AVG; workflow "SR Test Flow v2 (with Issue)" ขั้นแรกคือ HOD
+Login เป็น requestor@carmen.com; BU CARMEN-AVG; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) ขั้นแรกคือ HOD
 
 **Steps**
 
@@ -142,4 +142,4 @@ Login เป็น requestor@carmen.com; BU CARMEN-AVG; workflow "SR Test Flow v
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-21 · git 4a3cb23</sub>

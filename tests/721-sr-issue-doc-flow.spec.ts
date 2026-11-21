@@ -1,18 +1,17 @@
 import type { Page } from "@playwright/test";
 import { test, gotoBu, expect, observed } from "./fixtures/movement.fixture";
-import { apiGet } from "./helpers/movement/api";
+import { apiGet, txOfDoc } from "./helpers/movement/api";
 import { createGrn } from "./helpers/movement/docs";
-import { schemaOf, sql } from "./helpers/movement/db";
 import { DocState } from "./helpers/movement/state";
-import { addRow, answerSrDateQuestion, button, field, pickLookup, pickSelectIn, toasts, typeInto } from "./helpers/movement/ui";
-import { DOC_FLOW_ROLE, PROD, SR_TO, activePeriodDate, itemRow, stamp } from "./helpers/movement/doc-flow";
+import { addRow, answerSrDateQuestion, chooseDateInDialog, button, field, pickLookup, pickSelectIn, toasts, typeInto } from "./helpers/movement/ui";
+import { DOC_FLOW_ROLE, PROD, SR_TO, activePeriodDate, itemRow, srIssueWorkflowName, stamp } from "./helpers/movement/doc-flow";
 import type { MovementUser } from "./movement-users";
 
 /**
  * Store requisition all the way to Issue, with the real role accounts —
  * movement suite (opt-in: `bun run test:movement`).
  *   receiver stocks the source location → requestor creates + Submits → hod Approves → fc Issues
- * Workflow "SR Test Flow v2 (with Issue)".
+ * Workflow SR workflow (Create→HOD→Issue).
  *
  * Rule #718 (confirmed by the user 2026-10-02): the active period = the oldest
  * open/locked period. When today is outside it, the system must ASK which date to
@@ -31,7 +30,6 @@ import type { MovementUser } from "./movement-users";
  */
 const SRI_BU = process.env.E2E_SRI_BU === "FIFO" ? "FIFO" : "AVG";
 const PHASE = SRI_BU === "FIFO" ? "all" : (process.env.E2E_SRI_PHASE ?? "all");
-const WF = "SR Test Flow v2 (with Issue)";
 
 interface Variant {
   bu: string;
@@ -58,7 +56,6 @@ const FIFO: Variant = {
   grn: { user: "fc", status: "committed" },
 };
 const V = SRI_BU === "FIFO" ? FIFO : AVG;
-const SCHEMA = schemaOf(V.bu);
 const state = new DocState(`runs/movement/sr-issue-${V.bu}.json`);
 
 test.describe.configure({ mode: "serial" });
@@ -72,32 +69,40 @@ async function srById(id: string) {
   return { status: d.doc_status as string, no: d.sr_no as string, stage: d.workflow_current_stage as string, date: String(d.sr_date ?? "") };
 }
 
-/** The active period (oldest open/locked) and whether today is inside it — compared on UTC days, like the backend. */
-function activePeriod() {
-  const [a] = sql<{ period: string; s: string; e: string }>(
-    `select period, start_at::text s, end_at::text e from ${SCHEMA}.tb_inventory_period
-     where status in ('open','locked') and deleted_at is null order by fiscal_year, fiscal_month limit 1`,
-  );
+/** The active period (oldest open/locked, API `period-ends/current`) and whether today is inside it — compared on UTC days, like the backend. */
+async function activePeriod() {
+  const { status, body } = await apiGet(`/api/${V.bu}/period-ends/current`);
+  const a = body?.data;
+  if (status !== 200 || !a?.period) throw new Error(`current period of ${V.bu}: HTTP ${status}`);
   const now = new Date();
   const day = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  const todayInside = day >= Date.parse(a.s) && day <= Date.parse(a.e);
-  return { period: a.period, end: new Date(a.e).toISOString(), todayInside };
+  const [s0, e0] = [Date.parse(a.start_at), Date.parse(a.end_at)];
+  return {
+    period: a.period as string,
+    end: new Date(e0).toISOString(),
+    todayInside: day >= s0 && day <= e0,
+    contains: (iso: string) => Date.parse(iso) >= s0 && Date.parse(iso) <= e0,
+  };
 }
 
-const onHand = () =>
-  Number(
-    sql<{ q: string }>(
-      `select coalesce(sum(cl.in_qty - cl.out_qty), 0) q from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
-       join ${SCHEMA}.tb_location l on l.id = cl.location_id join ${SCHEMA}.tb_product p on p.id = cl.product_id
-       where cl.deleted_at is null and l.code = '${V.from}' and p.code = '${V.product.code}'`,
-    )[0].q,
-  );
+/** On hand of the variant's product at the source location (API `products/:id/on-hand`). */
+async function onHand(): Promise<number> {
+  const found = await apiGet(`/api/config/${V.bu}/products?perpage=5&search=${encodeURIComponent(V.product.code)}`);
+  const id = (found.body?.data ?? []).find((x: any) => x.code === V.product.code)?.id;
+  if (!id) throw new Error(`${V.bu}: product ${V.product.code} not found`);
+  const { status, body } = await apiGet(`/api/${V.bu}/products/${id}/on-hand`);
+  if (status !== 200) throw new Error(`on-hand ${V.product.code}: HTTP ${status}`);
+  const loc = (body?.data?.locations ?? []).find((l: any) => l.location_code === V.from);
+  return Number(loc?.on_hand_qty ?? 0);
+}
 
 /** Confirm an action's dialog — the last button whose name matches; returns the dialog text. */
+let dialogAsked = false; // the last confirm dialog asked which date to use
 async function confirmAction(page: Page, name: RegExp) {
   const dlg = page.locator("[role=alertdialog]:visible, [role=dialog]:visible").last();
   await expect(dlg).toBeVisible();
   const text = (await dlg.innerText()).replace(/\s+/g, " ").trim();
+  dialogAsked = await chooseDateInDialog(dlg); // Submit asks for the date in the dialog when today is outside the open period (FE 7bca06a0)
   await dlg.getByRole("button", { name }).last().click();
   return text;
 }
@@ -125,14 +130,14 @@ async function expectSourceStocked(page: Page) {
     status: V.grn.status,
     lines: [{ product: V.product.code, qty: 5, price: 10 }],
   });
-  const q = onHand();
+  const q = await onHand();
   expect(q).toBeGreaterThanOrEqual(1);
   await observed(`${g!.no} · ${g!.status} · on hand ${V.product.name} at ${V.from} = ${q}`);
 }
 
 async function expectSubmitted(page: Page, key: string) {
   await gotoBu(page, "/store-operation/store-requisition/new", V.bu);
-  await pickSelectIn(page, "Workflow", WF);
+  await pickSelectIn(page, "Workflow", await srIssueWorkflowName(V.bu));
   await pickLookup(page, field(page, "Request From").locator("button").first(), V.from);
   await pickLookup(page, field(page, "Deliver To (Destination)").locator("button").first(), V.to);
   await page.locator("#sr-description").fill(`FE-CRUD SR issue ${stamp}`);
@@ -153,13 +158,13 @@ async function expectSubmitted(page: Page, key: string) {
   const sr = await srById(id);
   state.put(key, { id, no: sr.no, status: sr.status });
   expect(sr.stage).toBe("HOD");
-  const text = `${sr.no} · ${sr.status} · stage ${sr.stage} · date question: ${q.asked ? `asked (${q.code}) → "inside the open period"` : "not asked"} · sr_date ${sr.date} · confirm dialog: "${dialog.slice(0, 120)}"`;
-  return { asked: q.asked, srDate: sr.date, text };
+  const text = `${sr.no} · ${sr.status} · stage ${sr.stage} · date question: ${dialogAsked ? "asked in the Submit dialog → \"last day of the open period\"" : q.asked ? `asked (${q.code}) → "inside the open period"` : "not asked"} · sr_date ${sr.date} · confirm dialog: "${dialog.slice(0, 120)}"`;
+  return { asked: dialogAsked || q.asked, srDate: sr.date, text };
 }
 
 /** Submit rule: today inside the active period → no question, dated today · else must ask, and "inside" = the active period's last day. */
-function expectSubmitDateRule(r: { asked: boolean; srDate: string; text: string }) {
-  const a = activePeriod();
+async function expectSubmitDateRule(r: { asked: boolean; srDate: string; text: string }) {
+  const a = await activePeriod();
   if (a.todayInside) {
     expect(r.asked, `today is inside active period ${a.period}, no question expected — ${r.text}`).toBe(false);
   } else {
@@ -183,7 +188,7 @@ async function expectApprovedToIssue(page: Page, id: string) {
 
 /** fillQty = the issuer types Issued = requested qty · false = leave the field's default. */
 async function issueAsFc(page: Page, id: string, fillQty: boolean) {
-  const before = onHand();
+  const before = await onHand();
   await gotoBu(page, `/store-operation/store-requisition/${id}`, V.bu);
   const lines = await approveAllLines(page);
   const issuedInput = itemRow(page, V.product.code).locator('input[name$=".issued_qty"]');
@@ -198,17 +203,14 @@ async function issueAsFc(page: Page, id: string, fillQty: boolean) {
   await page.waitForTimeout(2000);
   const toast = (await toasts(page)).join(" / ");
   const sr = await srById(id);
-  const after = onHand();
-  const [d] = sql<{ issued: string; tx: string | null }>(
-    `select issued_qty issued, inventory_transaction_id tx from ${SCHEMA}.tb_store_requisition_detail where store_requisition_id = '${id}'`,
-  );
-  const atPeriods = d?.tx
-    ? sql<{ p: string }>(
-        `select distinct cl.at_period p from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
-         join ${SCHEMA}.tb_inventory_transaction_detail td on td.id = cl.inventory_transaction_detail_id
-         where td.inventory_transaction_id = '${d.tx}'`,
-      ).map((x) => x.p)
-    : [];
+  const after = await onHand();
+  const full = (await apiGet(`/api/${V.bu}/store-requisitions/${id}`)).body?.data;
+  const issuedQty = (full?.store_requisition_detail ?? []).reduce((n: number, x: any) => n + Number(x.issued_qty ?? 0), 0);
+  const tx = sr.no ? await txOfDoc(V.bu, id, sr.no) : [];
+  // The API does not expose the cost layer's at_period, so "posted into the active period" = it posted and the SR is dated inside that period.
+  const period = await activePeriod();
+  const atPeriods = tx.length && sr.date && period.contains(sr.date) ? [period.period] : [];
+  const d = { issued: String(issuedQty), tx: tx.length ? "yes" : null };
   const facts = `date question: ${q.asked ? `asked (${q.code})` : "not asked"} · HTTP ${q.res.status()} code=${q.body?.error?.code ?? "-"} · posted to ${atPeriods.join(",") || "-"} · Issued default "${defaultIssued}"${fillQty ? " → typed 1" : " (left)"} · SR ${sr.status} stage ${sr.stage} · issued_qty ${Number(d?.issued ?? 0)} · inventory transaction ${d?.tx ? "yes" : "no"} · on hand ${V.from} ${before} → ${after} · dialog: "${dialog.slice(0, 120)}" · toast: "${toast || "-"}"`;
   await observed(facts);
   return { status: q.res.status(), sr, before, after, facts, asked: q.asked, atPeriods };
@@ -251,7 +253,7 @@ test.describe("CARMEN-AVG", () => {
       "TC-SI-700002 Requestor Submit ใบเบิกแล้วระบบถามวันที่ตามกติกางวด active",
       {
         annotation: [
-          { type: "preconditions", description: "TC-SI-700001 ผ่านแล้ว; Login เป็น requestor@carmen.com; workflow \"SR Test Flow v2 (with Issue)\" มีสินค้าแล้ว; E2E_DB_URL ตั้งไว้ (อ่านงวด active)" },
+          { type: "preconditions", description: "TC-SI-700001 ผ่านแล้ว; Login เป็น requestor@carmen.com; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว; E2E_DB_URL ตั้งไว้ (อ่านงวด active)" },
           { type: "steps", description: "1. สร้าง SR: LCX013 → 1FO02, 11020001 × 1, กด Save\n2. กด Submit แล้วยืนยัน\n3. ถ้าระบบถาม \"Which date should this carry?\" เลือก \"inside the open period\"" },
           { type: "expected", description: "SR in_progress ขั้น HOD; ถ้าวันนี้อยู่ในงวด active ต้องไม่ถามและลงวันนี้ — ถ้าอยู่นอกงวด active ต้องถาม และ sr_date = วันสุดท้ายของงวด active" },
           { type: "priority", description: "High" },
@@ -262,7 +264,7 @@ test.describe("CARMEN-AVG", () => {
       async ({ page, signals }) => {
         signals.expectApiError(/\/store-requisitions\/.+\/submit → 422/);
         const r = await flow.expectSubmitted(page, "sr");
-        flow.expectSubmitDateRule(r);
+        await flow.expectSubmitDateRule(r);
         await observed(r.text);
       },
     );
@@ -306,7 +308,7 @@ test.describe("CARMEN-AVG", () => {
       },
       async ({ page, signals }) => {
         signals.expectApiError(/\/store-requisitions\/.+\/(issue|approve) → 4\d\d/);
-        const a = activePeriod();
+        const a = await activePeriod();
         const x = await issueAsFc(page, state.need("sr", "run the pre phase (TC-SI-700002/700003) first").id, true);
         expect(x.status, `the backend refused to issue a requisition of the active period — ${x.facts}`).toBeLessThan(300);
         expect(x.sr.status, x.facts).toBe("completed");
@@ -335,7 +337,7 @@ test.describe("CARMEN-AVG", () => {
       async ({ page, signals }) => {
         signals.expectApiError(/\/store-requisitions\/.+\/submit → 422/);
         const r = await flow.expectSubmitted(page, "sr.advance");
-        flow.expectSubmitDateRule(r);
+        await flow.expectSubmitDateRule(r);
         await observed(r.text);
       },
     );
@@ -384,7 +386,7 @@ test.describe("CARMEN-FIFO", () => {
       async ({ page, signals }) => {
         signals.expectApiError(/\/store-requisitions\/.+\/submit → 422/);
         const r = await flow.expectSubmitted(page, "sr");
-        flow.expectSubmitDateRule(r);
+        await flow.expectSubmitDateRule(r);
         await observed(r.text);
       },
     );
@@ -426,7 +428,7 @@ test.describe("CARMEN-FIFO", () => {
       },
       async ({ page, signals }) => {
         signals.expectApiError(/\/store-requisitions\/.+\/(issue|approve) → 4\d\d/);
-        const a = activePeriod();
+        const a = await activePeriod();
         const x = await issueAsFc(page, state.need("sr", "run TC-SI-710002/710003 first").id, true);
         expect(x.status, x.facts).toBeLessThan(300);
         expect(x.sr.status, x.facts).toBe("completed");
