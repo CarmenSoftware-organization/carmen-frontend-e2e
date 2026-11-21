@@ -639,6 +639,7 @@ purchaseTest.describe("GRN — Add Line Item", () => {
       await button(page, "Edit").click();
       const row = await addRow(page);
       await pickLookup(page, row.getByRole("button", { name: "Select Product" }), "", /^(?!.*1111000[34])/s);
+      await expect(row).toContainText("KG", { timeout: 15_000 });
       await typeInto(row.locator('input[name$=".received_qty"]'), 3);
       await typeInto(row.locator('input[placeholder="0.00"]').first(), 20);
       await expect(page.locator("table tbody").getByRole("button", { name: "Select Unit" })).toHaveCount(0, { timeout: 15_000 });

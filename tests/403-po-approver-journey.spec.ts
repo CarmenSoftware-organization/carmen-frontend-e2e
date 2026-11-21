@@ -539,6 +539,10 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       // Re-open the record: confirming an action routes back to the PO list, so a
       // plain reload() would re-read the list instead of this document.
       await gotoPODetail(page, created.ref);
+      // The backend ended the PO as voided (po_status "voided", PATCH .../reject 200 above) but the detail header
+      // shows no status chip for it (seen as FC on PO261100044: chips ["Manual", "—"]). 3c saw the chip; this
+      // run (2026-11-21, FE eee1f5f, API v4.0.13-build.20261112.f529576a9) does not - reproduced alone too.
+      fcTest.fail(true, "suspected bug: a voided PO's detail header shows no 'Voided' status chip (API po_status=voided; header chips are only the doc type and a dash)");
       await expect(
         page
           .locator("[data-slot='status-chip'], [data-slot='status'], [data-slot='badge']")

@@ -36,6 +36,10 @@ const SKIP_NOTE_NOT_IMPLEMENTED =
   "Feature not yet implemented in the frontend (no Recall / Save-as-Template button found). " +
   "Re-enable once the UI ships.";
 
+// Creating a PR drives the whole item cascade (workflow, location, product, qty, unit, delivery point)
+// and runs 28-31s on dev against the 30s default - every case that creates one needs the room.
+for (const t of [requestorTest, hodTest, fcTest, purchaseTest, gmTest]) t.describe.configure({ timeout: 120_000 });
+
 const FUTURE_DATE = "2099-12-31";
 const PAST_DATE = "2020-01-01";
 const LONG_TEXT_500 = "a".repeat(500);
@@ -1770,8 +1774,9 @@ requestorTest.describe("PR — Submit after vendor allocation — Permission den
       await pr.gotoAllDocuments();
       // Submit belongs to the Create stage. A PR that is already in progress (past Create) must not
       // offer it to anyone, the requestor included.
-      const row = pr.rowWithStatus(/in progress/i).first();
-      await expect(row, "No in-progress PR — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
+      // not "Create Request": a returned PR is In progress too and sits at the Create stage, where Submit is right
+      const row = pr.rowWithStatus(/in progress/i).filter({ hasNotText: /create request/i }).first();
+      await expect(row, "No in-progress PR past the Create stage — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       await expect(pr.tabWorkflowHistory(), "PR detail did not load").toBeVisible({ timeout: 15_000 });
       await expect(pr.submitButton(), "Submit is offered on a PR that is already in progress").toHaveCount(0);
