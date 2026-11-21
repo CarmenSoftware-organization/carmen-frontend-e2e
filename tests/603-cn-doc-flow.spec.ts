@@ -1,9 +1,8 @@
 import type { Page } from "@playwright/test";
 import { test, gotoBu, expect, observed } from "./fixtures/movement.fixture";
-import { apiGet } from "./helpers/movement/api";
+import { apiGet, txOfDoc } from "./helpers/movement/api";
 import { createCreditNote, createGrn } from "./helpers/movement/docs";
-import { schemaOf, sql } from "./helpers/movement/db";
-import { button, confirmDialog, field, inputValues, numRe, pickDate, pickLookup, toasts, typeInto } from "./helpers/movement/ui";
+import { button, confirmDialog, field, shownText, numRe, pickDate, pickLookup, toasts, typeInto } from "./helpers/movement/ui";
 import { CN_REASON, DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD as P, activePeriodDate, stamp } from "./helpers/movement/doc-flow";
 
 /**
@@ -11,11 +10,11 @@ import { CN_REASON, DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD as P, activePeriodDat
  * CARMEN-AVG · requestor · against a committed GRN of vendor C010 · location LCX013.
  * prepare a committed GRN → CN draft → view → (guard) → edit → delete → new + Submit (completed).
  *
- * Two cases pin known bugs with `test.fail()` — they report Fail in the results
- * sheet while the bug exists and turn red ("unexpectedly passed") once it is
+ * One case pins a suspected bug with `test.fail()` — it reports Fail in the results
+ * sheet while the bug exists and turns red ("unexpectedly passed") once it is
  * fixed, which is the signal to drop the marker:
  *  - TC-CN-700004  the Select-from-GRN dialog offers a product already on another CN
- *  - TC-CN-700005  FE-3: a removed line survives Save (frontend sends `remove`, backend reads `delete`)
+ * (TC-CN-700005's FE-3 "removed line survives Save" was fixed by FE 48edc588 — marker dropped.)
  *
  * 601-cn still drives Commit / Void / lot selection and a "Total Amount" field,
  * none of which exist any more (its own gap report agrees); the real flow is
@@ -23,7 +22,6 @@ import { CN_REASON, DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD as P, activePeriodDat
  * Origin: `_movement_play/eop_bf/e2e/fe/05-cn.spec.ts` (CN.0–CN.6).
  */
 const { user: USER, loc: LOC } = DOC_FLOW_ROLE.cn;
-const SCHEMA = schemaOf(BU);
 test.use({ user: USER, bu: BU });
 test.describe.configure({ mode: "serial" });
 
@@ -163,7 +161,7 @@ test(
   },
   async ({ page }) => {
     await gotoBu(page, `/procurement/credit-note/${draftId}`, BU);
-    await expect.poll(() => inputValues(page)).toContain(TAX);
+    await expect.poll(() => shownText(page)).toContain(TAX);
     await expect(page.getByText(grnNo).first()).toBeVisible();
     const seen: string[] = [];
     for (const l of LINES) {
@@ -182,16 +180,14 @@ test(
   {
     annotation: [
       { type: "preconditions", description: "TC-CN-700002 ผ่านแล้วในรอบเดียวกัน (serial) — CN draft ถือ Ground Beef + Australian Sirloin ของ GRN อยู่ (Pork neck tenderloin ยังว่าง)" },
-      { type: "steps", description: "1. เปิด /procurement/credit-note/new แล้วกรอกหัวใบอ้าง GRN เดิม (ผู้ขาย C010, Reason, วันที่, ใบกำกับ FE-CN-<stamp>-DUP)\n2. กด Add Item ดู dialog Select from GRN\n3. ถ้าเลือก Ground Beef ได้: เลือก คืน 1 แล้วกด Create" },
-      { type: "expected", description: "dialog ปิด/ทำเครื่องหมายสินค้าที่ถูกลดหนี้แล้ว (หลังบ้านมี GET good-received-notes/:id/ref บอกให้) — ช่องของ Ground Beef ต้อง disabled; ถ้าหลุดไปถึงหลังบ้าน ข้อความต้องบอกเหตุจริง ไม่ใช่ \"กรอกไม่ครบ\"" },
+      { type: "steps", description: "1. เปิด /procurement/credit-note/new แล้วกรอกหัวใบอ้าง GRN เดิม (ผู้ขาย C010, Reason, วันที่, ใบกำกับ FE-CN-<stamp>-DUP)\n2. กด Add Item ดู dialog Select from GRN\n3. ดูว่าช่องของ Ground Beef (อยู่ใน CN draft อื่นแล้ว) ถูก disabled หรือไม่" },
+      { type: "expected", description: "dialog ปิด/ทำเครื่องหมายสินค้าที่ถูกลดหนี้แล้ว (หลังบ้านมี GET good-received-notes/:id/ref บอกให้) — ช่องของ Ground Beef ต้อง disabled" },
       { type: "priority", description: "Medium" },
       { type: "testType", description: "Validation" },
-      { type: "note", description: "บั๊กที่รู้อยู่ (test.fail): ณ 2026-10-02 dialog ให้เลือกได้ทุกตัว แล้วหลังบ้านตอบ 422 · เดิม CN.3 · ใกล้เคียง gap TC-CN-030007 ซึ่งครอบแค่ภายในใบเดียว" },
+      { type: "note", description: "suspected bug (test.fail): dialog ให้เลือกสินค้าที่ถูกลดหนี้แล้วได้ (ยังเป็นอยู่ 2026-11-22) · เดิม CN.3 · ใกล้เคียง gap TC-CN-030007 ซึ่งครอบแค่ภายในใบเดียว" },
     ],
   },
-  async ({ page, signals }) => {
-    test.fail(true, "known bug: Select from GRN offers a product already credited on another CN (backend then answers 422)");
-    signals.expectApiError(/POST .*\/credit-notes → 422/);
+  async ({ page }) => {
     await gotoBu(page, "/procurement/credit-note/new", BU);
     await pickLookup(page, field(page, "Vendor").locator("button").first(), "C010");
     await pickLookup(page, field(page, "GRN No.").locator("button").first(), grnNo);
@@ -207,26 +203,10 @@ test(
       state.push(`${name}: ${(await grnLineBox(page, name).isDisabled()) ? "disabled" : "selectable"}`);
     }
     await test.info().attach("dialog-select-from-grn", { body: await page.screenshot(), contentType: "image/png" });
-    const p1 = grnLineBox(page, P.P1.name);
-    const p1Selectable = !(await p1.isDisabled());
-    if (!p1Selectable) {
-      await observed(`dialog: ${state.join(" · ")}`);
-      return;
-    }
-    // Selectable — carry on to show what the user gets when they press Create anyway.
-    await p1.click();
-    await dlg.getByRole("button", { name: /^Add \d+ items?$/ }).click();
-    await typeInto(itemRow(page, P.P1.name).locator('input[name$=".quantity"]'), 1);
-    const created = page.waitForResponse((r) => r.request().method() === "POST" && /\/credit-notes\/?(\?|$)/.test(r.url()), {
-      timeout: 60_000,
-    });
-    await button(page, "Create").click();
-    const r = await created;
-    const body = await r.json().catch(() => ({}));
-    const toast = (await toasts(page)).join(" / ");
-    const facts = `dialog: ${state.join(" · ")} → Create gave HTTP ${r.status()} code=${body?.error?.code ?? "(none)"} "${String(body?.message).slice(0, 120)}" · toast: "${toast}"`;
-    await observed(facts);
-    expect(p1Selectable, `already-credited product was selectable — ${facts}`).toBe(false);
+    const p1Selectable = !(await grnLineBox(page, P.P1.name).isDisabled());
+    await observed(`dialog: ${state.join(" · ")}`);
+    test.fail(true, "suspected bug: Select from GRN offers a product already credited on another CN (the backend's duplicate-line check then answers 422 on Create) - the dialog leaves the Ground Beef box enabled; the backend exposes GET good-received-notes/:id/ref for exactly this");
+    expect(p1Selectable, `already-credited product was selectable — dialog: ${state.join(" · ")}`).toBe(false);
   },
 );
 
@@ -239,11 +219,10 @@ test(
       { type: "expected", description: "Save ตอบ < 300; ใบยังเป็น draft; หลังบ้านเก็บใบกำกับใหม่ และรายการเหลือ Ground Beef×2, Pork neck tenderloin×1 (บรรทัดที่ลบต้องหายจริง)" },
       { type: "priority", description: "High" },
       { type: "testType", description: "CRUD" },
-      { type: "note", description: "บั๊กที่รู้อยู่ FE-3 (test.fail): หน้าบ้านส่ง credit_note_detail.remove (แบบเดียวกับทุกโมดูล) แต่หลังบ้าน CN อ่าน .delete → zod ตัดทิ้งเงียบ ๆ บรรทัดที่ลบยังอยู่ · เดิม CN.4 · TC-CN-050001 แก้ช่อง Total Amount ซึ่งไม่มีแล้ว" },
+      { type: "note", description: "FE-3 แก้แล้ว: FE 48edc588 ส่งบรรทัดที่ลบด้วยคีย์ credit_note_detail.delete ที่หลังบ้านอ่าน (เดิมส่ง remove แล้วบรรทัดที่ลบยังอยู่) จึงถอด test.fail ออก · เดิม CN.4 · TC-CN-050001 แก้ช่อง Total Amount ซึ่งไม่มีแล้ว" },
     ],
   },
   async ({ page }) => {
-    test.fail(true, "known bug FE-3: removed CN line survives Save (frontend sends `remove`, backend reads `delete`)");
     await gotoBu(page, `/procurement/credit-note/${draftId}`, BU);
     await button(page, "Edit").click();
     await page.locator("#cn-tax-invoice-no").fill(EDITED_TAX);
@@ -264,7 +243,7 @@ test(
     await observed(`${c.no} · ${c.status} · tax invoice ${c.taxInvoice} · ${fmt(c.lines)} · toast: ${(await toasts(page)).join(" / ") || "-"}`);
     expect(c.status).toBe("draft");
     expect(c.taxInvoice).toBe(EDITED_TAX);
-    expect(fmt(c.lines), "the removed line is still stored (payload sends `remove`, backend reads `delete`)").toBe(fmt(EDITED));
+    expect(fmt(c.lines), "removed line must be gone; edited qty and the added line kept").toBe(fmt(EDITED));
   },
 );
 
@@ -296,9 +275,9 @@ test(
   "TC-CN-700007 Requestor สร้างใบลดหนี้แล้ว Submit ได้ completed และลงสต๊อกคืนของ",
   {
     annotation: [
-      { type: "preconditions", description: "TC-CN-700001 ผ่านแล้วในรอบเดียวกัน (serial) — GRN committed; E2E_DB_URL ตั้งไว้ (ตรวจ inventory transaction จาก DB)" },
+      { type: "preconditions", description: "TC-CN-700001 ผ่านแล้วในรอบเดียวกัน (serial) — GRN committed; ตรวจ inventory transaction จาก API" },
       { type: "steps", description: "1. สร้างใบลดหนี้อ้าง GRN เดิม คืน Ground Beef × 1 แล้วกด Create\n2. เปิดใบ กด Submit\n3. ยืนยัน Submit" },
-      { type: "expected", description: "หลังบ้าน doc_status = completed, รายการ Ground Beef×1; ใน DB มี tb_credit_note_detail ของใบนี้ที่ inventory_transaction_id ไม่ว่าง" },
+      { type: "expected", description: "หลังบ้าน doc_status = completed, รายการ Ground Beef×1; inventory-transactions ของใบนี้ตัดสต๊อก Ground Beef ออก 1" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
       { type: "note", description: "เดิม CN.6 · TC-CN-100001 กดปุ่ม Commit และคาด COMMITTED ซึ่งไม่มีแล้ว · ครอบเคส stock movement ที่ skip อยู่ (TC-CN-310001 / 280001) · ครอบ gap TC-CN-100008" },
@@ -318,10 +297,9 @@ test(
     const c = await cnById(doc!.id);
     expect(c.status).toBe("completed");
     expect(fmt(c.lines)).toBe(fmt(lines));
-    const [tx] = sql<{ n: string }>(
-      `select count(*) n from ${SCHEMA}.tb_credit_note_detail where credit_note_id = '${doc!.id}' and inventory_transaction_id is not null`,
-    );
-    expect(Number(tx.n), "a completed CN must post stock").toBeGreaterThan(0);
-    await observed(`${c.no} · ${c.status} · ${fmt(c.lines)} · inventory transactions ${tx.n} · toast: ${(await toasts(page)).join(" / ") || "-"}`);
+    const tx = await txOfDoc(BU, doc!.id, c.no);
+    expect(tx.length, "a completed CN must post stock").toBeGreaterThan(0);
+    expect(tx.reduce((n, t) => n + t.qty_out, 0), "stock returned = CN line qty").toBe(lines[0].qty);
+    await observed(`${c.no} · ${c.status} · ${fmt(c.lines)} · inventory transactions ${tx.length} · toast: ${(await toasts(page)).join(" / ") || "-"}`);
   },
 );
