@@ -1,15 +1,37 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createAuthTest } from "./fixtures/auth.fixture";
-import { CreditNotePage, LIST_PATH } from "./pages/credit-note.page";
-import { openRecordFromRow } from "./helpers/list-row";
+import { CreditNotePage } from "./pages/credit-note.page";
+import { createDraftCn, deleteE2eCns, deleteReason, ensureReason, getCn, listCns, seededCn } from "./helpers/cn-api";
+import { button, confirmDialog, lastToast, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
+import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Multi-role auth — Purchasing/Receiving role == carmensoftware.dev+purchase@gmail.com.
-// Permission denial uses carmensoftware.dev+requestor@gmail.com.
-// requestor declared LAST so doc default role reads "Purchase".
+// Roles (permissions read from /api/user/profile of the TEST BU):
+//  - Purchase  : credit_note create/update/delete/view
+//  - FC        : credit_note.view ONLY -> the "no permission" role
+//  - Requestor : no credit-note permission (the list shows "Permission Denied")
+// Mutating cases work on their own draft CN seeded through the API (description "E2E ...",
+// tests/helpers/cn-api.ts); the two seeded notes (CN26110001 draft, CN26110002 completed) are
+// read-only fixtures. The TEST BU dataset has no credit-note reason and the form requires one, so
+// every describe that needs one creates "E2E-CN reason" in beforeAll and removes it in afterAll.
+//
+// The credit note is draft -> Submit -> Completed. Deleted cases (feature absent in
+// ../carmen-frontend/routes/procurement/credit-note/*):
+//   lot selection 020005 / 060004 (no lot columns - lots only appear in the Stock Movement tab), void 110001-5
+//   (cn-footer-action.tsx has Submit only; VOIDED is a status the UI shows, there is no Void action),
+//   cost-analysis access 070002, large item count 040004 (a GRN has 1-2 lines in the dataset), accounting-period
+//   closed / date out of range on commit 100004 / 100005 (Submit has no period rule; period close is covered by 9xx),
+//   comment / attachment "without permission" 090002 (components/ui/comment-sheet.tsx has no permission gate)
 // ─────────────────────────────────────────────────────────────────────────
+const fcTest = createAuthTest("carmensoftware.dev+fc@gmail.com");
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
+
+purchaseTest.describe.configure({ timeout: 90_000 });
+fcTest.describe.configure({ timeout: 60_000 });
 
 const SKIP_NOTE_BACKEND =
   "Backend / system-level behavior (server actions, sequence generation, journal entries, " +
@@ -20,25 +42,92 @@ const SKIP_NOTE_BACKEND =
 const SKIP_NOTE_CONCURRENCY =
   "Requires concurrent multi-user session orchestration. Tracked but skipped in single-worker E2E.";
 
+
+const LIST = "/procurement/credit-note";
+const today = () => new Date().toLocaleDateString("sv");
+const rowsOf = (page: Page) => page.locator("table tbody tr");
+const NO_GATE =
+  "suspected bug: view-only FC gets an enabled CN action - the FE does not gate it (cn-footer-action.tsx Submit has no permission check) and the gateway credit-notes controller has no permission decorator";
+
+async function gotoCn(page: Page, id: string) {
+  await page.goto(`${LIST}/${id}`);
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({ timeout: 20_000 });
+}
+
+async function search(page: Page, text: string) {
+  const box = page.getByPlaceholder("Search...");
+  await box.fill(text);
+  await box.press("Enter");
+}
+
+/** Edit -> Save, wait for the success toast. */
+async function save(page: Page) {
+  await button(page, "Save").click();
+  expect(await lastToast(page)).toMatch(/updated|saved|success/i);
+}
+
+/** New CN form up to (not including) Create: vendor, GRN, reason, tax invoice no./date. */
+async function fillHeader(page: Page, taxNo: string, grnNo = "GRN261100002") {
+  await page.goto(`${LIST}/new`);
+  await pickLookup(page, page.getByRole("button", { name: "Select Vendor" }));
+  await pickLookup(page, page.getByRole("button", { name: "Select GRN" }), grnNo);
+  await pickLookup(page, page.getByRole("button", { name: "Select CN Reason" }));
+  await page.locator("#cn-tax-invoice-no").fill(taxNo);
+  const taxDate = page.locator("[data-slot=field]").filter({ hasText: "Tax Invoice Date" }).locator("button").first();
+  expect(await pickDate(page, taxDate, today()), "Tax Invoice Date today").toBe(true);
+}
+
+/** Add Item -> tick the first N GRN lines in the "Select from GRN" dialog -> Add. */
+async function addFromGrn(page: Page, lines = 1, which: "first" | "last" = "first") {
+  await button(page, "Add Item").click();
+  const dlg = page.locator("[role=dialog]:visible").last();
+  await expect(dlg).toContainText("Select from GRN");
+  const boxes = dlg.getByRole("checkbox");
+  if (which === "last") await boxes.last().click();
+  else for (let i = 0; i < lines; i++) await boxes.nth(i).click();
+  await dlg.getByRole("button", { name: /^Add(\s|$)/ }).click();
+  await expect(dlg).toHaveCount(0);
+}
+
+const withReason = (name: string, fn: () => void) =>
+  purchaseTest.describe(name, () => {
+    purchaseTest.beforeAll(async () => {
+      await ensureReason();
+    });
+    // a draft holds its GRN products (each product of a receipt can be credited once), so every case clears its own drafts
+    purchaseTest.afterEach(async () => {
+      await deleteE2eCns();
+    });
+    purchaseTest.afterAll(async () => {
+      await deleteE2eCns();
+      await deleteReason();
+    });
+    fn();
+  });
+
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900001 — View / Filter Credit Notes (UI)
+// List
 // ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — List & Filter", () => {
+purchaseTest.describe("CN — List", () => {
   purchaseTest(
     "TC-CN-010001 View All Credit Notes",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้ได้รับการยืนยันตัวตนและมีสิทธิ์ดู credit notes" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. ตรวจสอบว่า list ของ credit notes แสดงผล" },
-        { type: "expected", description: "ผู้ใช้เห็น list ของ credit notes ทั้งหมด" },
+        { type: "preconditions", description: "data:reset seed CN 2 ใบ (CN26110001 draft, CN26110002 completed)" },
+        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. ดูตาราง\n3. คลิกแถว CN26110001" },
+        { type: "expected", description: "ตารางแสดง CN26110001 (Draft) และ CN26110002 (Completed) พร้อม GRN261100001; คลิกแถวเปิดหน้า detail ของใบนั้น" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      await expect(page).toHaveURL(/credit-note/);
+      await new CreditNotePage(page).gotoList();
+      await expect(page.getByRole("row").filter({ hasText: "CN26110001" })).toContainText(/draft/i);
+      await expect(page.getByRole("row").filter({ hasText: "CN26110002" })).toContainText(/completed/i);
+      await expect(page.getByRole("row").filter({ hasText: "CN26110001" })).toContainText("GRN261100001");
+      const draft = await seededCn("draft");
+      await page.getByRole("row").filter({ hasText: "CN26110001" }).getByText("CN26110001").click();
+      await expect(page).toHaveURL(new RegExp(`credit-note/${draft.id}$`));
     },
   );
 
@@ -46,22 +135,23 @@ purchaseTest.describe("Credit Note — List & Filter", () => {
     "TC-CN-010002 Apply Status Filter",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู credit notes" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Filter'\n3. เลือกสถานะ 'Open' จาก dropdown\n4. กดปุ่ม 'Apply Filter'\n5. ตรวจสอบว่า list ที่กรองแสดงเฉพาะ credit notes สถานะ open",
-        },
-        { type: "expected", description: "ผู้ใช้เห็น list ของ credit notes ที่กรองแล้ว เฉพาะสถานะ open" },
+        { type: "preconditions", description: "มี CN Draft 1 ใบและ Completed 1 ใบ" },
+        { type: "steps", description: "1. คลิก Filter → Status → DRAFT" },
+        { type: "expected", description: "request มีตัวกรอง status; เหลือเฉพาะ CN26110001 (Draft) ไม่มี CN26110002" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const filter = cn.filterButton();
-      if ((await filter.count()) > 0) await filter.click().catch(() => {});
+      await new CreditNotePage(page).gotoList();
+      const filtered = page.waitForRequest((r) => /credit-notes\?.*filter/.test(decodeURIComponent(r.url())));
+      await page.getByRole("button", { name: "Filter" }).click();
+      await page.locator("[data-slot=popover-content]:visible").getByRole("button", { name: "Status" }).click();
+      await page.getByText("DRAFT", { exact: true }).last().click();
+      expect(decodeURIComponent((await filtered).url())).toMatch(/status/i);
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("row").filter({ hasText: "CN26110001" })).toHaveCount(1);
+      await expect(page.getByRole("row").filter({ hasText: "CN26110002" })).toHaveCount(0);
     },
   );
 
@@ -69,24 +159,19 @@ purchaseTest.describe("Credit Note — List & Filter", () => {
     "TC-CN-010003 Filter by Vendor",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู credit notes; vendor ที่มี credit notes อยู่ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Filter'\n3. กรอกชื่อ vendor ในช่อง 'Vendor'\n4. กดปุ่ม 'Apply Filter'\n5. ตรวจสอบว่า list ที่กรองแสดงเฉพาะ credit notes ของ vendor ที่เลือก",
-        },
-        { type: "expected", description: "ผู้ใช้เห็น list ของ credit notes ที่กรองแล้วสำหรับ vendor ที่เลือก" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "CN ทั้ง 2 ใบเป็นของ vendor เอบีโอ โฟกัส ดีไซน์" },
+        { type: "steps", description: "1. ค้นหา 'เอบีโอ' แล้วกด Enter\n2. ค้นหาชื่อ vendor ที่ไม่มี" },
+        { type: "expected", description: "ค้นด้วย 'เอบีโอ' แสดงทั้ง 2 ใบ; ค้นด้วยชื่อที่ไม่มีแสดง 'No data found'" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const filter = cn.filterButton();
-      if ((await filter.count()) > 0) await filter.click().catch(() => {});
-      const vendor = cn.vendorFilter();
-      if ((await vendor.count()) > 0) await vendor.fill("Test Vendor").catch(() => {});
+      await new CreditNotePage(page).gotoList();
+      await search(page, "เอบีโอ");
+      await expect(page.getByRole("row").filter({ hasText: /CN2611/ })).toHaveCount(2, { timeout: 10_000 });
+      await search(page, `zz-vendor-${uid}`);
+      await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -94,20 +179,20 @@ purchaseTest.describe("Credit Note — List & Filter", () => {
     "TC-CN-010004 Invalid Filter Input",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู credit notes" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Filter'\n3. กรอก input ที่ไม่ถูกต้องในช่อง 'Status'\n4. กดปุ่ม 'Apply Filter'\n5. ตรวจสอบว่า list ยังคงไม่ถูกกรอง",
-        },
-        { type: "expected", description: "ผู้ใช้เห็น error message หรือ list ยังคงไม่ถูกกรอง" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "มี CN ใน TEST BU" },
+        { type: "steps", description: "1. ค้นหาข้อความอักขระพิเศษ ';--%\"\n2. ล้างช่องค้นหา" },
+        { type: "expected", description: "ไม่เกิด error: แสดง 'No data found' แล้วกลับมาแสดง CN ทั้ง 2 ใบเมื่อล้างช่อง" },
+        { type: "priority", description: "Low" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
+      await new CreditNotePage(page).gotoList();
+      await search(page, "';--%\"");
+      await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("Something went wrong")).toHaveCount(0);
+      await search(page, "");
+      await expect(page.getByRole("row").filter({ hasText: /CN2611/ })).toHaveCount(2, { timeout: 10_000 });
     },
   );
 
@@ -115,44 +200,58 @@ purchaseTest.describe("Credit Note — List & Filter", () => {
     "TC-CN-010005 No Credit Notes Available",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู credit notes; ไม่มีข้อมูล credit note อยู่ในระบบ" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. ตรวจสอบว่า list ว่างเปล่า" },
-        { type: "expected", description: "ผู้ใช้เห็น list ว่างเปล่า" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
+        { type: "preconditions", description: "ไม่มี CN สถานะ Cancelled" },
+        { type: "steps", description: "1. คลิก Filter → Status → CANCELLED" },
+        { type: "expected", description: "ตารางแสดง empty state 'No data found' ไม่มีแถว CN" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
+      await new CreditNotePage(page).gotoList();
+      await page.getByRole("button", { name: "Filter" }).click();
+      await page.locator("[data-slot=popover-content]:visible").getByRole("button", { name: "Status" }).click();
+      await page.getByText("CANCELLED", { exact: true }).last().click();
+      await page.keyboard.press("Escape");
+      await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("row").filter({ hasText: /CN2611/ })).toHaveCount(0);
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900002 — Create Quantity-Based CN from GRN (UI)
+// Create
 // ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Create from GRN", () => {
+withReason("CN — Create from GRN", () => {
   purchaseTest(
     "TC-CN-020001 Create Quantity-Based Credit Note from GRN - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing/receiving; มี GRN ที่ posted แล้วอย่างน้อยหนึ่งรายการสำหรับ vendor; ข้อมูล master ของ vendor และ product ถูกต้อง" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. เลือก vendor\n4. เลือก GRN จาก list\n5. เลือก items พร้อม lot numbers ที่ระบุ\n6. บันทึกจำนวนที่คืนพร้อมการคำนวณต้นทุนสินค้าคงคลังที่ถูกต้อง\n7. กด 'Save'",
-        },
-        { type: "expected", description: "สร้าง credit note แบบ quantity-based สำเร็จ พร้อมรายละเอียดและการคำนวณต้นทุนสินค้าคงคลังที่ถูกต้อง" },
+        { type: "preconditions", description: "มี GRN261100002 (committed, Ground Beef 5 KG); มี reason ของ test" },
+        { type: "steps", description: "1. ไปที่ /procurement/credit-note/new\n2. เลือก Vendor, GRN, Reason, กรอก Tax Invoice # และวันที่\n3. Add Item ติ๊ก Ground Beef → Add แล้วกรอก Return qty 1\n4. Create" },
+        { type: "expected", description: "toast สำเร็จ; backend มี CN ประเภท quantity_return อ้าง GRN261100002 หนึ่งบรรทัด return_qty 1 สถานะ draft" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      await cn.newCreditNoteButton().click({ timeout: 5_000 }).catch(() => {});
-      await cn.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      const taxNo = `E2E-CN-new-${uid}`;
+      await fillHeader(page, taxNo);
+      await addFromGrn(page, 1);
+      await typeInto(rowsOf(page).first().locator('input[name$=".quantity"]'), 1);
+      await button(page, "Create").click();
+      expect(await lastToast(page)).toMatch(/created|success/i);
+      const mine = [];
+      for (const c of await listCns()) {
+        const d = (await getCn(c.id)).data!;
+        if (d.tax_invoice_no === taxNo) mine.push(d);
+      }
+      expect(mine).toHaveLength(1);
+      expect(mine[0].credit_note_type).toBe("quantity_return");
+      expect(mine[0].grn?.no).toBe("GRN261100002");
+      expect(mine[0].credit_note_detail).toHaveLength(1);
+      expect(Number(mine[0].credit_note_detail[0].return_qty)).toBe(1);
+      expect(mine[0].doc_status).toBe("draft");
     },
   );
 
@@ -160,20 +259,20 @@ purchaseTest.describe("Credit Note — Create from GRN", () => {
     "TC-CN-020002 Create Quantity-Based Credit Note from GRN - Invalid Vendor",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing/receiving; ไม่มี GRN ที่ posted แล้วสำหรับ vendor" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. เลือก vendor ที่ไม่ถูกต้อง\n4. เลือก GRN จาก list\n5. เลือก items พร้อม lot numbers ที่ระบุ\n6. บันทึกจำนวนที่คืน\n7. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่าไม่มี GRN ที่ posted แล้วสำหรับ vendor ที่เลือก" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง CN" },
+        { type: "steps", description: "1. เปิดฟอร์ม New Credit Note\n2. ดูช่อง GRN No. ก่อนเลือก Vendor\n3. เลือก Vendor" },
+        { type: "expected", description: "ก่อนเลือก Vendor ช่อง GRN No. ถูกปิดใช้งาน (เลือก GRN โดยไม่มี vendor ไม่ได้); หลังเลือก vendor ช่อง GRN เปิดและมี GRN261100002 ให้เลือก" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
+      await page.goto(`${LIST}/new`);
+      await expect(page.getByRole("button", { name: "Select GRN" })).toBeDisabled({ timeout: 15_000 });
+      await pickLookup(page, page.getByRole("button", { name: "Select Vendor" }));
+      await expect(page.getByRole("button", { name: "Select GRN" })).toBeEnabled({ timeout: 10_000 });
+      await page.getByRole("button", { name: "Select GRN" }).click();
+      await expect(page.locator("[data-slot=popover-content]:visible button[data-value]").filter({ hasText: "GRN261100002" })).toBeVisible();
     },
   );
 
@@ -181,22 +280,20 @@ purchaseTest.describe("Credit Note — Create from GRN", () => {
     "TC-CN-020003 Create Quantity-Based Credit Note from GRN - No GRN Selected",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing/receiving; มี GRN ที่ posted แล้วอย่างน้อยหนึ่งรายการสำหรับ vendor" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. เลือก vendor\n4. ไม่เลือก GRN ใดๆ\n5. เลือก items พร้อม lot numbers ที่ระบุ\n6. บันทึกจำนวนที่คืน\n7. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่าต้องเลือก GRN" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง CN" },
+        { type: "steps", description: "1. เปิดฟอร์ม New Credit Note\n2. ไม่เลือก GRN\n3. คลิก Add Item" },
+        { type: "expected", description: "ไม่มีรายการสินค้าถูกเพิ่ม: dialog 'Select from GRN' ไม่แสดงบรรทัดให้ติ๊ก (ไม่มี checkbox) และตารางยังเป็น 'No Items Yet'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
-      await cn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(cn.anyError().first()).toBeVisible({ timeout: 5_000 });
+      await page.goto(`${LIST}/new`);
+      await button(page, "Add Item").click();
+      await page.waitForTimeout(1000);
+      await expect(page.locator("[role=dialog]:visible").getByRole("checkbox")).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(page.getByText("No Items Yet")).toBeVisible();
     },
   );
 
@@ -204,71 +301,50 @@ purchaseTest.describe("Credit Note — Create from GRN", () => {
     "TC-CN-020004 Create Quantity-Based Credit Note from GRN - Insufficient Quantity",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing/receiving; มี GRN ที่ posted แล้วอย่างน้อยหนึ่งรายการสำหรับ vendor" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. เลือก vendor\n4. เลือก GRN จาก list\n5. เลือก items พร้อม lot numbers ที่ระบุ\n6. บันทึกจำนวนคืนที่มากกว่าจำนวนที่มีอยู่ใน GRN\n7. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่าจำนวนคืนเกินกว่าจำนวนที่มีอยู่ใน GRN" },
+        { type: "preconditions", description: "GRN261100002 รับ Ground Beef 5 KG" },
+        { type: "steps", description: "1. กรอกหัวฟอร์มและ Add Item Ground Beef\n2. พิมพ์ Return qty 10 (เกินที่รับ 5)\n3. Create" },
+        { type: "expected", description: "ไม่บันทึก: ไม่มี toast สำเร็จ ยังอยู่ที่ /new และไม่มี CN ที่ใช้เลข tax invoice นั้นใน backend" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-020005 Create Quantity-Based Credit Note from GRN - Empty Lot Numbers",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing/receiving; มี GRN ที่ posted แล้วอย่างน้อยหนึ่งรายการสำหรับ vendor" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. เลือก vendor\n4. เลือก GRN จาก list\n5. เลือก items ที่มี lot numbers ว่างเปล่า\n6. บันทึกจำนวนคืน\n7. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่า lot numbers ต้องไม่ว่างเปล่า" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
+      const taxNo = `E2E-CN-over-${uid}`;
+      await fillHeader(page, taxNo);
+      await addFromGrn(page, 1);
+      await typeInto(rowsOf(page).first().locator('input[name$=".quantity"]'), 10);
+      await button(page, "Create").click();
+      await page.waitForTimeout(1500);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
+      await expect(page).toHaveURL(/credit-note\/new/);
+      for (const c of await listCns()) expect((await getCn(c.id)).data!.tax_invoice_no).not.toBe(taxNo);
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900003 — Create CN (additional cases)
+// Create — validation
 // ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Create (additional)", () => {
+withReason("CN — Create validation", () => {
   purchaseTest(
     "TC-CN-030002 Negative - Missing Vendor",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing; ไม่มี vendor อยู่ในระบบ; มี GRN reference อยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. ข้ามช่อง 'Vendor'\n4. กรอกช่อง 'GRN Reference' (optional)\n5. กรอกช่อง 'Credit Note Amount'\n6. กรอกช่อง 'Reason'\n7. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดง error message แจ้งให้ผู้ใช้เลือก vendor" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง CN" },
+        { type: "steps", description: "1. เปิดฟอร์ม New Credit Note\n2. ไม่เลือก Vendor\n3. Create" },
+        { type: "expected", description: "ไม่บันทึก: ยังอยู่ที่ /new ไม่มี toast สำเร็จ และไม่มี CN ใหม่ใน backend" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
-      const amount = cn.amountInput();
-      if ((await amount.count()) > 0) await amount.fill("100").catch(() => {});
-      await cn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(cn.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const before = (await listCns()).length;
+      await page.goto(`${LIST}/new`);
+      await button(page, "Create").click();
+      await page.waitForTimeout(1500);
+      await expect(page).toHaveURL(/credit-note\/new/);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
+      expect((await listCns()).length).toBe(before);
     },
   );
 
@@ -276,426 +352,22 @@ purchaseTest.describe("Credit Note — Create (additional)", () => {
     "TC-CN-030003 Edge Case - No GRN Reference",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing; vendor มีอยู่; ไม่มี GRN reference" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'New Credit Note'\n3. กรอกช่อง 'Vendor'\n4. ข้ามช่อง 'GRN Reference' (optional)\n5. กรอกช่อง 'Credit Note Amount'\n6. กรอกช่อง 'Reason'\n7. กด 'Save'",
-        },
-        { type: "expected", description: "สร้าง credit note สถานะ draft สำเร็จโดยไม่มี GRN reference" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง CN" },
+        { type: "steps", description: "1. เปิดฟอร์ม New Credit Note\n2. เลือก Vendor แต่ไม่เลือก GRN\n3. Create" },
+        { type: "expected", description: "ไม่บันทึก: ช่อง 'Select GRN' ยังอยู่ ไม่มี toast สำเร็จ ไม่มี CN ใหม่ใน backend" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900004 — View CN Detail (UI)
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — View Detail", () => {
-  purchaseTest(
-    "TC-CN-040001 View existing credit note",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู credit notes; มี credit note อยู่ในระบบ" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. คลิก credit note ที่มีอยู่" },
-        { type: "expected", description: "ผู้ใช้เห็นรายละเอียด credit note ครบถ้วน ได้แก่ ข้อมูล header, items, lot applications, journal entries, stock movements, และการคำนวณภาษี" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No credit note to view");
-        return;
-      }
-      await openRecordFromRow(row);
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-040002 Attempt to view non-existent credit note",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู credit notes" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. คลิก credit note ที่ไม่มีอยู่" },
-        { type: "expected", description: "ระบบแสดง error message ว่า credit note ไม่มีอยู่" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoDetail("non-existent-cn-99999");
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-040004 View credit note with a large number of items",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู credit notes; มี credit note ที่มีจำนวน items มากอยู่ในระบบ" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. คลิก credit note ที่มีจำนวน items มาก" },
-        { type: "expected", description: "ผู้ใช้เห็นรายละเอียด credit note ครบถ้วนโดยไม่มีปัญหาด้าน performance" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("Credit Note — View Detail — Permission denial", () => {
-  requestorTest(
-    "TC-CN-040003 View credit note without necessary permissions",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ได้รับการยืนยันตัวตนแต่ไม่มีสิทธิ์ดู credit notes" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. คลิก credit note" },
-        { type: "expected", description: "ระบบแสดง error message ว่าผู้ใช้ไม่มีสิทธิ์ดู credit notes" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      await page.goto(LIST_PATH);
-      const url = page.url();
-      const onListPage = /credit-note/.test(url);
-      const onUnauthorized = /unauthorized|denied|403|login/i.test(url);
-      expect(onListPage || onUnauthorized).toBeTruthy();
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900005 — Edit CN (UI)
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Edit", () => {
-  purchaseTest(
-    "TC-CN-050001 Happy Path - Edit Credit Note",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing; มี credit note สถานะ DRAFT; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'Edit' บน draft credit note\n3. กรอกช่อง 'Reason' ด้วย 'Return of goods'\n4. กรอกช่อง 'Total Amount' ด้วย '1200.00'\n5. กด 'Save'",
-        },
-        { type: "expected", description: "Credit note ถูกอัปเดตด้วยค่าใหม่และยังคงสถานะ DRAFT" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) {
-        purchaseTest.skip(true, "No draft CN to edit");
-        return;
-      }
-      await openRecordFromRow(draftRow);
-      await cn.editButton().click({ timeout: 5_000 }).catch(() => {});
-      const reason = cn.reasonInput();
-      if ((await reason.count()) > 0) await reason.fill("Return of goods").catch(() => {});
-      const amt = cn.amountInput();
-      if ((await amt.count()) > 0) await amt.fill("1200.00").catch(() => {});
-      await cn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-050002 Negative - Invalid Total Amount",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing; มี credit note สถานะ DRAFT; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'Edit' บน draft credit note\n3. กรอกช่อง 'Total Amount' ด้วย 'invalid amount'\n4. กด 'Save'",
-        },
-        { type: "expected", description: "แสดง error message, credit note ไม่เปลี่ยนแปลงและยังคงสถานะ DRAFT" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-      await cn.editButton().click({ timeout: 5_000 }).catch(() => {});
-      const amt = cn.amountInput();
-      if ((await amt.count()) > 0) await amt.fill("invalid amount").catch(() => {});
-      await cn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(cn.anyError().first()).toBeVisible({ timeout: 5_000 });
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-050004 Edge Case - Edit Credit Note with No Items",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role purchasing; มี credit note สถานะ DRAFT; ผู้ใช้มีสิทธิ์แก้ไข; ยังไม่มี items เพิ่มใน credit note" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'Edit' บน draft credit note\n3. ตรวจสอบว่าไม่มี items ให้แก้ไข\n4. กด 'Save'",
-        },
-        { type: "expected", description: "Credit note ไม่เปลี่ยนแปลงและยังคงสถานะ DRAFT" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("Credit Note — Edit — Permission denial", () => {
-  requestorTest(
-    "TC-CN-050003 Negative - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี role receiving; มี credit note สถานะ DRAFT; ผู้ใช้ไม่มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. พยายามกด 'Edit' บน draft credit note\n3. ตรวจสอบว่า error message แสดงขึ้น",
-        },
-        { type: "expected", description: "ผู้ใช้ไม่สามารถแก้ไข credit note และได้รับ error message" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const edit = cn.editButton();
-      // Either button is hidden (correct) or disabled
-      if ((await edit.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(edit).toBeDisabled({ timeout: 5_000 });
-      }
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900006 — Items / Lot management (UI)
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Items & Lots", () => {
-  purchaseTest(
-    "TC-CN-060001 Add Credit Note Item with Valid Lot Selection",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ DRAFT; มี inventory lots สำหรับ items ที่คืน; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กด 'Add Item'\n3. เลือก item จาก dropdown\n4. เลือก lot ที่ถูกต้องจาก dropdown\n5. กรอกจำนวนคืน\n6. กด 'Save'",
-        },
-        { type: "expected", description: "เพิ่ม item ใน credit note สำเร็จพร้อม lot selection และจำนวนคืนที่ถูกต้อง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-      await cn.addItemButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-060003 Remove Credit Note Item with Lot Selection",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ DRAFT; มี inventory lots; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description: "1. ไปที่ /procurement/credit-note\n2. เลือก item จาก list\n3. กด 'Remove Item'",
-        },
-        { type: "expected", description: "ลบ item ที่เลือกออกจาก credit note สำเร็จ, lot selection และจำนวนคืนถูกล้าง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-060004 Attempt to Save Credit Note Without Lot Selection",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ DRAFT; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. เพิ่ม item โดยไม่เลือก lot\n3. พยายาม save",
-        },
-        { type: "expected", description: "แสดง error message ว่าต้องเลือก lot" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("Credit Note — Items & Lots — Permission denial", () => {
-  requestorTest(
-    "TC-CN-060005 Manage Credit Note Items with No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ DRAFT; มี inventory lots สำหรับ items ที่คืน" },
-        {
-          type: "steps",
-          description: "1. ไปที่ /procurement/credit-note\n2. พยายามเพิ่ม, แก้ไข, หรือลบ item ใน credit note",
-        },
-        { type: "expected", description: "แสดง access denied message" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const add = cn.addItemButton();
-      // Either button is hidden (correct) or disabled
-      if ((await add.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(add).toBeDisabled({ timeout: 5_000 });
-      }
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900007 — Inventory Cost Review (UI)
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Inventory Cost Review", () => {
-  purchaseTest(
-    "TC-CN-070001 Review Existing Credit Note with Quantity-Based Items",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note ที่มี items แบบ quantity-based; เลือก inventory lots แล้ว; การคำนวณต้นทุนเสร็จสิ้นแล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. คลิก tab 'Credit Notes'\n3. เลือก credit note ที่มี items แบบ quantity-based\n4. กด 'View Details'",
-        },
-        { type: "expected", description: "แสดงรายละเอียดการคำนวณต้นทุนสินค้าคงคลัง รวมถึง weighted average costs, cost variances, และ realized gains/losses สำหรับ credit note ที่เลือก" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-070003 Review Empty Credit Note",
-    {
-      annotation: [
-        { type: "preconditions", description: "ไม่มี credit note ที่มี items แบบ quantity-based" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. คลิก tab 'Credit Notes'\n3. พยายามเลือก credit note ที่มี items แบบ quantity-based\n4. กด 'View Details'",
-        },
-        { type: "expected", description: "แสดง message ว่าไม่มี credit notes ที่มี items แบบ quantity-based" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("Credit Note — Inventory Cost Review — Permission denial", () => {
-  requestorTest(
-    "TC-CN-070002 Access Denied to Review Inventory Cost Analysis",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note ที่มี items แบบ quantity-based; ผู้ใช้ไม่มีสิทธิ์ดูข้อมูลต้นทุน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. คลิก tab 'Credit Notes'\n3. พยายามเลือก credit note ที่มี items แบบ quantity-based\n4. กด 'View Details'",
-        },
-        { type: "expected", description: "แสดง permission error message ป้องกันผู้ใช้ไม่ให้เข้าถึงรายละเอียดการวิเคราะห์ต้นทุน" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900008 — Credit Reason & Description (UI)
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Credit Reason & Description", () => {
-  purchaseTest(
-    "TC-CN-080001 Happy Path - Select Credit Reason and Provide Description",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้กำลังสร้างหรือแก้ไข credit note และ Login เป็น purchasing staff" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'New Credit Note'\n3. เลือก credit reason จาก dropdown\n4. กรอกช่อง description\n5. กดปุ่ม 'Save'",
-        },
-        { type: "expected", description: "บันทึก credit reason และ description พร้อม credit note สำเร็จ" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
-      const desc = cn.descriptionInput();
-      if ((await desc.count()) > 0) await desc.fill("E2E description").catch(() => {});
+      const before = (await listCns()).length;
+      await page.goto(`${LIST}/new`);
+      await pickLookup(page, page.getByRole("button", { name: "Select Vendor" }));
+      await button(page, "Create").click();
+      await page.waitForTimeout(1500);
+      await expect(page.getByRole("button", { name: "Select GRN" })).toBeVisible();
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
+      expect((await listCns()).length).toBe(before);
     },
   );
 
@@ -703,22 +375,25 @@ purchaseTest.describe("Credit Note — Credit Reason & Description", () => {
     "TC-CN-080002 Negative - No Credit Reason Selected",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้กำลังสร้าง credit note และ Login เป็น purchasing staff" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'New Credit Note'\n3. ข้ามการเลือก credit reason\n4. กรอกช่อง description\n5. กดปุ่ม 'Save'",
-        },
-        { type: "expected", description: "แสดง validation error แจ้งให้เลือก credit reason" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง CN" },
+        { type: "steps", description: "1. กรอก Vendor, GRN, Tax Invoice # และ Add Item\n2. ไม่เลือก Reason\n3. Create" },
+        { type: "expected", description: "ไม่บันทึก: ช่อง 'Select CN Reason' ยังอยู่ ไม่มี toast สำเร็จ ไม่มี CN ที่ใช้เลข tax invoice นั้น" },
+        { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
-      await cn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(cn.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const taxNo = `E2E-CN-noreason-${uid}`;
+      await page.goto(`${LIST}/new`);
+      await pickLookup(page, page.getByRole("button", { name: "Select Vendor" }));
+      await pickLookup(page, page.getByRole("button", { name: "Select GRN" }), "GRN261100002");
+      await page.locator("#cn-tax-invoice-no").fill(taxNo);
+      await addFromGrn(page, 1);
+      await button(page, "Create").click();
+      await page.waitForTimeout(1500);
+      await expect(page.getByRole("button", { name: "Select CN Reason" })).toBeVisible();
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
+      for (const c of await listCns()) expect((await getCn(c.id)).data!.tax_invoice_no).not.toBe(taxNo);
     },
   );
 
@@ -726,53 +401,331 @@ purchaseTest.describe("Credit Note — Credit Reason & Description", () => {
     "TC-CN-080003 Edge Case - Maximum Character Limit for Description",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้กำลังสร้าง credit note และ Login เป็น purchasing staff" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'New Credit Note'\n3. เลือก credit reason จาก dropdown\n4. กรอกช่อง description ด้วยตัวอักษรจนถึงขีดจำกัดสูงสุด\n5. กดปุ่ม 'Save'",
-        },
-        { type: "expected", description: "บันทึก credit reason และ description พร้อม credit note สำเร็จ" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง CN" },
+        { type: "steps", description: "1. เปิดฟอร์ม New Credit Note\n2. วางข้อความ 300 ตัวอักษรในช่อง Description" },
+        { type: "expected", description: "ช่อง Description รับสูงสุด 256 ตัวอักษร (ตัวนับ 256/256) ส่วนที่เกินถูกตัด" },
+        { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoNew();
-      const desc = cn.descriptionInput();
-      if ((await desc.count()) > 0) await desc.fill("a".repeat(2000)).catch(() => {});
+      await page.goto(`${LIST}/new`);
+      const box = page.locator("#cn-description");
+      await box.fill("x".repeat(300));
+      expect((await box.inputValue()).length).toBe(256);
+      await expect(page.getByText("256/256")).toBeVisible();
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900009 — Comments & Attachments (UI)
+// View
 // ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Comments & Attachments", () => {
+purchaseTest.describe("CN — View", () => {
   purchaseTest(
-    "TC-CN-090001 Add valid comments and attachments successfully",
+    "TC-CN-040001 View existing credit note",
     {
       annotation: [
-        { type: "preconditions", description: "มี credit note อยู่ในระบบและผู้ใช้มีสิทธิ์เพิ่ม comments/attachments" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Add Comment'\n3. กรอกช่อง 'Comment' ด้วย 'Initial review complete'\n4. กดปุ่ม 'Upload Document'\n5. เลือกไฟล์เอกสารที่ถูกต้อง\n6. กดปุ่ม 'Save'",
-        },
-        { type: "expected", description: "บันทึก comments และ attachments พร้อม credit note สำเร็จ comment และเอกสาร visible สำหรับผู้ใช้ที่มีสิทธิ์" },
+        { type: "preconditions", description: "มี CN26110001 (draft) ที่ data:reset seed" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN26110001" },
+        { type: "expected", description: "แสดงเลข CN, สถานะ Draft, vendor, GRN No. GRN261100001, ประเภท Quantity Return, รายการ Ground Beef 1.00KG และ Grand Total 100.00 ตรงกับ backend; มีปุ่ม Edit/Submit" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const d = await seededCn("draft");
+      await gotoCn(page, d.id);
+      const rec = (await getCn(d.id)).data!;
+      expect(rec.credit_note_detail).toHaveLength(1);
+      const main = page.locator("main");
+      await expect(main).toContainText("CN26110001");
+      await expect(main).toContainText(/draft/i);
+      await expect(main).toContainText("GRN261100001");
+      await expect(main).toContainText("Quantity Return");
+      await expect(main).toContainText(rec.credit_note_detail[0].product.name);
+      await expect(main).toContainText(/Grand Total\s*\|?\s*100\.00/);
+      await expect(page.getByRole("button", { name: "Submit", exact: true })).toBeVisible();
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-040002 Attempt to view non-existent credit note",
+    {
+      annotation: [
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ view" },
+        { type: "steps", description: "1. ไปที่ /procurement/credit-note/00000000-0000-4000-8000-000000000000" },
+        { type: "expected", description: "แสดงหน้า error ('Something went wrong' + Try again) ไม่มีปุ่ม Edit/Submit" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      await page.goto(`${LIST}/00000000-0000-4000-8000-000000000000`);
+      await expect(page.getByText("Something went wrong").first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("button", { name: /^(edit|submit)$/i })).toHaveCount(0);
+    },
+  );
+});
+
+requestorTest.describe("CN — View — Permission denial", () => {
+  requestorTest(
+    "TC-CN-040003 View credit note without necessary permissions",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น Requestor — ไม่มี permission credit_note" },
+        { type: "steps", description: "1. ไปที่ /procurement/credit-note" },
+        { type: "expected", description: "แสดงหน้า 'Permission Denied' แทน list; ไม่มีปุ่ม New Credit Note" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async ({ page }) => {
+      await page.goto(LIST);
+      await expect(page.getByRole("heading", { name: "Permission Denied" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("button", { name: "New Credit Note" })).toHaveCount(0);
+    },
+  );
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Edit / items / reason (own draft)
+// ═════════════════════════════════════════════════════════════════════════
+withReason("CN — Edit", () => {
+  purchaseTest(
+    "TC-CN-050001 Happy Path - Edit Credit Note",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test (1 บรรทัด)" },
+        { type: "steps", description: "1. เปิด CN → Edit\n2. แก้ Description\n3. Save" },
+        { type: "expected", description: "toast สำเร็จ; กลับสู่โหมดดูและแสดง Description ใหม่; backend เก็บ description ใหม่" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("edit");
+      await gotoCn(page, g.id);
+      await button(page, "Edit").click();
+      const text = `edited ${uid}`;
+      await page.locator("#cn-description").fill(text);
+      await save(page);
+      await expect(page.locator("main")).toContainText(text);
+      expect((await getCn(g.id)).data!.description).toBe(text);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-050002 Negative - Invalid Total Amount",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test ประเภท Quantity Return (return_qty 1)" },
+        { type: "steps", description: "1. เปิด CN → Edit\n2. ตั้ง Return qty แถวแรกเป็น 0 → Save (draft)\n3. คลิก Submit และยืนยัน" },
+        { type: "expected", description: "Save เป็นการบันทึกร่าง (cn-form.tsx draftSaveHandler) จึงรับ qty 0 ได้; แต่ Submit ไม่ผ่าน — CN ยังเป็น draft (ไม่ completed) และไม่มี toast สำเร็จของการ submit" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("zeroqty");
+      await gotoCn(page, g.id);
+      await button(page, "Edit").click();
+      await typeInto(rowsOf(page).first().locator('input[name$=".quantity"]'), 0);
+      await save(page);
+      expect(Number((await getCn(g.id)).data!.credit_note_detail[0].return_qty)).toBe(0);
+      await button(page, "Submit").click();
+      await confirmDialog(page, /submit|confirm|yes/i);
+      await page.waitForTimeout(2000);
+      expect((await getCn(g.id)).data!.doc_status).toBe("draft");
+      await expect(page.locator("main")).toContainText(/draft/i);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-050004 Edge Case - Edit Credit Note with No Items",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test (1 บรรทัด)" },
+        { type: "steps", description: "1. เปิด CN → Edit\n2. ลบบรรทัดเดียวที่มี → Save (draft)\n3. คลิก Submit และยืนยัน" },
+        { type: "expected", description: "ตารางแสดง 'No Items Yet'; Save บันทึกร่างได้ (draftSaveHandler) แต่ Submit ไม่ผ่าน — CN ยังเป็น draft และ backend มี 0 บรรทัด" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("noitems");
+      await gotoCn(page, g.id);
+      await button(page, "Edit").click();
+      await rowsOf(page).first().getByRole("button", { name: /remove|delete/i }).first().click();
+      await page.waitForTimeout(500);
+      if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+      await expect(page.getByText("No Items Yet")).toBeVisible();
+      await save(page);
+      expect((await getCn(g.id)).data!.credit_note_detail).toHaveLength(0);
+      await button(page, "Submit").click();
+      await confirmDialog(page, /submit|confirm|yes/i);
+      await page.waitForTimeout(2000);
+      expect((await getCn(g.id)).data!.doc_status).toBe("draft");
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-060001 Add Credit Note Item with Valid Lot Selection",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test 1 บรรทัด (Australian Sirloin) จาก GRN261100003 ซึ่งมีสินค้า 2 รายการ (ไม่มี lot ใน CN แล้ว — เลือกบรรทัดจาก GRN)" },
+        { type: "steps", description: "1. เปิด CN → Edit\n2. Add Item ติ๊กบรรทัดที่สอง (AAA Beef) จาก 'Select from GRN' → Add\n3. ตั้ง Return qty 1 → Save" },
+        { type: "expected", description: "toast สำเร็จ; backend มี 2 บรรทัด (บรรทัดที่เพิ่มมี return_qty 1 สินค้าต่างจากบรรทัดเดิม)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("additem", { lines: 1, grn: "received" });
+      await gotoCn(page, g.id);
+      await button(page, "Edit").click();
+      await addFromGrn(page, 1, "last");
+      await typeInto(rowsOf(page).first().locator('input[name$=".quantity"]'), 1);
+      await save(page);
+      const rec = (await getCn(g.id)).data!;
+      expect(rec.credit_note_detail).toHaveLength(2);
+      expect(new Set(rec.credit_note_detail.map((d) => d.product.id)).size).toBe(2);
+      for (const d of rec.credit_note_detail) expect(Number(d.return_qty)).toBe(1);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-060003 Remove Credit Note Item with Lot Selection",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test 2 บรรทัด (GRN261100003)" },
+        { type: "steps", description: "1. เปิด CN → Edit\n2. ลบบรรทัดแรก (ยืนยันถ้ามี dialog)\n3. Save" },
+        { type: "expected", description: "ตารางเหลือ 1 แถว; หลัง Save backend มี 1 บรรทัด" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("rmitem", { lines: 2 });
+      await gotoCn(page, g.id);
+      await button(page, "Edit").click();
+      await expect(rowsOf(page).filter({ has: page.getByRole("button", { name: /remove|delete/i }) })).toHaveCount(2);
+      await rowsOf(page).first().getByRole("button", { name: /remove|delete/i }).first().click();
+      await page.waitForTimeout(500);
+      if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+      await save(page);
+      expect((await getCn(g.id)).data!.credit_note_detail).toHaveLength(1);
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-080001 Happy Path - Select Credit Reason and Provide Description",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test ที่มี Reason 'E2E-CN reason'" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN\n2. ดู Reason และ Description\n3. Edit → แก้ Description → Save" },
+        { type: "expected", description: "โหมดดูแสดง Reason 'E2E-CN reason'; หลัง Save backend ยังเก็บ reason เดิมและ description ใหม่" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("reason");
+      await gotoCn(page, g.id);
+      await expect(page.locator("main")).toContainText("E2E-CN reason");
+      await button(page, "Edit").click();
+      const text = `reason edit ${uid}`;
+      await page.locator("#cn-description").fill(text);
+      await save(page);
+      const rec = (await getCn(g.id)).data!;
+      expect(rec.description).toBe(text);
+      expect(rec.cn_reason?.name).toBe("E2E-CN reason");
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-070001 Review Existing Credit Note with Quantity-Based Items",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN26110002 (completed) ที่ data:reset seed" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN26110002\n2. คลิกแท็บ Stock Movement" },
+        { type: "expected", description: "แท็บ Stock Movement แสดงข้อมูลของสินค้า Chilled Angus Australia ของใบนั้น (ไม่ว่างเปล่า)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const addComment = cn.addCommentButton();
-      if ((await addComment.count()) > 0) await addComment.click().catch(() => {});
+      const c = await seededCn("completed");
+      await page.goto(`${LIST}/${c.id}`);
+      await expect(page.getByRole("tab", { name: /stock movement/i })).toBeVisible({ timeout: 20_000 });
+      await page.getByRole("tab", { name: /stock movement/i }).click();
+      await expect(page.locator("main")).toContainText("Chilled Angus", { timeout: 15_000 });
+    },
+  );
+
+  purchaseTest(
+    "TC-CN-070003 Review Empty Credit Note",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test (ยังไม่ submit จึงยังไม่มีการเคลื่อนไหวสต๊อก)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN draft\n2. คลิกแท็บ Stock Movement" },
+        { type: "expected", description: "แท็บไม่แสดงแถวสต๊อก (ไม่มีชื่อสินค้า) และไม่เกิด error" },
+        { type: "priority", description: "Low" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("emptystock");
+      await gotoCn(page, g.id);
+      await page.getByRole("tab", { name: /stock movement/i }).click();
+      await page.waitForTimeout(1500);
+      await expect(page.getByText("Something went wrong")).toHaveCount(0);
+      await expect(page.locator("table tbody tr").filter({ hasText: "Ground Beef" })).toHaveCount(0);
+    },
+  );
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Comments & attachments
+// ═════════════════════════════════════════════════════════════════════════
+withReason("CN — Comments & attachments", () => {
+  const png = () => {
+    const dir = mkdtempSync(join(tmpdir(), "cn-att-"));
+    const file = join(dir, "e2e-pixel.png");
+    writeFileSync(file, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+    return file;
+  };
+  const open = async (page: Page) => {
+    await page.getByRole("button", { name: "Comment", exact: true }).click();
+    const dlg = page.locator("[role=dialog]:visible").last();
+    await expect(dlg).toContainText(/Comments \(\d+\)/);
+    return dlg;
+  };
+
+  purchaseTest(
+    "TC-CN-090001 Add valid comments and attachments successfully",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี CN draft ของ test (ไม่มี comment)" },
+        { type: "steps", description: "1. เปิด CN → Comment\n2. Attach file เลือกรูป PNG\n3. พิมพ์ข้อความ → Send comment" },
+        { type: "expected", description: "header เป็น 'Comments (1)' แสดงข้อความ ชื่อผู้ส่ง และไฟล์แนบ e2e-pixel.png" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const g = await createDraftCn("c1");
+      await gotoCn(page, g.id);
+      const dlg = await open(page);
+      await expect(dlg).toContainText("Comments (0)");
+      await dlg.locator("input[type=file]").setInputFiles(png());
+      const text = `hello ${uid}`;
+      await dlg.getByPlaceholder("Add comment...").fill(text);
+      await dlg.getByRole("button", { name: "Send comment" }).click();
+      await expect(dlg).toContainText("Comments (1)", { timeout: 20_000 });
+      await expect(dlg).toContainText(text);
+      await expect(dlg).toContainText("purchase carmensoftware");
+      await expect(dlg.getByText("e2e-pixel.png").or(dlg.locator("img").first())).toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -780,19 +733,23 @@ purchaseTest.describe("Credit Note — Comments & Attachments", () => {
     "TC-CN-090003 Attempt to upload an invalid file type",
     {
       annotation: [
-        { type: "preconditions", description: "มี credit note; ผู้ใช้มีสิทธิ์เพิ่ม comments/attachments" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Upload Document'\n3. เลือกไฟล์ประเภทที่ไม่ถูกต้อง (เช่น .exe, .jpg)\n4. กดปุ่ม 'Save'",
-        },
-        { type: "expected", description: "ระบบปฏิเสธประเภทไฟล์ที่ไม่ถูกต้อง แสดง error message ว่าอนุญาตเฉพาะประเภทไฟล์ที่กำหนดเท่านั้น" },
+        { type: "preconditions", description: "มี CN draft ของ test" },
+        { type: "steps", description: "1. เปิด CN → Comment\n2. Attach file เลือกไฟล์ .txt" },
+        { type: "expected", description: "toast 'only JPG, PNG, WEBP, GIF, PDF files are allowed'; ไม่มีไฟล์แนบ ยังเป็น 'Comments (0)'" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
-    async () => {
-      // Best-effort placeholder
+    async ({ page }) => {
+      const g = await createDraftCn("c3");
+      const dir = mkdtempSync(join(tmpdir(), "cn-att-"));
+      const txt = join(dir, "e2e-note.txt");
+      writeFileSync(txt, "hello");
+      await gotoCn(page, g.id);
+      const dlg = await open(page);
+      await dlg.locator("input[type=file]").setInputFiles(txt);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /only JPG, PNG, WEBP, GIF, PDF/i })).toBeVisible({ timeout: 10_000 });
+      await expect(dlg).toContainText("Comments (0)");
     },
   );
 
@@ -800,96 +757,75 @@ purchaseTest.describe("Credit Note — Comments & Attachments", () => {
     "TC-CN-090004 Attach multiple documents to a credit note",
     {
       annotation: [
-        { type: "preconditions", description: "มี credit note; ผู้ใช้มีสิทธิ์เพิ่ม comments/attachments" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Upload Document'\n3. เลือกไฟล์เอกสารที่ถูกต้อง 1\n4. กดปุ่ม 'Upload Document' อีกครั้ง\n5. เลือกไฟล์เอกสารที่ถูกต้อง 2\n6. กดปุ่ม 'Save'",
-        },
-        { type: "expected", description: "บันทึกเอกสารทั้งสองพร้อม credit note สำเร็จ เอกสารทั้งสอง visible สำหรับผู้ใช้ที่มีสิทธิ์" },
-        { type: "priority", description: "Low" },
+        { type: "preconditions", description: "มี CN draft ของ test" },
+        { type: "steps", description: "1. เปิด CN → Comment\n2. Attach file เลือกรูป PNG สองไฟล์พร้อมกัน\n3. พิมพ์ข้อความ → Send comment" },
+        { type: "expected", description: "comment เดียวถูกเพิ่ม ('Comments (1)') พร้อมไฟล์แนบสองไฟล์ (รูป 2 รูปใน comment นั้น)" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
-    async () => {
-      // Best-effort placeholder
+    async ({ page }) => {
+      const g = await createDraftCn("c4");
+      const a = png();
+      const dir2 = mkdtempSync(join(tmpdir(), "cn-att-"));
+      const b = join(dir2, "e2e-pixel-2.png");
+      writeFileSync(b, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+      await gotoCn(page, g.id);
+      const dlg = await open(page);
+      await dlg.locator("input[type=file]").setInputFiles([a, b]);
+      await dlg.getByPlaceholder("Add comment...").fill(`two files ${uid}`);
+      await dlg.getByRole("button", { name: "Send comment" }).click();
+      await expect(dlg).toContainText("Comments (1)", { timeout: 20_000 });
+      await expect(dlg.locator("img")).toHaveCount(2, { timeout: 15_000 });
     },
   );
+});
 
+purchaseTest.describe("CN — Comments — no document", () => {
   purchaseTest(
     "TC-CN-090005 Attempt to add comments when no credit note exists",
     {
       annotation: [
-        { type: "preconditions", description: "ไม่มี credit note อยู่ในระบบ" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Add Comment'" },
-        { type: "expected", description: "ผู้ใช้ถูก redirect ไปหน้าสร้าง credit note หรือแสดง error message ว่าไม่มี credit note" },
+        { type: "preconditions", description: "ไม่มี CN ตาม id" },
+        { type: "steps", description: "1. ไปที่ /procurement/credit-note/00000000-0000-4000-8000-000000000001\n2. มองหาปุ่ม Comment" },
+        { type: "expected", description: "แสดงหน้า error แทน detail; ไม่มีปุ่ม Comment ให้เปิด" },
         { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("Credit Note — Comments & Attachments — Permission denial", () => {
-  requestorTest(
-    "TC-CN-090002 Attempt to add comments without permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note อยู่ในระบบแต่ผู้ใช้ไม่มีสิทธิ์เพิ่ม comments/attachments" },
-        { type: "steps", description: "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Add Comment'" },
-        { type: "expected", description: "ผู้ใช้ไม่สามารถเพิ่ม comments หรือ attachments แสดง error message ว่าไม่มีสิทธิ์เพียงพอ" },
-        { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const addComment = cn.addCommentButton();
-      // Either button is hidden (correct) or disabled
-      if ((await addComment.count()) === 0) {
-        expect(true).toBe(true);
-      }
+      await page.goto(`${LIST}/00000000-0000-4000-8000-000000000001`);
+      await expect(page.getByText("Something went wrong").first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("button", { name: "Comment", exact: true })).toHaveCount(0);
     },
   );
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900010 — Commit (UI)
+// Submit (was "Commit")
 // ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Commit", () => {
+withReason("CN — Submit", () => {
   purchaseTest(
     "TC-CN-100001 Commit credit note - Happy path",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ commit; มี credit note สถานะ DRAFT; accounting period เปิดอยู่สำหรับวันที่ทำรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Commit' ข้าง draft credit note\n3. ตรวจสอบ confirmation dialog\n4. กด 'Commit' ใน dialog\n5. รอให้ระบบประมวลผล",
-        },
-        { type: "expected", description: "สถานะ credit note เปลี่ยนเป็น COMMITTED, สร้าง journal entries, อัปเดต inventory, ปรับ vendor payables" },
+        { type: "preconditions", description: "มี CN draft ของ test (1 บรรทัด return_qty 1) — การ 'commit' ของ CN คือปุ่ม Submit" },
+        { type: "steps", description: "1. เปิด CN draft\n2. คลิก Submit ที่ footer\n3. ยืนยันใน dialog" },
+        { type: "expected", description: "backend เปลี่ยนสถานะเป็น completed; หน้าแสดง badge Completed และไม่มีปุ่ม Edit/Submit; แท็บ Stock Movement แสดงสินค้าของใบ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) {
-        purchaseTest.skip(true, "No draft CN to commit");
-        return;
-      }
-      await openRecordFromRow(draftRow);
-      await cn.commitButton().click({ timeout: 5_000 }).catch(() => {});
+      const g = await createDraftCn("submit");
+      await gotoCn(page, g.id);
+      await button(page, "Submit").click();
+      await confirmDialog(page, /submit|confirm|yes/i);
+      await expect.poll(async () => (await getCn(g.id)).data!.doc_status, { timeout: 60_000 }).toBe("completed");
+      await page.reload();
+      await expect(page.locator("main")).toContainText(/completed/i, { timeout: 15_000 });
+      await expect(page.getByRole("button", { name: "Submit", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     },
   );
 
@@ -897,229 +833,88 @@ purchaseTest.describe("Credit Note — Commit", () => {
     "TC-CN-100003 Commit credit note - Invalid credit note status",
     {
       annotation: [
-        { type: "preconditions", description: "ไม่มี credit note สถานะ DRAFT; ผู้ใช้มีสิทธิ์ commit; accounting period เปิดอยู่สำหรับวันที่ทำรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Commit' ข้าง credit note ที่ไม่ใช่สถานะ DRAFT\n3. ตรวจสอบ error message",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับ error message 'Invalid credit note status'" },
+        { type: "preconditions", description: "มี CN26110002 (completed)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN26110002\n2. มองหาปุ่ม Submit/Edit" },
+        { type: "expected", description: "ไม่มีปุ่ม Submit และ Edit — ส่งซ้ำ/แก้ใบที่ Completed แล้วไม่ได้; backend ยังเป็น completed" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const committedRow = page.locator("tbody").getByRole("row").filter({ hasText: /committed/i }).first();
-      if ((await committedRow.count()) === 0) return;
-      await openRecordFromRow(committedRow);
-      const commit = cn.commitButton();
-      // Either button is hidden (correct) or disabled
-      if ((await commit.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(commit).toBeDisabled({ timeout: 5_000 });
-      }
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-100004 Commit credit note - Accounting period closed",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ DRAFT; ผู้ใช้มีสิทธิ์ commit; accounting period ปิดแล้วสำหรับวันที่ทำรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Commit' ข้าง draft credit note\n3. ตรวจสอบ error message",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับ error message 'Accounting period is closed'" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-100005 Commit credit note - Date out of range",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note สถานะ DRAFT; ผู้ใช้มีสิทธิ์ commit; วันที่ทำรายการอยู่นอกช่วงที่อนุญาต" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Commit' ข้าง draft credit note\n3. ตรวจสอบ error message",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับ error message 'Transaction date out of range'" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
+      const c = await seededCn("completed");
+      await page.goto(`${LIST}/${c.id}`);
+      await expect(page.locator("main")).toContainText(/completed/i, { timeout: 20_000 });
+      await expect(page.getByRole("button", { name: "Submit", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+      expect((await getCn(c.id)).data!.doc_status).toBe("completed");
     },
   );
 });
 
-requestorTest.describe("Credit Note — Commit — Permission denial", () => {
-  requestorTest(
+// ═════════════════════════════════════════════════════════════════════════
+// Permission denial (FC = credit_note.view only)
+// ═════════════════════════════════════════════════════════════════════════
+fcTest.describe("CN — Permission denial", () => {
+  const draftUrl = async () => `${LIST}/${(await seededCn("draft")).id}`;
+
+  fcTest(
+    "TC-CN-050003 Negative - No Permission",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); CN26110001 (draft)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN26110001\n2. ดูปุ่ม Edit" },
+        { type: "expected", description: "ปุ่ม Edit ถูกปิดใช้งาน (aria-disabled) กดแล้วไม่เข้าโหมดแก้ไข (ไม่มีช่อง Description)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async ({ page }) => {
+      await page.goto(await draftUrl());
+      const edit = page.getByRole("button", { name: "Edit", exact: true });
+      await expect(edit).toBeVisible({ timeout: 20_000 });
+      await expect(edit).toHaveAttribute("aria-disabled", "true");
+      await edit.click({ force: true });
+      await expect(page.locator("#cn-description")).toHaveCount(0);
+    },
+  );
+
+  fcTest(
+    "TC-CN-060005 Manage Credit Note Items with No Permission",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); CN26110001 (draft)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN26110001\n2. มองหาปุ่ม Add Item/Remove และช่อง Return qty" },
+        { type: "expected", description: "ไม่มีปุ่ม Add Item/Remove และไม่มีช่อง Return qty (โหมดดูอย่างเดียว) และ Edit ถูกปิดใช้งาน" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async ({ page }) => {
+      await page.goto(await draftUrl());
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveAttribute("aria-disabled", "true", { timeout: 20_000 });
+      await expect(page.getByRole("button", { name: "Add Item" })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^(remove|delete)$/i })).toHaveCount(0);
+      await expect(page.locator('input[name$=".quantity"]')).toHaveCount(0);
+    },
+  );
+
+  fcTest(
     "TC-CN-100002 Commit credit note - No commit permission",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้ไม่มีสิทธิ์ commit; มี credit note สถานะ DRAFT" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กดปุ่ม 'Commit' ข้าง draft credit note\n3. ตรวจสอบ error message",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับ error message 'Insufficient permission'" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); CN26110001 (draft)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ CN26110001\n2. ดูปุ่ม Submit ที่ footer" },
+        { type: "expected", description: "ปุ่ม Submit ถูกปิดใช้งาน (aria-disabled) — ผู้ไม่มีสิทธิ์ไม่ควรส่งใบได้" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const commit = cn.commitButton();
-      // Either button is hidden (correct) or disabled
-      if ((await commit.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(commit).toBeDisabled({ timeout: 5_000 });
-      }
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-CN-900011 — Void Committed (UI)
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Credit Note — Void Committed", () => {
-  purchaseTest(
-    "TC-CN-110001 Void committed credit note - Happy Path",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี committed credit note และผู้ใช้มีสิทธิ์ที่จำเป็น" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. คลิก filter สถานะ 'Committed'\n3. เลือก committed credit note\n4. กดปุ่ม 'Void'\n5. ยืนยันการ void",
-        },
-        { type: "expected", description: "สถานะ credit note เปลี่ยนเป็น 'VOID' และสร้าง reversing journal entries" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const committedRow = page.locator("tbody").getByRole("row").filter({ hasText: /committed/i }).first();
-      if ((await committedRow.count()) === 0) return;
-      await openRecordFromRow(committedRow);
-      await cn.voidButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-110003 Void committed credit note - Invalid Credit Note",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี credit note ที่ไม่ถูกต้องในสถานะ committed (เช่น ID ที่ไม่มีอยู่)" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. กรอก credit note ID ที่ไม่ถูกต้อง\n3. กดปุ่ม 'Void'",
-        },
-        { type: "expected", description: "แสดง error message ว่าไม่พบ credit note" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoDetail("non-existent-99999");
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-110004 Void committed credit note - Closed Accounting Period",
-    {
-      annotation: [
-        { type: "preconditions", description: "Accounting period ปิดแล้วและมี committed credit note" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. คลิก filter สถานะ 'Committed'\n3. เลือก committed credit note\n4. พยายามกดปุ่ม 'Void'",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับ error message ว่า accounting period ปิดแล้วและไม่อนุญาตให้ void" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-CN-110005 Void committed credit note - Edge Case - Multiple Credit Notes",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี committed credit notes หลายรายการและเลือกรายการหนึ่งไว้" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. คลิก filter สถานะ 'Committed'\n3. เลือก committed credit notes หลายรายการ\n4. กดปุ่ม 'Void'",
-        },
-        { type: "expected", description: "ระบบแจ้งให้ผู้ใช้เลือก credit note เพียงรายการเดียวสำหรับการ void" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("Credit Note — Void Committed — Permission denial", () => {
-  requestorTest(
-    "TC-CN-110002 Void committed credit note - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี committed credit note แต่ผู้ใช้ไม่มีสิทธิ์ที่จำเป็น" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/credit-note\n2. คลิก filter สถานะ 'Committed'\n3. เลือก committed credit note\n4. พยายามกดปุ่ม 'Void'",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับ error message ว่าไม่มีสิทธิ์ void credit note" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const cn = new CreditNotePage(page);
-      await cn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const voidBtn = cn.voidButton();
-      // Either button is hidden (correct) or disabled
-      if ((await voidBtn.count()) === 0) {
-        expect(true).toBe(true);
-      }
+      await page.goto(await draftUrl());
+      const submit = page.getByRole("button", { name: "Submit", exact: true });
+      await expect(submit).toBeVisible({ timeout: 20_000 });
+      fcTest.fail(true, NO_GATE);
+      await expect(submit).toHaveAttribute("aria-disabled", "true");
     },
   );
 });
@@ -2325,3 +2120,4 @@ purchaseTest.describe("Credit Note — Real-time sync — Backend only", () => {
     async () => {},
   );
 });
+

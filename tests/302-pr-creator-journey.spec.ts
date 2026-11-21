@@ -765,7 +765,7 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       // mean `product_code`?"} — the update path of `details` rejects the payload FE mapItemToPayload
       // (pr-form-schema.ts:743) builds, while a header-only save (TC-PR-050505) is accepted.
       // Measured 2026-11-21 on dev API v4.0.13-build.20261112, 3/3 runs. Flips red once accepted.
-      requestorTest.fail(true, "suspected bug: PATCH of a Draft with an edited line -> 400 'Unknown argument product_id' (BE details update path)");
+      requestorTest.fail(true, "suspected bug: PATCH of a Draft with an edited line -> 400 'Unknown argument product_id' (BE details update path) - bisected by replaying PATCH .../save: a line carrying BOTH pricelist_detail_id:null AND is_tax_included fails, dropping either key gives 200; FE 76ec45e4 (2026-11-09) added is_tax_included to the payload, BE schema 1ac85b1ae (2026-11-09) has the column and dev runs build f529576a9 (2026-11-13), so this is not a not-yet-deployed change");
       await pr.saveEditMode();
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await expect(page.locator("tbody tr").first().getByText(/7\.00/).first(), "saved quantity 7 is not shown").toBeVisible({ timeout: 15_000 });
@@ -796,7 +796,7 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       // although FE mapItemToPayload (pr-form-schema.ts:762) always sends is_tax_included. The
       // create path (POST) accepts the same row. Measured 2026-11-21 on dev API v4.0.13-build.20261112.
       // Flips red ("expected to fail but passed") once the update path accepts new lines.
-      requestorTest.fail(true, "suspected bug: PATCH of a Draft with an added line -> 400 'Argument is_tax_included is missing' (BE update/add path)");
+      requestorTest.fail(true, "suspected bug: PATCH of a Draft with an added line -> 400 'Argument is_tax_included is missing' (BE update/add path) - bisected by replaying PATCH .../save: a line carrying BOTH pricelist_detail_id:null AND is_tax_included fails, dropping either key gives 200; FE 76ec45e4 (2026-11-09) added is_tax_included to the payload, BE schema 1ac85b1ae (2026-11-09) has the column and dev runs build f529576a9 (2026-11-13), so this is not a not-yet-deployed change");
       await pr.saveEditMode();
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await expect(page.locator("tbody tr").filter({ has: page.getByRole("button", { name: /expand row/i }) }), "the added line was not persisted (expected 2 lines)").toHaveCount(2, { timeout: 15_000 });
