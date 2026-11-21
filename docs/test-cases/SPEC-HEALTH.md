@@ -17,7 +17,7 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | **Running cases asserting nothing at all** | **62** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 24 |
-| Assertions in running cases | 2489 |
+| Assertions in running cases | 2491 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -47,7 +47,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `401-po.spec.ts` | 19 | 32 | 0 | 63% | 0 | 0 | 0 | **1** | 66 | 0 |
 | `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 141 | 0 |
-| `301-pr.spec.ts` | 59 | 47 | 0 | 44% | 0 | 0 | 0 | 0 | 118 | 0 |
+| `301-pr.spec.ts` | 59 | 47 | 0 | 44% | 0 | 0 | 0 | 0 | 120 | 0 |
 | `711-stock-replenishment.spec.ts` | 33 | 0 | 3 | 8% | 0 | 0 | 0 | 0 | 47 | 16 |
 | `720-stock-issue.spec.ts` | 24 | 0 | 1 | 4% | **18** | 0 | 0 | **1** | 10 | 9 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |

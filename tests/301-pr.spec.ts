@@ -3,6 +3,7 @@ import { createAuthTest } from "./fixtures/auth.fixture";
 import { PurchaseRequestPage, LIST_PATH, NEW_PATH, APPROVALS_PATH } from "./pages/purchase-request.page";
 import { BU_CODE } from "./test-users";
 import { buGet } from "./helpers/bu-api";
+import { withStageHiddenPrices } from "./helpers/workflow-api";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
 import { openRecordFromRow, recordRows } from "./helpers/list-row";
@@ -58,14 +59,15 @@ const prStage = async (id: string) => {
   return String(d.workflow_current_stage);
 };
 /** Own PR submitted by the requestor, opened as the HOD and really approved (toolbar Approve + footer Approve); checks it left the HOD stage. */
-async function approveOwnPRAsHod(page: Page, browser: Browser, opts?: { foc?: boolean }) {
+async function approveOwnPRAsHod(page: Page, browser: Browser, opts?: { foc?: boolean; inEditMode?: (id: string) => Promise<void> }) {
   hodTest.setTimeout(240_000);
-  const created = await submitPRAsRequestor(browser, opts);
+  const created = await submitPRAsRequestor(browser, { foc: opts?.foc });
   const before = await prStage(created.ref);
   await gotoPRDetail(page, created.ref);
   const pr = new PurchaseRequestPage(page);
   await expect(pr.editModeButton(), "PR is not at the HOD stage - no Edit available").toBeVisible({ timeout: 15_000 });
   await pr.enterEditMode();
+  await opts?.inEditMode?.(created.ref);
   await bulkApprove(page);
   await expect.poll(() => prStage(created.ref), { message: "PR stage did not advance after Approve", timeout: 15_000 }).not.toBe(before);
   await gotoPRDetail(page, created.ref);
@@ -1412,21 +1414,34 @@ hodTest.describe("PR — Approve detail review", () => {
   );
 
   hodTest(
-    "TC-PR-460004 Approve PR keeps the line price unchanged (the approver does not reprice)",
+    "TC-PR-460004 Approve PR with hidden prices",
     {
       annotation: [
-        { type: "preconditions", description: "Requestor ส่ง PR ใบใหม่ (1 บรรทัด ราคา 100) เข้าขั้น HOD; HOD มีสิทธิ์ approve" },
-        { type: "steps", description: "1. HOD เปิด PR ใบนั้น\n2. กด Edit เลือกบรรทัด กด Approve (ทำเครื่องหมาย)\n3. กด Approve ที่ท้ายฟอร์มและยืนยัน\n4. อ่านบรรทัดของ PR จาก backend" },
-        { type: "expected", description: "PR ออกจากขั้น HOD (approve สองขั้นสำเร็จ) และบรรทัดยังมี pricelist_price 100 / discount_rate 0 เท่าเดิม — ผู้อนุมัติไม่ได้ตั้งราคาใหม่ (เงื่อนไข 'ซ่อนราคา' เป็นค่า hide_fields ของ workflow ที่ชุดข้อมูลทดสอบไม่ได้เปิด จึงไม่ครอบคลุมในเคสนี้)" },
+        { type: "preconditions", description: "Requestor ส่ง PR ใหม่เข้าขั้น HOD; test เปิด hide_fields (ราคาต่อหน่วยและยอดรวม) ของ stage HOD Approval ผ่าน config API ชั่วคราวแล้วคืนค่าเดิมใน finally" },
+        { type: "steps", description: "1. HOD เปิด PR ที่รออนุมัติ (stage HOD ตั้งซ่อนราคา: price_per_unit และ total_price)\n2. ตรวจว่าช่อง Unit Price และ Total แสดง 'Hidden' และ backend ไม่ส่งราคามา\n3. กด Edit เลือกบรรทัด กด Approve (ทำเครื่องหมาย)\n4. กด Approve ท้ายฟอร์มและยืนยัน" },
+        { type: "expected", description: "ราคาถูกซ่อนสำหรับผู้อนุมัติ (backend ส่ง pricelist_price/total_price เป็น null, UI แสดง Hidden) และ approve สองขั้นยังสำเร็จ: PR ออกจากขั้น HOD" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page, browser }) => {
-      const created = await approveOwnPRAsHod(page, browser);
-      const line = (await prDoc(created.ref)).purchase_request_detail[0];
-      expect(Number(line.pricelist_price), "approving changed the line price").toBe(100);
-      expect(Number(line.discount_rate)).toBe(0);
+      hodTest.setTimeout(300_000);
+      // hide_fields of the HOD stage is switched on for this case only; the helper restores the workflow in finally.
+      await withStageHiddenPrices("HOD Approval", async () => {
+        await approveOwnPRAsHod(page, browser, {
+          inEditMode: async (id) => {
+            const line = (await buGet("HOD", `/purchase-requests/${id}`)).body.data.purchase_request_detail[0];
+            expect(line.pricelist_price, "the backend still sends the unit price to a stage that hides it").toBeNull();
+            expect(line.total_price, "the backend still sends the total to a stage that hides it").toBeNull();
+            const pr = new PurchaseRequestPage(page);
+            await pr.expandItem(0);
+            const body = page.locator("tbody").first();
+            await expect(body.getByText("Hidden", { exact: true }).first(), "price is not masked for the approver").toBeVisible({ timeout: 10_000 });
+            await expect(body).toContainText(/Unit Price\s*Hidden/);
+            await expect(body).toContainText(/Total\s*Hidden/);
+          },
+        });
+      });
     },
   );
 
@@ -1680,21 +1695,14 @@ purchaseTest.describe("PR — Submit after vendor allocation", () => {
         { type: "testType", description: "Negative" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
-      await expect(row, "No PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
-      await openRecordFromRow(row);
-      // Purchase stage: the stage's decision is bulk Approve in edit mode (there is no
-      // "Submit" button). The STD purchase-stage PRs have no price / vendor yet, so approving
-      // them must be refused with a validation warning.
-      await enterApproverEditMode(page);
+    async ({ page, browser }) => {
+      // Own PR at the Purchase stage (the shared first row of the queue changes as other cases price their PRs).
+      const { pr } = await openAtPurchaseStage(page, browser);
       await pr.bulkApproveInEditMode().click({ timeout: 10_000 });
       await pr.saveDraftButton().click({ timeout: 10_000 });
       await expect(
         page.locator('[data-sonner-toast]').filter({ hasText: /fields aren't filled in correctly|still incomplete|missing|required/i }).first(),
-        "approving a purchase-stage PR without price/vendor was not refused",
+        "approving a purchase-stage PR without a complete vendor/price was not refused",
       ).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -1714,22 +1722,18 @@ purchaseTest.describe("PR — Submit after vendor allocation", () => {
         { type: "testType", description: "Negative" },
       ],
     },
-    async ({ page }) => {
-      const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.getByRole("row").filter({ hasText: /PR\d{6,}/ }).first();
-      await expect(row, "No PR available — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
-      await openRecordFromRow(row);
-      // Purchase stage: the stage's decision is bulk Approve in edit mode (there is no
-      // "Submit" button). The STD purchase-stage PRs have no price / vendor yet, so approving
-      // them must be refused with a validation warning.
-      await enterApproverEditMode(page);
+    async ({ page, browser }) => {
+      // Own PR at the Purchase stage with a price but no vendor / tax profile: the approval must not go through.
+      const { pr, id } = await openAtPurchaseStage(page, browser);
+      await pr.expandItem(0);
+      await pr.setAmount(pr.unitPriceInput(0), 100); // price set, vendor left empty
       await pr.bulkApproveInEditMode().click({ timeout: 10_000 });
-      await pr.saveDraftButton().click({ timeout: 10_000 });
+      await pr.documentApproveButton().click({ timeout: 10_000 });
       await expect(
-        page.locator('[data-sonner-toast]').filter({ hasText: /fields aren't filled in correctly|still incomplete|missing|required/i }).first(),
-        "approving a purchase-stage PR without price/vendor was not refused",
+        page.locator("[data-sonner-toast]").filter({ hasText: /fields aren't filled in correctly|still incomplete|missing|required|vendor/i }).first(),
+        "approving a purchase-stage PR without a vendor was not refused",
       ).toBeVisible({ timeout: 10_000 });
+      expect((await prDoc(id)).pr_status, "PR left the Purchase stage without a vendor").toBe("in_progress");
     },
   );
 
