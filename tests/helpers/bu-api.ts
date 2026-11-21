@@ -104,6 +104,29 @@ export async function buSend<T = any>(
   return { status: r.status, body: parsed as T };
 }
 
+/** Config endpoints live under `/api/config/<BU>/...` (extra-cost-types, tax profiles ...). */
+export async function buConfigSend<T = any>(
+  role: Role,
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<ApiResult<T>> {
+  const { url, appId } = await (backend ??= resolveBackend());
+  const r = await fetch(`${url}/api/config/${BU_CODE}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json", "x-app-id": appId, Authorization: `Bearer ${await tokenFor(role)}` },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await r.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = text;
+  }
+  return { status: r.status, body: parsed as T };
+}
+
 export const buGet = <T = any>(role: Role, path: string) => buSend<T>(role, "GET", path);
 
 /** The role's permission keys from /api/user/profile (for "no role gate" claims). */
