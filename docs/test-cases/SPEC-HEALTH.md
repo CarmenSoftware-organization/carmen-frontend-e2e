@@ -13,11 +13,11 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | Skipped | 201 |
 | Fixme | 43 |
 | **Dormant** (skipped + fixme) | **17%** |
-| Running cases asserting only through a page-object helper | 39 |
+| Running cases asserting only through a page-object helper | 38 |
 | **Running cases asserting nothing at all** | **284** |
-| Running cases whose assertions are all trivial | 25 |
-| Running cases behind an in-body skip guard | 246 |
-| Assertions in running cases | 1552 |
+| Running cases whose assertions are all trivial | 23 |
+| Running cases behind an in-body skip guard | 243 |
+| Assertions in running cases | 1560 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -58,7 +58,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `040-currency.spec.ts` | 14 | 0 | 1 | 7% | 0 | 0 | 0 | 0 | 33 | 1 |
 | `150-vendor.spec.ts` | 29 | 0 | 2 | 6% | 0 | 1 | 0 | 0 | 51 | 1 |
 | `403-po-approver-journey.spec.ts` | 18 | 0 | 1 | 5% | 0 | 0 | 0 | **14** | 27 | 9 |
-| `720-stock-issue.spec.ts` | 24 | 0 | 1 | 4% | **18** | 0 | **2** | **3** | 6 | 9 |
+| `720-stock-issue.spec.ts` | 24 | 0 | 1 | 4% | **18** | 0 | 0 | **1** | 10 | 9 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
 | `160-pl-template.spec.ts` | 31 | 0 | 1 | 3% | **2** | 7 | 0 | **5** | 42 | 19 |
 | `701-sr.spec.ts` | 46 | 0 | 1 | 2% | **44** | 0 | 0 | **3** | 2 | 14 |
@@ -83,10 +83,10 @@ Sorted by dormant share, then by cases that assert nothing.
 | `110-op-category.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 28 | 4 |
 | `121-recipe-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
 | `131-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
-| `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | **21** | 40 | 10 |
-| `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | **24** | 52 | 9 |
+| `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | **21** | 41 | 10 |
+| `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | **24** | 53 | 9 |
 | `312-pr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
-| `402-po-purchaser-journey.spec.ts` | 32 | 0 | 0 | 0% | 0 | 1 | 0 | **26** | 40 | 17 |
+| `402-po-purchaser-journey.spec.ts` | 32 | 0 | 0 | 0% | 0 | 0 | 0 | **25** | 42 | 17 |
 | `404-po-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 17 | 1 |
 | `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |

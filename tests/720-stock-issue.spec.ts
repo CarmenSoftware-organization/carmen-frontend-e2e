@@ -391,9 +391,9 @@ requestorTest.describe("Stock Issue — View Full SR — Permission denial", () 
         {
           type: "steps",
           description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Full SR'\n3. ตรวจสอบว่า error message แสดงขึ้นมา",
+            "1. ไปที่ /store-operation/store-requisition?view=all-document\n2. ตรวจสอบว่ารายการว่างและไม่มีปุ่ม View Full SR",
         },
-        { type: "expected", description: "Error message แสดงว่าผู้ใช้ไม่มีสิทธิ์ดู full SR" },
+        { type: "expected", description: "รายการ SR ของ requestor ว่าง (สิทธิ์ view เห็นเฉพาะใบที่ตัวเองเป็นผู้ขอ) จึงไม่มีใบให้เปิดและไม่มีปุ่ม View Full SR" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
@@ -401,16 +401,14 @@ requestorTest.describe("Stock Issue — View Full SR — Permission denial", () 
     async ({ page }) => {
       const si = new StockIssuePage(page);
       await si.gotoAllDocuments();
-      const row = recordRows(page).first();
-      // Data guard: the STD seed creates every SR as the purchase user, and the
-      // requestor's All Documents list is empty (measured 2026-11-21).
-      requestorTest.skip((await row.count()) === 0, "env-data: requestor sees no SR in All Documents (STD seed creates SRs as purchase)");
-      await openRecordFromRow(row);
-      const view = si.viewFullSRButton();
-      // Either button is hidden (correct) or disabled
-      if ((await view.count()) === 0) {
-        expect(true).toBe(true);
-      }
+      // Permission scope, not missing data: store-requisition.service.ts findAll limits a user with
+      // only `view` to `requestor_id = caller` (department users get `view_department`). The
+      // STD seed creates every SR as the purchase user, so the requestor's list is empty while
+      // hod/fc/purchase see 7 SRs in the same BU (measured 2026-11-21). The empty list is the denial.
+      await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(recordRows(page)).toHaveCount(0);
+      // ...and there is no record to open, so the restricted action cannot be reached.
+      await expect(si.viewFullSRButton()).toHaveCount(0);
     },
   );
 });
@@ -630,9 +628,9 @@ requestorTest.describe("Stock Issue — Expense Allocation — Permission denial
         { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com สถานะ SR เป็น Completed และผู้ใช้ไม่มี permission ดู costs" },
         {
           type: "steps",
-          description: "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Expense Allocation'",
+          description: "1. ไปที่ /store-operation/store-requisition?view=all-document\n2. ตรวจสอบว่ารายการว่างและไม่มีปุ่ม View Expense Allocation",
         },
-        { type: "expected", description: "ระบบแสดง message ว่าถูกปฏิเสธสิทธิ์" },
+        { type: "expected", description: "รายการ SR ของ requestor ว่าง จึงไม่มีใบให้เปิดและไม่มีปุ่ม View Expense Allocation (ดู costs ไม่ได้)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
@@ -640,16 +638,14 @@ requestorTest.describe("Stock Issue — Expense Allocation — Permission denial
     async ({ page }) => {
       const si = new StockIssuePage(page);
       await si.gotoAllDocuments();
-      const row = recordRows(page).first();
-      // Data guard: the STD seed creates every SR as the purchase user, and the
-      // requestor's All Documents list is empty (measured 2026-11-21).
-      requestorTest.skip((await row.count()) === 0, "env-data: requestor sees no SR in All Documents (STD seed creates SRs as purchase)");
-      await openRecordFromRow(row);
-      const exp = si.viewExpenseAllocationButton();
-      // Either button is hidden (correct) or disabled
-      if ((await exp.count()) === 0) {
-        expect(true).toBe(true);
-      }
+      // Permission scope, not missing data: store-requisition.service.ts findAll limits a user with
+      // only `view` to `requestor_id = caller` (department users get `view_department`). The
+      // STD seed creates every SR as the purchase user, so the requestor's list is empty while
+      // hod/fc/purchase see 7 SRs in the same BU (measured 2026-11-21). The empty list is the denial.
+      await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(recordRows(page)).toHaveCount(0);
+      // ...and there is no record to open, so the restricted action cannot be reached.
+      await expect(si.viewExpenseAllocationButton()).toHaveCount(0);
     },
   );
 });

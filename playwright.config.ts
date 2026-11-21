@@ -16,9 +16,16 @@ function readRateLimitBypassToken(): string {
   } catch {
     // no .env.local — fall through
   }
-  return "true";
+  return "";
 }
-const RATE_LIMIT_BYPASS_TOKEN = readRateLimitBypassToken();
+const RATE_LIMIT_BYPASS_TOKEN_CONFIGURED = readRateLimitBypassToken();
+if (!RATE_LIMIT_BYPASS_TOKEN_CONFIGURED) {
+  // Never print the token itself, only the fact that it is missing.
+  console.warn(
+    "[e2e] no E2E_RATE_LIMIT_BYPASS_TOKEN / RATE_LIMIT_BYPASS_TOKEN found: falling back to \"true\", which the gateway ignores unless its token is \"true\" - expect 429s in the login suite",
+  );
+}
+const RATE_LIMIT_BYPASS_TOKEN = RATE_LIMIT_BYPASS_TOKEN_CONFIGURED || "true";
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const FRONTEND_DIR =

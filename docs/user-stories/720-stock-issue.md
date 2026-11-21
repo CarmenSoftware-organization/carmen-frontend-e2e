@@ -350,13 +350,12 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Full SR'
-3. ตรวจสอบว่า error message แสดงขึ้นมา
+1. ไปที่ /store-operation/store-requisition?view=all-document
+2. ตรวจสอบว่ารายการว่างและไม่มีปุ่ม View Full SR
 
 **Expected**
 
-Error message แสดงว่าผู้ใช้ไม่มีสิทธิ์ดู full SR
+รายการ SR ของ requestor ว่าง (สิทธิ์ view เห็นเฉพาะใบที่ตัวเองเป็นผู้ขอ) จึงไม่มีใบให้เปิดและไม่มีปุ่ม View Full SR
 
 ---
 
@@ -582,12 +581,12 @@ Login เป็น carmensoftware.dev+requestor@gmail.com สถานะ SR เ
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Expense Allocation'
+1. ไปที่ /store-operation/store-requisition?view=all-document
+2. ตรวจสอบว่ารายการว่างและไม่มีปุ่ม View Expense Allocation
 
 **Expected**
 
-ระบบแสดง message ว่าถูกปฏิเสธสิทธิ์
+รายการ SR ของ requestor ว่าง จึงไม่มีใบให้เปิดและไม่มีปุ่ม View Expense Allocation (ดู costs ไม่ได้)
 
 ---
 
@@ -636,4 +635,4 @@ Login เป็น carmensoftware.dev+requestor@gmail.com สถานะ SR เ
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git c6e714b</sub>

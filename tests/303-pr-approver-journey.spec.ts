@@ -216,15 +216,21 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
       // GET purchase-requests/workflow-stages only returns the stages of workflows used by
       // PRs the *caller requested* (purchase-request.service.ts findAllWorkflowStagesByPr,
       // `where: { requestor_id: user_id }`), so an approver/purchaser who raised no PR gets
-      // an empty stage list and nothing to pick. Measured 2026-11-21: data = [] for this role.
-      hodTest.fail(true, "suspected bug: PR workflow-stages is scoped to requestor_id, so the stage filter is empty for approvers/purchasers");
+      // data = [] and the filter lists nothing but "All Stage". Measured 2026-11-21.
       await pr.gotoAllDocuments();
       await pr.openStageFilter();
+      // These two steps are the openStageFilter() contract. They run BEFORE the bug is declared
+      // below, so a regression in the page object fails the case for real instead of being
+      // swallowed by test.fail.
+      await expect(pr.stageFilterOption(/^all stage$/i)).toBeVisible({ timeout: 10_000 });
       await expect(pr.stageFilterOption(/^all stage$/i)).toBeChecked();
-      const stage = page.getByRole("dialog").getByRole("checkbox").nth(1);
-      // Bounded wait: a click on a missing option burns the whole test timeout, and a timed-out
-      // test is not accepted by test.fail(); a failed expect is.
-      await expect(stage).toBeVisible({ timeout: 5_000 });
+
+      hodTest.fail(true, "suspected bug: PR workflow-stages is scoped to requestor_id, so the stage filter lists no stage for approvers/purchasers");
+      // Desired behaviour: at least one stage besides "All Stage". Flips red ("expected to fail
+      // but passed") only when the backend stops scoping the list to the requestor.
+      const stageOptions = page.getByRole("dialog").getByRole("checkbox");
+      await expect(stageOptions).not.toHaveCount(1, { timeout: 5_000 });
+      const stage = stageOptions.nth(1);
       await stage.click();
       await expect(stage).toBeChecked();
       await expect(pr.stageFilterOption(/^all stage$/i)).not.toBeChecked();
