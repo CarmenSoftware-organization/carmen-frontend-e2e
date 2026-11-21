@@ -2,6 +2,7 @@ import { test as baseTest, expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { PurchaseOrderPage, LIST_PATH } from "./pages/purchase-order.page";
 import { MyApprovalsPage } from "./pages/my-approvals.page";
+import { openRecordFromRow } from "./helpers/list-row";
 import {
   submitPOAsPurchaser,
   approveAsGM,
@@ -72,17 +73,17 @@ fcTest.describe("Step 1 — My Approval", () => {
       ],
     },
     async ({ page, browser }) => {
-      const created = await submitPOAsPurchaser(browser);
-      await page.goto("/procurement/my-approvals").catch(async () => {
-        await page.goto("/procurement/purchase-requests/my-approvals");
-      });
-      await page.waitForLoadState("networkidle").catch(() => {});
-      const row = page.locator("tbody").getByRole("row").filter({ hasText: created.ref }).first();
-      if ((await row.count()) === 0) {
-        fcTest.skip(true, "Seeded PO not visible in FC My Approval list");
-        return;
-      }
-      await row.click();
+      const tag = `070103-${Date.now().toString(36)}`;
+      const created = await submitPOAsPurchaser(browser, { description: `[E2E-POP] ${tag}` });
+      const approvals = new MyApprovalsPage(page);
+      await approvals.gotoList();
+      await approvals.docTypeChip("po").click();
+      // The inbox is paged (10/page) and sorted oldest-waiting first, so a fresh PO is
+      // not on page 1: flip the Waiting sort to newest-first.
+      await page.getByRole("columnheader", { name: /waiting/i }).getByRole("button").click();
+      const row = approvals.documentRow(created.poNo);
+      await expect(row, `seeded PO ${created.poNo} not in FC My Approval list`).toBeVisible({ timeout: 15_000 });
+      await openRecordFromRow(row);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
     },
   );
@@ -119,25 +120,21 @@ fcTest.describe("Step 2 — PO Detail (FC view)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า detail ของ IN PROGRESS PO ในฐานะ FC" },
         { type: "steps", description: "1. ตรวจสอบ input ของ vendor / description / delivery date\n2. ตรวจสอบว่า input เหล่านั้นถูก disable หรือแก้ไขไม่ได้" },
-        { type: "expected", description: "Vendor input หรือหนึ่งใน header field ถูก disable/readonly Skip ถ้าไม่สามารถตรวจจับ header field ได้" },
+        { type: "expected", description: "header ของ FC ใน view mode เป็นข้อความ: ไม่มีตัวเลือก vendor / delivery date / ช่องกรอก description" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page, browser }) => {
-      const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      const vendor = po.vendorTrigger();
-      if ((await vendor.count()) === 0) {
-        fcTest.skip(true, "Vendor field not visible on detail (header may collapse)");
-        return;
-      }
-      const disabled = await vendor.isDisabled().catch(() => false);
-      const ariaDisabled = (await vendor.getAttribute("aria-disabled").catch(() => null)) === "true";
-      const tagName = await vendor.evaluate((el) => el.tagName.toLowerCase()).catch(() => "");
-      const isInput = tagName === "input" || tagName === "textarea";
-      expect(disabled || ariaDisabled || !isInput).toBeTruthy();
+      // View mode renders the header as plain text (FE e00d52b7, po-general-fields
+      // SettingField): the vendor name is shown, but there is no vendor picker,
+      // date picker or description input to edit.
+      await expect(page.getByText("Vendor", { exact: true }).first()).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("button", { name: /select vendor/i })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /select date/i })).toHaveCount(0);
+      await expect(page.getByPlaceholder("Optional")).toHaveCount(0);
     },
   );
 
@@ -182,17 +179,11 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present on PO");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present on PO").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
       const toolbar = po.itemActionToolbar();
-      if ((await toolbar.count()) === 0) {
-        fcTest.skip(true, "Item action toolbar not present after select — UI may differ");
-        return;
-      }
+      await expect(toolbar, "Item action toolbar not present after select — UI may differ").toBeVisible({ timeout: 10_000 });
       await expect(toolbar).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -212,17 +203,11 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
       const approve = po.markItemApproveButton();
-      if ((await approve.count()) === 0) {
-        fcTest.skip(true, "Item-level Approve button not present");
-        return;
-      }
+      await expect(approve, "Item-level Approve button not present").toBeVisible({ timeout: 10_000 });
       await approve.click({ timeout: 5_000 });
       await expect(po.itemBadge(0, "approved")).toBeVisible({ timeout: 10_000 });
     },
@@ -243,17 +228,11 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
       const review = po.markItemReviewButton();
-      if ((await review.count()) === 0) {
-        fcTest.skip(true, "Item-level Review button not present");
-        return;
-      }
+      await expect(review, "Item-level Review button not present").toBeVisible({ timeout: 10_000 });
       await review.click({ timeout: 5_000 });
       await expect(po.itemBadge(0, "review")).toBeVisible({ timeout: 10_000 });
       await expect(po.documentSendBackButton()).toBeVisible({ timeout: 10_000 });
@@ -275,17 +254,11 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
       const reject = po.markItemRejectButton();
-      if ((await reject.count()) === 0) {
-        fcTest.skip(true, "Item-level Reject button not present");
-        return;
-      }
+      await expect(reject, "Item-level Reject button not present").toBeVisible({ timeout: 10_000 });
       await reject.click({ timeout: 5_000 });
       // Unlike Approve and Review, rejecting a line opens a confirmation first
       // ("Reject Purchase Order — …Please provide a reason." with an optional
@@ -313,16 +286,10 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
-      if ((await po.markItemApproveButton().count()) === 0) {
-        fcTest.skip(true, "Item-level Approve not present");
-        return;
-      }
+      await expect(po.markItemApproveButton(), "Item-level Approve not present").toBeVisible({ timeout: 10_000 });
       await po.markItemApproveButton().click({ timeout: 5_000 });
       await expect(po.documentApproveButton()).toBeVisible({ timeout: 10_000 });
     },
@@ -343,22 +310,13 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
-      if ((await po.markItemApproveButton().count()) === 0) {
-        fcTest.skip(true, "Item-level Approve not present");
-        return;
-      }
+      await expect(po.markItemApproveButton(), "Item-level Approve not present").toBeVisible({ timeout: 10_000 });
       await po.markItemApproveButton().click({ timeout: 5_000 });
       const docApprove = po.documentApproveButton();
-      if ((await docApprove.count()) === 0) {
-        fcTest.skip(true, "Document Approve button not visible after item approval");
-        return;
-      }
+      await expect(docApprove, "Document Approve button not visible after item approval").toBeVisible({ timeout: 10_000 });
       await docApprove.click({ timeout: 5_000 });
       // Confirmations are Radix AlertDialog (role="alertdialog"), which
       // getByRole("dialog") does not match; .last() skips the always-mounted
@@ -384,22 +342,13 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
-      if ((await po.markItemApproveButton().count()) === 0) {
-        fcTest.skip(true, "Item-level Approve not present");
-        return;
-      }
+      await expect(po.markItemApproveButton(), "Item-level Approve not present").toBeVisible({ timeout: 10_000 });
       await po.markItemApproveButton().click({ timeout: 5_000 });
       const docApprove = po.documentApproveButton();
-      if ((await docApprove.count()) === 0) {
-        fcTest.skip(true, "Document Approve button not visible");
-        return;
-      }
+      await expect(docApprove, "Document Approve button not visible").toBeVisible({ timeout: 10_000 });
       // Prove the approve actually reached the backend rather than reading the
       // UI: the .catch() below used to swallow a confirm that never fired.
       const approved = page.waitForResponse(
@@ -444,22 +393,13 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
-      if ((await po.markItemReviewButton().count()) === 0) {
-        fcTest.skip(true, "Item-level Review not present");
-        return;
-      }
+      await expect(po.markItemReviewButton(), "Item-level Review not present").toBeVisible({ timeout: 10_000 });
       await po.markItemReviewButton().click({ timeout: 5_000 });
       const sendBack = po.documentSendBackButton();
-      if ((await sendBack.count()) === 0) {
-        fcTest.skip(true, "Document Send Back button not visible");
-        return;
-      }
+      await expect(sendBack, "Document Send Back button not visible").toBeVisible({ timeout: 10_000 });
       await sendBack.click({ timeout: 5_000 });
       // Confirmations are Radix AlertDialog (role="alertdialog"), which
       // getByRole("dialog") does not match; .last() skips the always-mounted
@@ -485,22 +425,13 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
-      if ((await po.markItemReviewButton().count()) === 0) {
-        fcTest.skip(true, "Item-level Review not present");
-        return;
-      }
+      await expect(po.markItemReviewButton(), "Item-level Review not present").toBeVisible({ timeout: 10_000 });
       await po.markItemReviewButton().click({ timeout: 5_000 });
       const sendBack = po.documentSendBackButton();
-      if ((await sendBack.count()) === 0) {
-        fcTest.skip(true, "Document Send Back not visible");
-        return;
-      }
+      await expect(sendBack, "Document Send Back not visible").toBeVisible({ timeout: 10_000 });
       await sendBack.click({ timeout: 5_000 });
 
       // The dialog ("Send for Review") asks for the **stage** to send back to and
@@ -514,7 +445,7 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
 
       const reason = po.reasonInput();
       if ((await reason.count()) > 0) {
-        await reason.fill(SEND_BACK_REASON, { timeout: 10_000 }).catch(() => {});
+        await reason.fill(SEND_BACK_REASON, { timeout: 10_000 });
       }
 
       const confirm = po.confirmDialogButton(/^send back$|^send$|confirm|ok|yes/i);
@@ -540,16 +471,10 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
-      if ((await po.markItemRejectButton().count()) === 0) {
-        fcTest.skip(true, "Item-level Reject not present");
-        return;
-      }
+      await expect(po.markItemRejectButton(), "Item-level Reject not present").toBeVisible({ timeout: 10_000 });
       await po.markItemRejectButton().click({ timeout: 5_000 });
       // Rejecting a line opens its own confirmation before the row changes
       // state; without it the "document" Reject found below is really this
@@ -557,10 +482,7 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       await po.confirmDialogButton(/^reject$/i).click({ timeout: 10_000 });
       await expect(po.itemBadge(0, "rejected")).toBeVisible({ timeout: 10_000 });
       const docReject = po.documentRejectButton();
-      if ((await docReject.count()) === 0) {
-        fcTest.skip(true, "Document Reject button not visible");
-        return;
-      }
+      await expect(docReject, "Document Reject button not visible").toBeVisible({ timeout: 10_000 });
       await docReject.click({ timeout: 5_000 });
       // Confirmations are Radix AlertDialog (role="alertdialog"), which
       // getByRole("dialog") does not match; .last() skips the always-mounted
@@ -596,16 +518,10 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
-      if ((await po.markItemRejectButton().count()) === 0) {
-        fcTest.skip(true, "Item-level Reject not present");
-        return;
-      }
+      await expect(po.markItemRejectButton(), "Item-level Reject not present").toBeVisible({ timeout: 10_000 });
       await po.markItemRejectButton().click({ timeout: 5_000 });
       // Rejecting a line opens its own confirmation before the row changes
       // state; without it the "document" Reject found below is really this
@@ -613,10 +529,7 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       await po.confirmDialogButton(/^reject$/i).click({ timeout: 10_000 });
       await expect(po.itemBadge(0, "rejected")).toBeVisible({ timeout: 10_000 });
       const docReject = po.documentRejectButton();
-      if ((await docReject.count()) === 0) {
-        fcTest.skip(true, "Document Reject not visible");
-        return;
-      }
+      await expect(docReject, "Document Reject not visible").toBeVisible({ timeout: 10_000 });
       // Prove the reject reached the backend, then re-read the record. The old
       // body swallowed the confirm in .catch() and asserted straight away against
       // a page that had not been told anything changed.
@@ -627,7 +540,7 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       await docReject.click({ timeout: 5_000 });
       const reason = po.reasonInput();
       if ((await reason.count()) > 0) {
-        await reason.fill(REJECT_REASON, { timeout: 10_000 }).catch(() => {});
+        await reason.fill(REJECT_REASON, { timeout: 10_000 });
       }
       await po.confirmDialogButton(/confirm|reject|ok|yes/i).click({ timeout: 10_000 });
       expect((await rejected).ok()).toBe(true);
@@ -660,10 +573,7 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       const po = new PurchaseOrderPage(page);
       const created = await submitPOAsPurchaser(browser);
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present").toBeVisible({ timeout: 10_000 });
       await po.enterEditMode();
       await po.cancelEditMode();
       await expect(po.editModeButton()).toBeVisible({ timeout: 10_000 });
@@ -698,26 +608,17 @@ fcTest.describe.serial("Golden Journey", () => {
 
       // Open detail
       await gotoPODetail(page, created.ref);
-      if ((await po.editModeButton().count()) === 0) {
-        fcTest.skip(true, "Edit button not present on seeded PO");
-        return;
-      }
+      await expect(po.editModeButton(), "Edit button not present on seeded PO").toBeVisible({ timeout: 10_000 });
 
       // Edit + mark all Approved
       await po.enterEditMode();
       await po.selectItemInEditMode(0);
-      if ((await po.markItemApproveButton().count()) === 0) {
-        fcTest.skip(true, "Item-level Approve not present");
-        return;
-      }
+      await expect(po.markItemApproveButton(), "Item-level Approve not present").toBeVisible({ timeout: 10_000 });
       await po.markItemApproveButton().click({ timeout: 5_000 });
 
       // Document Approve
       const docApprove = po.documentApproveButton();
-      if ((await docApprove.count()) === 0) {
-        fcTest.skip(true, "Document Approve button not visible after item approval");
-        return;
-      }
+      await expect(docApprove, "Document Approve button not visible after item approval").toBeVisible({ timeout: 10_000 });
       const approved = page.waitForResponse(
         (r) => /\/purchase-orders\/[^/]+\/approve/.test(r.url()) && r.request().method() === "PATCH",
         { timeout: 20_000 },

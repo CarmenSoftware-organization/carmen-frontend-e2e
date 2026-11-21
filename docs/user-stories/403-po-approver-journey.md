@@ -135,7 +135,7 @@ URL เป็น /procurement/purchase-order/<ref>; text ของ status badge 
 
 **Expected**
 
-Vendor input หรือหนึ่งใน header field ถูก disable/readonly Skip ถ้าไม่สามารถตรวจจับ header field ได้
+header ของ FC ใน view mode เป็นข้อความ: ไม่มีตัวเลือก vendor / delivery date / ช่องกรอก description
 
 ---
 
@@ -449,4 +449,4 @@ PATCH .../approve ของ FC ตอบ ok และหลัง GM อนุ�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>
+<sub>Last regenerated: 2026-11-21 · git 3480104</sub>

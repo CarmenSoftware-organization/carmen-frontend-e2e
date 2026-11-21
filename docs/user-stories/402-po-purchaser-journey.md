@@ -23,23 +23,23 @@ _Generated from `tests/402-po-purchaser-journey.spec.ts` annotations. Edit annot
 | TC-PO-060205 | Open Create → From Price List → wizard step 1 (Select Vendors) | Medium | Smoke |
 | TC-PO-060206 | Select vendor → wizard step 2 (Review items) | Medium | Functional |
 | TC-PO-060207 | Submit Price List wizard → POs created (URL changes from /new to detail) | High | CRUD |
-| TC-PO-060208 | Skip dynamically if no price list / vendors available | Low | Functional |
+| TC-PO-060208 | Wizard step 1 lists vendors that have an active price list on the delivery date | Low | Functional |
 | TC-PO-060209 | Open Create → From PR → wizard step 1 (Select Approved PRs) | Medium | Smoke |
 | TC-PO-060210 | Select approved PR → wizard step 2 (Review POs grouped by vendor) | Medium | Functional |
 | TC-PO-060211 | Submit From PR wizard → POs created | High | CRUD |
-| TC-PO-060212 | Skip dynamically if no approved PR available | Low | Functional |
+| TC-PO-060212 | From PR wizard lists approved PRs once a workflow is chosen | Low | Functional |
 | TC-PO-060301 | Detail loads (DRAFT) with header + items table | High | Smoke |
-| TC-PO-060302 | Item Details panel — Details / Quantity / Pricing tabs | Medium | Functional |
+| TC-PO-060302 | Item rows expand and collapse inline via Expand all (no tab panel) | Medium | Functional |
 | TC-PO-060303 | Edit / Delete / Submit buttons present for DRAFT | High | Functional |
-| TC-PO-060304 | Read-only state for SENT/COMPLETED status (best-effort) | Medium | Authorization |
+| TC-PO-060304 | Read-only state for an APPROVED PO (no Edit button) | Medium | Authorization |
 | TC-PO-060401 | Click Edit on DRAFT → edit mode active (Save/Cancel visible) | High | Smoke |
 | TC-PO-060402 | Modify line item quantity → Save → URL stays on detail | High | CRUD |
 | TC-PO-060403 | Add new line item in edit mode → Save | Medium | CRUD |
 | TC-PO-060404 | Cancel edit → ยืนยัน Discard แล้วกลับสู่ view mode | Medium | Functional |
 | TC-PO-060405 | Submit Draft PO → confirmation dialog → status moves to IN PROGRESS | High | CRUD |
-| TC-PO-060406 | Delete IN PROGRESS PO via Edit Mode | Medium | CRUD |
+| TC-PO-060406 | Delete DRAFT PO via Edit Mode | Medium | CRUD |
 | TC-PO-060501 | Approved PO has Send to Vendor + Close buttons (seeded via seedApprovedPO) | High | Functional |
-| TC-PO-060502 | Click Send to Vendor → status updates / toast | High | CRUD |
+| TC-PO-060502 | Click Send to Vendor → compose dialog opens bound to the PO | High | CRUD |
 | TC-PO-060503 | Close PO with items received → COMPLETED | Medium | CRUD |
 | TC-PO-060504 | Close PO without items received → CLOSED | Medium | CRUD |
 | TC-PO-060901 | Full Purchaser flow: Create blank → Save Draft → Submit → FC approves → Send to Vendor | High | Smoke |
@@ -296,7 +296,7 @@ URL เปลี่ยนออกจาก /new ไปยัง PO detail ห�
 
 ---
 
-## TC-PO-060208 — Skip dynamically if no price list / vendors available
+## TC-PO-060208 — Wizard step 1 lists vendors that have an active price list on the delivery date
 
 > **As a** Purchase user, **I want** this Po Purchaser Journey interaction to behave as expected, **so that** the workflow stays predictable.
 
@@ -309,13 +309,12 @@ Login เป็น Purchaser; อยู่ที่หน้า list ของ P
 **Steps**
 
 1. เปิด wizard From Price List
-2. ตรวจสอบรายการ vendor ใน step 1
+2. เลือก workflow และ delivery date
+3. ตรวจสอบรายการ vendor ใน step 1
 
 **Expected**
 
-หาก wizard แสดงรายการ vendor ว่างเปล่า การทดสอบ skip พร้อมเหตุผล ไม่เช่นนั้นตรวจสอบว่า wizard step 1 visible
-
-> _Note: Dynamically skipped when DB lacks price list / vendor data._
+หลังเลือก workflow + delivery date รายการ vendor (radio) ปรากฏจาก price list ที่ active วันนั้น
 
 ---
 
@@ -377,11 +376,11 @@ Wizard From PR step 2 เปิดอยู่
 
 **Expected**
 
-URL เปลี่ยนออกจาก /new (PO ถูกสร้าง)
+ยืนยัน 2 ชั้น (Confirm + alert dialog) แล้ว POST purchase-orders ตอบ ok และหน้าแสดง 'purchase orders created'
 
 ---
 
-## TC-PO-060212 — Skip dynamically if no approved PR available
+## TC-PO-060212 — From PR wizard lists approved PRs once a workflow is chosen
 
 > **As a** Purchase user, **I want** this Po Purchaser Journey interaction to behave as expected, **so that** the workflow stays predictable.
 
@@ -394,13 +393,12 @@ Login เป็น Purchaser; อยู่ที่หน้า list ของ P
 **Steps**
 
 1. เปิด wizard From PR
-2. ตรวจสอบรายการ PR ใน step 1
+2. เลือก workflow
+3. ตรวจสอบรายการ PR ใน step 1
 
 **Expected**
 
-หาก wizard แสดงรายการ PR ว่างเปล่า การทดสอบ skip พร้อมเหตุผล ไม่เช่นนั้นตรวจสอบว่า wizard step 1 visible
-
-> _Note: Dynamically skipped when DB lacks approved PRs._
+หลังเลือก workflow ตาราง PR ที่ approved แล้วปรากฏ (เลข PR..)
 
 ---
 
@@ -425,7 +423,7 @@ URL เป็น /procurement/purchase-order/<ref>
 
 ---
 
-## TC-PO-060302 — Item Details panel — Details / Quantity / Pricing tabs
+## TC-PO-060302 — Item rows expand and collapse inline via Expand all (no tab panel)
 
 > **As a** Purchase user, **I want** this Po Purchaser Journey interaction to behave as expected, **so that** the workflow stays predictable.
 
@@ -437,12 +435,12 @@ URL เป็น /procurement/purchase-order/<ref>
 
 **Steps**
 
-1. ค้นหาแท็บใน Item Details panel
-2. สลับระหว่างแท็บ Items / Quantity / Pricing ถ้ามี
+1. เปิดหน้า detail ของ PO ที่มีรายการ
+2. กด 'Expand all'
 
 **Expected**
 
-แท็บแสดงและถูกเลือกเมื่อคลิก (skip ถ้าไม่มี)
+ปุ่มสลับเป็น 'Collapse all' (รายการกางในแถว); ไม่มีแท็บ Items/Quantity/Pricing แล้ว
 
 ---
 
@@ -466,7 +464,7 @@ URL เป็น /procurement/purchase-order/<ref>
 
 ---
 
-## TC-PO-060304 — Read-only state for SENT/COMPLETED status (best-effort)
+## TC-PO-060304 — Read-only state for an APPROVED PO (no Edit button)
 
 > **As a** low-privilege user, **I should NOT** see Add/edit controls on Po Purchaser Journey, **so that** role separation is enforced.
 
@@ -474,19 +472,16 @@ URL เป็น /procurement/purchase-order/<ref>
 
 **Preconditions**
 
-มี PO ที่มี status SENT หรือ COMPLETED ใน DB (ที่ไม่ใช่ Draft หรือ In-Progress)
+Login เป็น Purchaser; seed PO จนถึง Approved (FC + GM)
 
 **Steps**
 
-1. ไปที่หน้า list ของ PO
-2. ค้นหาแถว SENT/COMPLETED
-3. เปิดและตรวจสอบ toolbar
+1. เปิดหน้า detail ของ PO ที่ Approved
+2. ตรวจ toolbar
 
 **Expected**
 
-ปุ่ม Edit ไม่ visible หรือถูก disable Skip ถ้าไม่มี PO ที่มี status SENT/COMPLETED
-
-> _Note: Dynamically skipped if no SENT/COMPLETED PO available._
+ไม่มีปุ่ม Edit; มีปุ่ม Send to vendor
 
 ---
 
@@ -599,7 +594,7 @@ URL ยังคงอยู่ที่ PO ref; text ของ status badge อ
 
 ---
 
-## TC-PO-060406 — Delete IN PROGRESS PO via Edit Mode
+## TC-PO-060406 — Delete DRAFT PO via Edit Mode
 
 > **As a** Purchase user, **I want** to edit an existing Po Purchaser Journey record, **so that** its data stays accurate.
 
@@ -607,7 +602,7 @@ URL ยังคงอยู่ที่ PO ref; text ของ status badge อ
 
 **Preconditions**
 
-มี PO ที่มี status IN PROGRESS (หลัง submit) DRAFT ก็ยอมรับได้เช่นกัน
+มี PO สถานะ Draft ที่ Purchaser สร้างเอง (หลัง submit แล้วผู้สร้างเป็น view_only ลบไม่ได้)
 
 **Steps**
 
@@ -644,9 +639,9 @@ URL navigate กลับไปยัง list (PO ถูกลบ)
 
 ---
 
-## TC-PO-060502 — Click Send to Vendor → status updates / toast
+## TC-PO-060502 — Click Send to Vendor → compose dialog opens bound to the PO
 
-> **As a** Purchase user, **I want** to edit an existing Po Purchaser Journey record, **so that** its data stays accurate.
+> **As a** Purchase user, **I want** to manage Po Purchaser Journey records via CRUD, **so that** the data stays correct over time.
 
 **Priority:** High · **Test Type:** CRUD
 
@@ -658,11 +653,11 @@ URL navigate กลับไปยัง list (PO ถูกลบ)
 
 1. เปิด Approved PO
 2. กด Send to Vendor
-3. ยืนยัน
+3. ตรวจ dialog
 
 **Expected**
 
-URL ยังคงอยู่ที่ PO ref; success toast หรือการอัปเดต status visible
+dialog 'Send purchase order to vendor' เปิดพร้อมเลข PO; TEST BU ไม่มี email profile ที่เปิดใช้ จึงแสดง no-profile + ลิงก์ตั้งค่า (ไม่กดส่งจริง); URL ยังอยู่ที่ PO ref
 
 ---
 
@@ -685,9 +680,9 @@ URL ยังคงอยู่ที่ PO ref; success toast หรือก�
 
 **Expected**
 
-text ของ status ตรงกับ /completed/i หลัง close Skip ถ้าไม่มี PO ที่เข้าเกณฑ์
+text ของ status ตรงกับ /completed/i หลัง close
 
-> _Note: Dynamically skipped when no SENT-with-items PO exists._
+> _Note: fixme (data): ต้องมี PO ที่ Sent และรับของแล้ว — Send ต้องมี email profile ที่เปิดใช้ ซึ่ง TEST BU ไม่มี และ STD receiving ใช้ PO หมด_
 
 ---
 
@@ -736,9 +731,9 @@ Login เป็น Purchaser
 
 **Expected**
 
-URL ยังคงอยู่ที่ PO ref หลัง Send to Vendor (lifecycle ครบถ้วน end-to-end)
+lifecycle ครบ (Create → Draft → Submit → FC → GM → Approved) แล้วกด Send to Vendor เปิด dialog ผูกกับเลข PO (ไม่มี email profile ใน TEST BU จึงไม่กดส่งจริง); URL ยังอยู่ที่ PO ref
 
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git c6e714b</sub>
+<sub>Last regenerated: 2026-11-21 · git 3480104</sub>

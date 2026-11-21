@@ -63,7 +63,7 @@ export class PurchaseOrderPage extends BasePage {
   // wizard. Anchor on the card's own heading text.
   createFromPRMenuItem(): Locator {
     return this.page
-      .getByRole("button", { name: /^from pr$|^from pr\b(?!ice)|create from purchase request/i })
+      .getByRole("button", { name: /^from purchase request/i })
       .first();
   }
 
@@ -234,6 +234,21 @@ export class PurchaseOrderPage extends BasePage {
     ).toBeVisible({ timeout: 10_000 });
   }
 
+  /**
+   * "Send to vendor" opens a compose dialog (FE po-send-email-dialog), not a yes/no
+   * confirm. TEST BU from `data:reset` has no enabled email profile, so the compose
+   * form is replaced by the no-profile state with a link to the settings page.
+   * Sending is deliberately not done (it would dispatch a real email).
+   */
+  async expectSendToVendorDialogOpen() {
+    const dialog = this.page.locator('[role="dialog"], [role="alertdialog"]').last();
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+    await expect(dialog).toContainText(/send purchase order to vendor/i);
+    await expect(dialog).toContainText(/PO\d{6,}/);
+    await expect(dialog.getByText(/no enabled email profile/i)).toBeVisible();
+    await expect(dialog.getByRole("link", { name: /go to email profile settings/i })).toBeVisible();
+  }
+
   // ── Form + Items (line items) ────────────────────────────────────────
   addItemButton(): Locator {
     return this.page.getByRole("button", { name: /add item|add line item|^add$/i }).first();
@@ -246,19 +261,28 @@ export class PurchaseOrderPage extends BasePage {
 
   async selectFirstWorkflow() {
     const trigger = this.workflowTrigger();
-    if ((await trigger.count()) === 0) return; // already chosen
+    // Wait rather than count(): the trigger renders a beat after the form shell.
+    await trigger.waitFor({ state: "visible", timeout: 10_000 });
     await trigger.click();
     await this.page.getByRole("option").first().click();
   }
 
-  /** Vendor is picked from a dialog of <button> cards ("A001 <name>"), not a select. */
+  /**
+   * Vendor is a lookup (FE `LookupVendor` → `LookupCombobox`, lazy-loaded on open): a
+   * popover (role=dialog) holding a virtualised list of <button> rows ("A023 <name>").
+   * Without a vendor the line product lookup stays empty.
+   */
   async selectFirstVendor() {
+    // The form re-renders right after the workflow is chosen, so the trigger may be
+    // briefly absent: wait for it instead of reading count() (a /new form never has a
+    // vendor pre-selected).
     const trigger = this.page.getByRole("button", { name: /select vendor/i }).first();
-    if ((await trigger.count()) === 0) return; // already chosen
+    await trigger.waitFor({ state: "visible", timeout: 10_000 });
     await trigger.click();
-    const card = this.page.getByRole("dialog").getByRole("button").filter({ hasText: /^[A-Z]\d{3}/ }).first();
+    const card = this.page.getByRole("dialog").last().getByRole("button").filter({ hasText: /^[A-Z]\d{3}/ }).first();
     await card.waitFor({ state: "visible", timeout: 10_000 });
     await card.click();
+    await expect(this.page.getByRole("button", { name: /select vendor/i })).toHaveCount(0, { timeout: 5_000 });
   }
 
   /**
@@ -269,7 +293,7 @@ export class PurchaseOrderPage extends BasePage {
    */
   async selectDeliveryDate() {
     const trigger = this.page.getByRole("button", { name: /select date/i }).first();
-    if ((await trigger.count()) === 0) return; // already set
+    await trigger.waitFor({ state: "visible", timeout: 10_000 });
     await trigger.click({ timeout: 10_000 });
     const dialog = this.page.getByRole("dialog").last();
     await dialog.waitFor({ state: "visible", timeout: 5_000 }).catch(() => {});
@@ -299,9 +323,12 @@ export class PurchaseOrderPage extends BasePage {
     // from an immediate `count()`, so a form that has not rendered yet makes all
     // of them no-op. Wait for the item table's own control first.
     await this.addItemButton().waitFor({ state: "visible", timeout: 15_000 });
-    await this.selectFirstWorkflow();
-    await this.selectFirstVendor();
-    await this.selectDeliveryDate();
+    // Header pickers only exist on a blank form; in edit mode the PO already has them.
+    if (/purchase-order\/new/.test(this.page.url())) {
+      await this.selectFirstWorkflow();
+      await this.selectFirstVendor();
+      await this.selectDeliveryDate();
+    }
     await this.addItemButton().click({ timeout: 10_000 });
 
     // Rows are prepended, so the row being filled is the first body row. Wait on
@@ -456,8 +483,54 @@ export class PurchaseOrderPage extends BasePage {
   // Same "From Pr[ice List]" collision as createFromPRMenuItem — see the note there.
   fromPRMenuItem(): Locator {
     return this.page
-      .getByRole("button", { name: /^from pr$|^from pr\b(?!ice)|from purchase request|create from purchase request/i })
+      .getByRole("button", { name: /^from purchase request/i })
       .first();
+  }
+
+  /**
+   * From-Price-List wizard (FE routes/procurement/purchase-order/from-price-list):
+   * step 1 "Order & Vendor" = workflow + delivery date, then a radio list of vendors
+   * with a price list active on that date; Next -> step 2 "Select Items".
+   */
+  async priceListWizardPickVendorAndNext() {
+    await this.selectFirstWorkflow();
+    await this.selectDeliveryDate();
+    const vendor = this.page.getByRole("radio").first();
+    await expect(
+      vendor,
+      "no vendor with an active price list — run `bun run data:reset --yes` (pricing step)",
+    ).toBeVisible({ timeout: 15_000 });
+    await vendor.click();
+    await this.page.getByRole("button", { name: /^next/i }).click({ timeout: 10_000 });
+    await expect(this.page.getByText(/select items/i).first()).toBeVisible({ timeout: 10_000 });
+  }
+
+  /** Step 2: tick the first price-list line, give it the first location, then Next. */
+  async priceListWizardPickItemAndNext() {
+    const row = this.page.getByRole("row").filter({ hasText: /PL\d+/ }).first();
+    await row.getByRole("checkbox").click({ timeout: 10_000 });
+    await row.getByRole("button", { name: /select location/i }).click({ timeout: 10_000 });
+    const card = this.page.getByRole("dialog").last().getByRole("button").filter({ hasText: /\S/ }).first();
+    await card.waitFor({ state: "visible", timeout: 10_000 });
+    await card.click();
+    await this.page.getByRole("button", { name: /^next/i }).click({ timeout: 10_000 });
+  }
+
+  /**
+   * From-PR wizard (FE routes/procurement/purchase-order/from-pr): pick the target
+   * workflow, which loads the approved PRs; tick the first, Next -> "Review POs".
+   */
+  async fromPRWizardPickFirstPRAndNext() {
+    await this.page.goto("/procurement/purchase-order/from-pr");
+    await this.selectFirstWorkflow();
+    const prRows = this.page.locator("tbody tr").filter({ hasText: /PR\d{6,}/ });
+    await expect(
+      prRows.first(),
+      "no approved PR in TEST BU — run `bun run data:reset --yes` (STD pr.approved docs)",
+    ).toBeVisible({ timeout: 15_000 });
+    await prRows.first().getByRole("checkbox").click();
+    await this.page.getByRole("button", { name: /^next/i }).click({ timeout: 10_000 });
+    await expect(this.page.getByText(/review pos/i).first()).toBeVisible({ timeout: 10_000 });
   }
 
   priceListWizardSubmit(): Locator {

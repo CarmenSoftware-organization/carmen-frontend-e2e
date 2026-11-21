@@ -51,21 +51,31 @@ purchaseTest.describe("PO — Create from PR", () => {
       await fromPR.click({ timeout: 10_000 });
       await expect(page).toHaveURL(/purchase-order\/from-pr/, { timeout: 15_000 });
 
-      // Count data rows, not every <tr>: the wizard renders a header row even
-      // when it has nothing to offer, so `getByRole("row").nth(1)` looked like
-      // data and the test walked on into a page with no PR to select. This BU
-      // currently holds no purchase requests at all (verified against
-      // /api/BLAVG/purchase-requests), so state the gap instead of failing on it.
+      // Wizard (FE c9495d99): pick the target workflow -> tick approved PRs -> Next
+      // (Review POs) -> Confirm. The standard dataset (data:reset) seeds approved
+      // PRs, so an empty table is a missing-data failure, not a skip.
+      await page.getByRole("combobox").filter({ hasText: /select workflow/i }).click();
+      await page.getByRole("option").first().click();
       const prRows = page.locator("tbody tr").filter({ hasText: /PR\d{6,}/ });
-      const available = await prRows.count();
-      if (available === 0) {
-        purchaseTest.skip(true, "No approved PR available to build a PO from");
-        return;
-      }
-
-      await prRows.first().getByRole("button").first().click({ timeout: 10_000 });
-      await po.saveButton().click({ timeout: 10_000 });
-      await po.expectSavedToast();
+      await expect(
+        prRows.first(),
+        "no approved PR in TEST BU — run `bun run data:reset --yes` (STD pr.approved docs)",
+      ).toBeVisible({ timeout: 15_000 });
+      await prRows.first().getByRole("checkbox").click();
+      await page.getByRole("button", { name: /^next/i }).click();
+      await expect(page.getByText(/review pos/i).first()).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator("tbody tr").filter({ hasText: /PR\d{6,}/ })).toHaveCount(1);
+      await page.getByRole("button", { name: /^confirm$/i }).click({ timeout: 10_000 });
+      // "Create purchase orders?" alert dialog: its own Confirm creates the PO(s).
+      const created = page.waitForResponse(
+        (r) => /purchase-orders/.test(r.url()) && r.request().method() === "POST",
+        { timeout: 20_000 },
+      );
+      await page.getByRole("alertdialog").getByRole("button", { name: /^confirm$/i }).click({ timeout: 10_000 });
+      expect((await created).ok()).toBe(true);
+      // The wizard stays on /from-pr and swaps to a result card listing the new PO.
+      await expect(page.getByText(/1 purchase orders created/i)).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("link", { name: /^PO\d{6,}/ }).first()).toBeVisible();
     },
   );
 
@@ -87,10 +97,10 @@ purchaseTest.describe("PO — Create from PR", () => {
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
-      await po.newPODropdown().click({ timeout: 5_000 }).catch(() => {});
+      await po.newPODropdown().click({ timeout: 5_000 });
       const fromPR = po.createFromPRMenuItem();
-      if ((await fromPR.count()) === 0) return;
-      await fromPR.click().catch(() => {});
+      await expect(fromPR, "expected element missing (fromPR) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
+      await fromPR.click();
       // Best-effort: empty-state placeholder
       await expect(
         page.getByText(/no.*available|no.*approved.*pr|empty|ไม่พบ/i).first(),
@@ -123,16 +133,16 @@ purchaseTest.describe("PO — Create from PR", () => {
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
-      await po.newPODropdown().click({ timeout: 5_000 }).catch(() => {});
+      await po.newPODropdown().click({ timeout: 5_000 });
       const fromPR = po.createFromPRMenuItem();
-      if ((await fromPR.count()) === 0) return;
-      await fromPR.click().catch(() => {});
+      await expect(fromPR, "expected element missing (fromPR) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
+      await fromPR.click();
       const firstPR = page.getByRole("row").nth(1);
-      if ((await firstPR.count()) === 0) return;
+      await expect(firstPR, "expected element missing (firstPR) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
       // Bounded: a <tr> is not clickable in this app, and with actionTimeout at 0
       // an un-timed click waits for it to become actionable until the test dies.
-      await firstPR.click({ timeout: 10_000 }).catch(() => {});
-      await po.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      await firstPR.click({ timeout: 10_000 });
+      await po.saveButton().click({ timeout: 5_000 });
       await expect(po.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
   );
@@ -228,12 +238,12 @@ purchaseTest.describe("PO — Create manual", () => {
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
-      await po.newPODropdown().click({ timeout: 5_000 }).catch(() => {});
+      await po.newPODropdown().click({ timeout: 5_000 });
       const manual = po.manualPOMenuItem();
-      if ((await manual.count()) > 0) await manual.click().catch(() => {});
+      if ((await manual.count()) > 0) await manual.click();
       const vendor = po.vendorTrigger();
-      if ((await vendor.count()) > 0) await vendor.fill("__NONEXISTENT_VENDOR__").catch(() => {});
-      await po.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      if ((await vendor.count()) > 0) await vendor.fill("__NONEXISTENT_VENDOR__");
+      await po.saveButton().click({ timeout: 5_000 });
       await expect(po.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
   );
@@ -256,10 +266,10 @@ purchaseTest.describe("PO — Create manual", () => {
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
-      await po.newPODropdown().click({ timeout: 5_000 }).catch(() => {});
+      await po.newPODropdown().click({ timeout: 5_000 });
       const manual = po.manualPOMenuItem();
-      if ((await manual.count()) > 0) await manual.click().catch(() => {});
-      await po.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      if ((await manual.count()) > 0) await manual.click();
+      await po.saveButton().click({ timeout: 5_000 });
       await expect(po.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
   );
@@ -282,9 +292,9 @@ purchaseTest.describe("PO — Create manual", () => {
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
-      await po.newPODropdown().click({ timeout: 5_000 }).catch(() => {});
+      await po.newPODropdown().click({ timeout: 5_000 });
       const manual = po.manualPOMenuItem();
-      if ((await manual.count()) > 0) await manual.click().catch(() => {});
+      if ((await manual.count()) > 0) await manual.click();
       // Best-effort: max-item testing requires seed data; placeholder
     },
   );
@@ -341,7 +351,7 @@ purchaseTest.describe("PO — Send to Vendor", () => {
           description:
             "1. ไปที่ /procurement/purchase-order\n2. กดปุ่ม 'Send to Vendor'\n3. ตรวจสอบว่าระบบดำเนินการตรวจสอบก่อนส่ง\n4. กด 'Send'",
         },
-        { type: "expected", description: "Purchase order ถูกส่งให้ vendor และ status ถูกอัปเดตเป็น 'Sent'" },
+        { type: "expected", description: "PO ที่ Approved แล้วเปิด dialog 'Send purchase order to vendor' ผูกกับเลข PO; ใน TEST BU ที่ไม่มี email profile ที่เปิดใช้ dialog แสดงสถานะ no-profile พร้อมลิงก์ไปตั้งค่า (ไม่กดส่งจริง)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -365,11 +375,14 @@ purchaseTest.describe("PO — Send to Vendor", () => {
       const dialog = page.locator('[role="dialog"], [role="alertdialog"]').last();
       await expect(dialog).toBeVisible({ timeout: 10_000 });
       await expect(dialog).toContainText(/send purchase order to vendor/i);
-      await expect(dialog.getByRole("button", { name: /^send$/i })).toBeVisible();
-
-      // Deliberately not pressing Send: "To" comes up empty because this vendor
-      // has no email on file, and completing the flow would dispatch a real
-      // message. Finishing it needs a vendor fixture that carries an address.
+      // Bound to this PO (FE po-send-email-dialog: "Email {poNo} to the vendor ...").
+      await expect(dialog).toContainText(/PO\d{6,}/);
+      // The standard dataset has no enabled email profile in TEST BU, so the compose
+      // form (with its Send button) is replaced by the no-profile state. Asserting
+      // that state is the honest outcome here; pressing Send would also dispatch a
+      // real message, so it is deliberately not done.
+      await expect(dialog.getByText(/no enabled email profile/i)).toBeVisible();
+      await expect(dialog.getByRole("link", { name: /go to email profile settings/i })).toBeVisible();
     },
   );
 
@@ -396,14 +409,14 @@ purchaseTest.describe("PO — Send to Vendor", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
+      await expect(draftRow, "expected element missing (draftRow) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(draftRow);
-      await po.sendToVendorButton().click({ timeout: 5_000 }).catch(() => {});
+      await po.sendToVendorButton().click({ timeout: 5_000 });
       await expect(po.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
   );
 
-  purchaseTest(
+  purchaseTest.fixme(
     "TC-PO-030003 Negative - Insufficient Budget",
     {
       annotation: [
@@ -416,19 +429,20 @@ purchaseTest.describe("PO — Send to Vendor", () => {
         { type: "expected", description: "ระบบป้องกันการส่ง purchase order และแสดงข้อความเตือน" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
+        { type: "note", description: "fixme (T3 follow-up): body drove a list row whose state (Rejected/Sent/Completed/approved-with-Change-Order) is not in the STD dataset and its old guards hid that; needs a seeded fixture or rewrite" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
+      await expect(draftRow, "expected element missing (draftRow) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(draftRow);
-      await po.sendToVendorButton().click({ timeout: 5_000 }).catch(() => {});
+      await po.sendToVendorButton().click({ timeout: 5_000 });
     },
   );
 
-  purchaseTest(
+  purchaseTest.fixme(
     "TC-PO-030004 Edge Case - Purchase Order in 'Rejected' Status",
     {
       annotation: [
@@ -441,16 +455,14 @@ purchaseTest.describe("PO — Send to Vendor", () => {
         { type: "expected", description: "ระบบป้องกันการส่ง purchase order และแสดงข้อความแจ้งข้อผิดพลาด" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
+        { type: "note", description: "fixme (T3 follow-up): body drove a list row whose state (Rejected/Sent/Completed/approved-with-Change-Order) is not in the STD dataset and its old guards hid that; needs a seeded fixture or rewrite" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const rejectedRow = page.locator("tbody").getByRole("row").filter({ hasText: /rejected/i }).first();
-      if ((await rejectedRow.count()) === 0) {
-        purchaseTest.skip(true, "No rejected PO available");
-        return;
-      }
+      await expect(rejectedRow, "No rejected PO available").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(rejectedRow);
       const send = po.sendToVendorButton();
       // Either button is hidden/disabled (correct) or click yields error
@@ -467,7 +479,7 @@ purchaseTest.describe("PO — Send to Vendor", () => {
 // TC-PO-900004 — Change Order
 // ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("PO — Change Order", () => {
-  purchaseTest(
+  purchaseTest.fixme(
     "TC-PO-040001 Happy Path - Change Order",
     {
       annotation: [
@@ -480,30 +492,25 @@ purchaseTest.describe("PO — Change Order", () => {
         { type: "expected", description: "คำขอ change order ถูก submit สำเร็จ และแสดงการแจ้งเตือนยืนยันการ submit" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
+        { type: "note", description: "fixme (T3 follow-up): body drove a list row whose state (Rejected/Sent/Completed/approved-with-Change-Order) is not in the STD dataset and its old guards hid that; needs a seeded fixture or rewrite" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const approvedRow = page.locator("tbody").getByRole("row").filter({ hasText: /^approved$/i }).first();
-      if ((await approvedRow.count()) === 0) {
-        purchaseTest.skip(true, "No approved PO available");
-        return;
-      }
+      await expect(approvedRow, "No approved PO available").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(approvedRow);
       const change = po.requestChangeOrderButton();
-      if ((await change.count()) === 0) {
-        purchaseTest.skip(true, "Change Order UI not exposed");
-        return;
-      }
-      await change.click().catch(() => {});
-      await po.reasonInput().fill("Updated specifications").catch(() => {});
+      await expect(change, "Change Order UI not exposed").toBeVisible({ timeout: 10_000 });
+      await change.click();
+      await po.reasonInput().fill("Updated specifications");
       await po.confirmDialogButton(/submit|confirm/i).click({ timeout: 5_000 });
       await po.expectSavedToast();
     },
   );
 
-  purchaseTest(
+  purchaseTest.fixme(
     "TC-PO-040003 Negative - Invalid Input",
     {
       annotation: [
@@ -516,23 +523,24 @@ purchaseTest.describe("PO — Change Order", () => {
         { type: "expected", description: "ระบบแสดง validation error สำหรับ field ที่ไม่ถูกต้อง และป้องกันการ submit คำขอ change order" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
+        { type: "note", description: "fixme (T3 follow-up): body drove a list row whose state (Rejected/Sent/Completed/approved-with-Change-Order) is not in the STD dataset and its old guards hid that; needs a seeded fixture or rewrite" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const approvedRow = page.locator("tbody").getByRole("row").filter({ hasText: /^approved$/i }).first();
-      if ((await approvedRow.count()) === 0) return;
+      await expect(approvedRow, "expected element missing (approvedRow) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(approvedRow);
       const change = po.requestChangeOrderButton();
-      if ((await change.count()) === 0) return;
-      await change.click().catch(() => {});
+      await expect(change, "expected element missing (change) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
+      await change.click();
       await po.confirmDialogButton(/submit/i).click({ timeout: 5_000 });
       await expect(po.anyError().first()).toBeVisible({ timeout: 5_000 });
     },
   );
 
-  purchaseTest(
+  purchaseTest.fixme(
     "TC-PO-040004 Edge Case - Change Order for Sent Status",
     {
       annotation: [
@@ -545,16 +553,14 @@ purchaseTest.describe("PO — Change Order", () => {
         { type: "expected", description: "ระบบแสดงข้อความแจ้งว่าไม่สามารถ submit change order สำหรับ purchase order ที่มี status Sent ได้" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
+        { type: "note", description: "fixme (T3 follow-up): body drove a list row whose state (Rejected/Sent/Completed/approved-with-Change-Order) is not in the STD dataset and its old guards hid that; needs a seeded fixture or rewrite" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const sentRow = page.locator("tbody").getByRole("row").filter({ hasText: /^sent$/i }).first();
-      if ((await sentRow.count()) === 0) {
-        purchaseTest.skip(true, "No sent PO available");
-        return;
-      }
+      await expect(sentRow, "No sent PO available").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(sentRow);
       const change = po.requestChangeOrderButton();
       // Either button is hidden/disabled (correct) or click yields error
@@ -587,14 +593,14 @@ requestorTest.describe("PO — Change Order — Permission denial", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
+      await expect(row, "expected element missing (row) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       const change = po.requestChangeOrderButton();
       // Either button is hidden (correct) or click yields permission error
       if ((await change.count()) === 0) {
         expect(true).toBe(true);
       } else {
-        await change.click().catch(() => {});
+        await change.click();
       }
     },
   );
@@ -631,19 +637,16 @@ purchaseTest.describe("PO — Cancel", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const activeRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft|sent|approved/i }).first();
-      if ((await activeRow.count()) === 0) {
-        purchaseTest.skip(true, "No active PO available");
-        return;
-      }
+      await expect(activeRow, "No active PO available").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(activeRow);
-      await po.cancelPOButton().click({ timeout: 5_000 }).catch(() => {});
-      await po.reasonInput().fill("Order no longer needed").catch(() => {});
+      await po.cancelPOButton().click({ timeout: 5_000 });
+      await po.reasonInput().fill("Order no longer needed");
       await po.confirmDialogButton().click({ timeout: 5_000 });
       await po.expectSavedToast();
     },
   );
 
-  purchaseTest(
+  purchaseTest.fixme(
     "TC-PO-050002 Negative - Attempt to Cancel Completed Purchase Order",
     {
       annotation: [
@@ -656,16 +659,14 @@ purchaseTest.describe("PO — Cancel", () => {
         { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดว่าไม่สามารถยกเลิก PO ได้เนื่องจาก completed แล้ว" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
+        { type: "note", description: "fixme (T3 follow-up): body drove a list row whose state (Rejected/Sent/Completed/approved-with-Change-Order) is not in the STD dataset and its old guards hid that; needs a seeded fixture or rewrite" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const completedRow = page.locator("tbody").getByRole("row").filter({ hasText: /completed/i }).first();
-      if ((await completedRow.count()) === 0) {
-        purchaseTest.skip(true, "No completed PO available");
-        return;
-      }
+      await expect(completedRow, "No completed PO available").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(completedRow);
       const cancel = po.cancelPOButton();
       // Either button is hidden/disabled (correct) or click yields error
@@ -677,7 +678,7 @@ purchaseTest.describe("PO — Cancel", () => {
     },
   );
 
-  purchaseTest(
+  purchaseTest.fixme(
     "TC-PO-050003 Edge Case - Cancel Purchase Order with Shipped Goods",
     {
       annotation: [
@@ -690,15 +691,16 @@ purchaseTest.describe("PO — Cancel", () => {
         { type: "expected", description: "ระบบแจ้งให้ผู้ใช้จัดการการคืนหรือเปลี่ยนสินค้าก่อนอนุญาตการยกเลิก" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
+        { type: "note", description: "fixme (T3 follow-up): body drove a list row whose state (Rejected/Sent/Completed/approved-with-Change-Order) is not in the STD dataset and its old guards hid that; needs a seeded fixture or rewrite" },
       ],
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       const sentRow = page.locator("tbody").getByRole("row").filter({ hasText: /sent|shipped/i }).first();
-      if ((await sentRow.count()) === 0) return;
+      await expect(sentRow, "expected element missing (sentRow) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(sentRow);
-      await po.cancelPOButton().click({ timeout: 5_000 }).catch(() => {});
+      await po.cancelPOButton().click({ timeout: 5_000 });
     },
   );
 });
@@ -868,7 +870,7 @@ purchaseTest.describe("PO — QR Code", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
+      await expect(row, "expected element missing (row) - seed data or UI changed").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(row);
       await page.reload();
       await page.waitForLoadState("networkidle");

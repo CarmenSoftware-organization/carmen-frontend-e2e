@@ -4,7 +4,7 @@ import { BasePage } from "./base.page";
 
 export const LIST_PATH = "/procurement/purchase-request";
 export const NEW_PATH = "/procurement/purchase-request/new";
-export const APPROVALS_PATH = "/procurement/purchase-requests/my-approvals";
+export const APPROVALS_PATH = "/procurement/my-approval";
 
 export type PRType = "general" | "asset" | "service";
 

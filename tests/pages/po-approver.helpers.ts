@@ -8,8 +8,11 @@ import { ensureActiveBu } from "../helpers/bu";
 const FUTURE_DATE = "2099-12-31";
 
 export interface CreatedPO {
+  /** Record id (uuid) from the detail URL. */
   ref: string;
   url: string;
+  /** Human document number ("PO26110001") shown in the header and list rows. */
+  poNo: string;
 }
 
 /**
@@ -76,7 +79,10 @@ async function createDraftOnPage(
   if (!ref || ref === "new") {
     throw new Error(`${who}: could not extract PO ref from URL: ${url}`);
   }
-  return { ref, url };
+  // Lists and the approval inbox show the document number, never the uuid in the URL.
+  const poNo = (await page.getByText(/^PO\d{6,}$/).first().textContent({ timeout: 15_000 }))?.trim() ?? "";
+  if (!poNo) throw new Error(`${who}: could not read the PO number for ${ref}`);
+  return { ref, url, poNo };
 }
 
 /**
@@ -109,7 +115,7 @@ export async function submitPOAsPurchaser(
 ): Promise<CreatedPO> {
   return await withRoleContext(browser, "carmensoftware.dev+purchase@gmail.com", async (page) => {
     const po = new PurchaseOrderPage(page);
-    const { ref, url } = await createDraftOnPage(page, opts, "submitPOAsPurchaser");
+    const { ref, url, poNo } = await createDraftOnPage(page, opts, "submitPOAsPurchaser");
 
     // Submit for approval. Two things made this look like it worked while the PO
     // stayed in Draft:
@@ -142,7 +148,7 @@ export async function submitPOAsPurchaser(
       );
     }
 
-    return { ref, url };
+    return { ref, url, poNo };
   });
 }
 
