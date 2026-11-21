@@ -580,7 +580,7 @@ header ของ column name กลับมา visible หลัง check
 
 **Expected**
 
-search ยังกรองข้อมูลตาม column ที่ซ่อนได้ (rows >= 0)
+search ยังกรองข้อมูลตาม column ที่ซ่อนได้: header Name หายไปแต่ค้นด้วยค่าของ column นั้นยังเจอ record (rows > 0)
 
 ---
 
@@ -1215,4 +1215,4 @@ name input ตัดข้อความให้ยาวไม่เกิน
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>
+<sub>Last regenerated: 2026-11-21 · git a410f72</sub>

@@ -362,9 +362,11 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
       ],
     },
     async ({ page }) => {
-      procurementManagerTest.fail(true, "suspected bug: a price-list template saves with no product at all (no validation error) — same as TC-PT-020002");
       const { tpl } = await openOwnTemplate(page, "noprod");
       await tpl.editButton().click({ timeout: 10_000 });
+      await expect(tpl.saveButton()).toBeVisible({ timeout: 10_000 });
+      // Setup above is normal; only the bug site below (a product-less save goes through) is the expected failure.
+      procurementManagerTest.fail(true, "suspected bug: a price-list template saves with no product at all (no validation error) — same as TC-PT-020002");
       const write = page.waitForResponse((r) => r.request().method() !== "GET" && /pricelist/i.test(r.url()), { timeout: 6_000 }).then(() => true, () => false);
       await tpl.saveButton().click({ timeout: 10_000 });
       // A blocked save sends no write request (validation), so nothing is saved.

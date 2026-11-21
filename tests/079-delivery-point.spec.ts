@@ -657,7 +657,7 @@ test.describe("จุดส่งของ — อ่าน", () => {
       annotation: [
         { type: "preconditions", description: "ผู้ใช้ login แล้ว และมีปุ่ม column visibility" },
         { type: "steps", description: "1. เปิดหน้า list\n2. ซ่อน column name\n3. search ด้วยคำที่อยู่ในข้อมูล\n4. ตรวจสอบ rows" },
-        { type: "expected", description: "search ยังกรองข้อมูลตาม column ที่ซ่อนได้ (rows >= 0)" },
+        { type: "expected", description: "search ยังกรองข้อมูลตาม column ที่ซ่อนได้: header Name หายไปแต่ค้นด้วยค่าของ column นั้นยังเจอ record (rows > 0)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
