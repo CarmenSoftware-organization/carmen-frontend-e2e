@@ -62,7 +62,7 @@ Login เป็น Purchaser (carmensoftware.dev+purchase@gmail.com)
 
 **Expected**
 
-URL อยู่ที่หน้า PR list; แท็บ My Pending ถูกเลือกเมื่อมีอยู่
+URL อยู่ที่หน้า PR list; ปุ่ม My Pending แสดงและเป็นมุมมองเริ่มต้น (ไม่มี view=all-document)
 
 ---
 
@@ -82,7 +82,7 @@ URL อยู่ที่หน้า PR list; แท็บ My Pending ถูก
 
 **Expected**
 
-แท็บ All Documents ถูกเลือก
+หลังคลิก All Documents URL มี ?view=all-document
 
 ---
 
@@ -121,12 +121,11 @@ URL อยู่ที่หน้า PR list; แท็บ My Pending ถูก
 **Steps**
 
 1. เปิดแผง Filter
-2. เลือก status
-3. Apply
+2. เลือกฟิลด์ Status แล้วติ๊ก In progress (ไม่มีปุ่ม Apply)
 
 **Expected**
 
-URL ยังคงอยู่ที่หน้า PR list หลังจากใช้ filter
+หลังติ๊ก In progress ทุกแถวที่แสดงมีสถานะ In progress
 
 ---
 
@@ -191,7 +190,7 @@ PR มีอยู่ที่ขั้นตอน Purchase (seeded ผ่า�
 
 **Expected**
 
-URL เป็น detail URL; แท็บ Items ถูกเลือกเมื่อมีอยู่
+URL เป็น detail URL; ตารางรายการสินค้า (คอลัมน์ Product + แถวรายการที่ seed) แสดงเป็นค่าเริ่มต้น
 
 ---
 
@@ -211,7 +210,7 @@ URL เป็น detail URL; แท็บ Items ถูกเลือกเม�
 
 **Expected**
 
-แท็บ Workflow History ถูกเลือก
+หลังคลิกตัวเปิดประวัติ (stepper) แสดง sheet Workflow History ที่มีรายการของ requestor
 
 ---
 
@@ -403,7 +402,7 @@ Edit mode active อยู่บน PR ขั้นตอน Purchase ที่�
 
 **Expected**
 
-URL ยังคงอยู่ที่หน้า detail หลังจากคลิก (allocation ทำงาน)
+หลังคลิก Auto Allocate แอปแจ้งผลการจัดสรร (toast)
 
 ---
 
@@ -615,7 +614,7 @@ Edit mode active อยู่บน PR ขั้นตอน Purchase
 
 **Expected**
 
-URL ยังคงอยู่ที่ PR ref (status เลื่อนไปขั้นตอนถัดไป)
+ใส่ vendor/ราคา/tax แล้ว PATCH .../approve สำเร็จ และ PR ที่เปิดใหม่ไม่มีปุ่ม Edit สำหรับ Purchaser (เลื่อนไปขั้นตอนถัดไป)
 
 ---
 
@@ -639,7 +638,7 @@ Edit mode active อยู่บน PR ขั้นตอน Purchase
 
 **Expected**
 
-URL ยังคงอยู่ที่ PR ref หลังจาก reject
+PATCH .../reject สำเร็จ (Reject ที่รายการแล้วต้องกด Reject ระดับเอกสารอีกครั้ง) และ PR ที่เปิดใหม่มีสถานะ Voided
 
 ---
 
@@ -663,7 +662,7 @@ Edit mode active อยู่บน PR ขั้นตอน Purchase
 
 **Expected**
 
-URL ยังคงอยู่ที่ PR ref หลังจาก send for review
+PATCH .../review สำเร็จ และ PR ที่เปิดใหม่ไม่มีปุ่ม Edit สำหรับ Purchaser (เอกสารถูกส่งกลับ HOD)
 
 ---
 
@@ -679,13 +678,13 @@ Edit mode active อยู่บน PR ขั้นตอน Purchase
 
 **Steps**
 
-1. เข้า edit mode
-2. เลือกทุกแถว
+1. เข้า edit mode บน PR ที่มี 2 รายการ
+2. ติ๊กแถวแรกแถวเดียว
 3. คลิก Split
 
 **Expected**
 
-Split UI ปรากฏขึ้น (dialog หรือ inline) — ตรวจสอบโดย URL ยังคงอยู่ที่หน้า detail
+POST .../split สำเร็จ (200) — รายการที่ติ๊กถูกย้ายไป PR ใหม่
 
 ---
 
@@ -731,9 +730,9 @@ Login เป็น Purchaser; PR ใหม่ถูก seed ที่ขั้�
 
 **Expected**
 
-URL ยังคงอยู่ที่ PR ref หลังจาก bulk approve; journey เสร็จสมบูรณ์ตั้งแต่ต้นจนจบ
+ใส่ vendor/ราคา/tax แล้ว bulk approve สำเร็จ และ Purchaser ไม่มีปุ่ม Edit บน PR นั้นอีก (journey เสร็จสมบูรณ์)
 
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>
+<sub>Last regenerated: 2026-11-21 · git 9d79c62</sub>

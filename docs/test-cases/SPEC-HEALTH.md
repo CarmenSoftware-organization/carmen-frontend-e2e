@@ -14,10 +14,10 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | Fixme | 8 |
 | **Dormant** (skipped + fixme) | **15%** |
 | Running cases asserting only through a page-object helper | 31 |
-| **Running cases asserting nothing at all** | **210** |
+| **Running cases asserting nothing at all** | **209** |
 | Running cases whose assertions are all trivial | 10 |
-| Running cases behind an in-body skip guard | 113 |
-| Assertions in running cases | 1903 |
+| Running cases behind an in-body skip guard | 47 |
+| Assertions in running cases | 2026 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -46,7 +46,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `900-period-end.spec.ts` | 4 | 30 | 1 | 89% | 0 | 0 | 0 | **1** | 4 | 1 |
 | `601-cn.spec.ts` | 45 | 79 | 0 | 64% | **33** | 0 | **2** | **3** | 16 | 22 |
 | `401-po.spec.ts` | 19 | 32 | 0 | 63% | 0 | 0 | 0 | **1** | 62 | 0 |
-| `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 13 | 0 |
+| `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 11 | 0 |
 | `301-pr.spec.ts` | 66 | 47 | 0 | 42% | **6** | 2 | 0 | **5** | 85 | 0 |
 | `311-pr-returned-flow.spec.ts` | 10 | 0 | 2 | 17% | 0 | 0 | 0 | **9** | 14 | 6 |
 | `711-stock-replenishment.spec.ts` | 33 | 0 | 3 | 8% | 0 | 0 | 0 | 0 | 47 | 16 |
@@ -55,7 +55,6 @@ Sorted by dormant share, then by cases that assert nothing.
 | `701-sr.spec.ts` | 46 | 0 | 1 | 2% | **44** | 0 | 0 | **3** | 2 | 14 |
 | `501-grn.spec.ts` | 76 | 0 | 0 | 0% | **57** | 0 | **4** | **6** | 26 | 49 |
 | `310-pr-template.spec.ts` | 61 | 0 | 0 | 0% | **51** | 0 | **4** | 0 | 13 | 11 |
-| `302-pr-creator-journey.spec.ts` | 42 | 0 | 0 | 0% | **1** | 0 | 0 | **21** | 52 | 10 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `010-department.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 57 | 2 |
 | `020-unit.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 32 | 0 |
@@ -82,11 +81,12 @@ Sorted by dormant share, then by cases that assert nothing.
 | `150-vendor.spec.ts` | 31 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 57 | 1 |
 | `159-pl.spec.ts` | 22 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 52 | 0 |
 | `160-pl-template.spec.ts` | 32 | 0 | 0 | 0% | 0 | 7 | 0 | 0 | 54 | 0 |
-| `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | **21** | 41 | 10 |
-| `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | **24** | 53 | 9 |
+| `302-pr-creator-journey.spec.ts` | 42 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 100 | 0 |
+| `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 79 | 0 |
+| `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 92 | 0 |
 | `312-pr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
 | `402-po-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 65 | 0 |
-| `403-po-approver-journey.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 70 | 1 |
+| `403-po-approver-journey.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 70 | 0 |
 | `404-po-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 17 | 1 |
 | `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |

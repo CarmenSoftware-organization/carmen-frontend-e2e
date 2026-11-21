@@ -2,6 +2,7 @@ import { test as baseTest, expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { PurchaseRequestPage, LIST_PATH } from "./pages/purchase-request.page";
 import { createDraftPR, submitDraftPR, deleteDraftPR, e2eDescription } from "./pages/pr-creator.helpers";
+import { openRecordFromRow, recordRows } from "./helpers/list-row";
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
@@ -12,7 +13,6 @@ import { BuSwitcherPage } from "./pages/bu-switcher.page";
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 
 const FUTURE_DATE = "2099-12-31";
-const PAST_DATE = "2020-01-01";
 
 requestorTest.describe("Step 1 — PR List", () => {
   // Transaction-module rollout: pin the creator session's active BU to BLAVG.
@@ -55,12 +55,10 @@ requestorTest.describe("Step 1 — PR List", () => {
       await expect(page).toHaveURL(new RegExp(LIST_PATH));
       // Redesigned list uses a viewMode <Button> toggle (no aria-selected) —
       // assert the My Pending toggle is present (it is the default view).
-      const tab = pr.tabMyPending();
-      if ((await tab.count()) === 0) {
-        // Toggle UI not present — list URL check above is sufficient for the smoke
-        return;
-      }
-      await expect(tab).toBeVisible({ timeout: 5_000 });
+      await expect(pr.tabMyPending(), "My Pending toggle missing on the PR list").toBeVisible({ timeout: 5_000 });
+      await expect(page).not.toHaveURL(/view=all-document/);
+      // Table or its empty state is rendered.
+      await expect(page.getByRole("table").or(page.getByText(/no data|no results|nothing/i)).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -70,7 +68,7 @@ requestorTest.describe("Step 1 — PR List", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list" },
         { type: "steps", description: "1. คลิก tab All Documents\n2. ตรวจสอบว่า list รีเฟรช" },
-        { type: "expected", description: "tab All Documents ถูกเลือก; list แสดงผลใหม่" },
+        { type: "expected", description: "หลังคลิก All Documents URL มี ?view=all-document" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -79,14 +77,10 @@ requestorTest.describe("Step 1 — PR List", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
       const tab = pr.tabAllDocuments();
-      if ((await tab.count()) === 0) {
-        requestorTest.skip(true, "All Documents toggle not present in this build");
-        return;
-      }
+      await expect(tab, "All Documents toggle missing on the PR list").toBeVisible({ timeout: 10_000 });
       await tab.click();
-      // viewMode <Button> toggle has no aria-selected — assert the click kept us
-      // on the list (scope broadened) without error.
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 5_000 });
+      // The viewMode toggle has no aria-selected; its state lives in the URL (?view=).
+      await expect(page).toHaveURL(/view=all-document/, { timeout: 5_000 });
     },
   );
 
@@ -96,7 +90,7 @@ requestorTest.describe("Step 1 — PR List", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list; มี PR อย่างน้อยหนึ่งรายการที่มีเลขอ้างอิงที่รู้จัก" },
         { type: "steps", description: "1. คลิกช่องค้นหา\n2. พิมพ์เลขอ้างอิงบางส่วน\n3. รอให้ list กรองข้อมูล" },
-        { type: "expected", description: "List อัปเดตแสดงเฉพาะแถวที่เลขอ้างอิงมีข้อความที่พิมพ์" },
+        { type: "expected", description: "ค้น PR2611 แล้วทุกแถวที่แสดงมีข้อความนั้น; ค้นข้อความที่ไม่มีอยู่แล้วไม่เหลือแถว" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -104,13 +98,15 @@ requestorTest.describe("Step 1 — PR List", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const input = pr.searchInput();
-      if ((await input.count()) === 0) {
-        requestorTest.skip(true, "Search input not present in this build");
-        return;
-      }
-      await pr.searchFor("PR");
-      await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      await expect(pr.searchInput(), "Search input missing on the PR list").toBeVisible({ timeout: 10_000 });
+      await pr.gotoAllDocuments();
+      await pr.searchFor("PR2611");
+      const rows = recordRows(page);
+      await expect(rows.first(), "search for a PR prefix returned no rows").toBeVisible({ timeout: 10_000 });
+      // Every listed row carries the searched text.
+      for (const text of await rows.allInnerTexts()) expect(text).toMatch(/PR2611/);
+      await pr.searchFor("zzz-no-such-pr");
+      await expect(rows).toHaveCount(0, { timeout: 10_000 });
     },
   );
 
@@ -119,8 +115,8 @@ requestorTest.describe("Step 1 — PR List", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list" },
-        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือก status = Draft\n3. Apply" },
-        { type: "expected", description: "List แสดงเฉพาะ PR ที่มีสถานะ Draft (หรือ empty state)" },
+        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือกฟิลด์ Status แล้วติ๊ก Draft (ไม่มีปุ่ม Apply)" },
+        { type: "expected", description: "ทุกแถวที่แสดงมีสถานะ Draft (requestor มี Draft จากชุดข้อมูลทดสอบ)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -128,13 +124,10 @@ requestorTest.describe("Step 1 — PR List", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const fb = pr.filterButton();
-      if ((await fb.count()) === 0) {
-        requestorTest.skip(true, "Filter button not present in this build");
-        return;
-      }
-      await pr.applyFilter({ status: "Draft" });
-      await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      await expect(pr.filterButton(), "Filter button missing on the PR list").toBeVisible({ timeout: 10_000 });
+      await pr.gotoAllDocuments();
+      await pr.applyFilter("Draft");
+      await pr.expectEveryRowStatus(/draft/i);
     },
   );
 
@@ -152,8 +145,12 @@ requestorTest.describe("Step 1 — PR List", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      await pr.sortBy("date");
-      await expect(page).toHaveURL(new RegExp(LIST_PATH));
+      await pr.gotoAllDocuments();
+      const header = page.getByRole("columnheader", { name: /date/i }).first();
+      await expect(header, "Date column header missing").toBeVisible({ timeout: 10_000 });
+      const before = await page.locator("tbody tr").first().innerText();
+      await header.getByRole("button").first().click();
+      await expect(page.locator("tbody tr").first(), "list did not re-sort").not.toHaveText(before, { timeout: 10_000 });
     },
   );
 
@@ -171,17 +168,10 @@ requestorTest.describe("Step 1 — PR List", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const firstRow = page.getByRole("row").nth(1);
-      if ((await firstRow.count()) === 0) {
-        requestorTest.skip(true, "No PR rows exist for this Requestor");
-        return;
-      }
-      const link = firstRow.getByRole("link").first();
-      if ((await link.count()) === 0) {
-        requestorTest.skip(true, "First row does not contain a navigation link");
-        return;
-      }
-      await link.click();
+      await pr.gotoAllDocuments();
+      const firstRow = recordRows(page).first();
+      await expect(firstRow, "No PR rows exist — data:reset seeds PRs for the requestor").toBeVisible({ timeout: 10_000 });
+      await openRecordFromRow(firstRow);
       await expect(page).toHaveURL(/purchase-request\/(?!new$)[^\/?#]+$/, { timeout: 10_000 });
     },
   );
@@ -235,7 +225,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่ฟอร์มสร้าง PR" },
         { type: "steps", description: "1. ไปที่ /new\n2. ตรวจสอบค่า default ของ date, department, location, currency, status" },
-        { type: "expected", description: "ฟอร์มอยู่ที่ /new และแสดง Draft indicator เมื่อ badge แสดงผล" },
+        { type: "expected", description: "ฟอร์มอยู่ที่ /new มีปุ่ม Add Item, workflow ยังไม่เลือก (Select workflow) และยังไม่มีรายการสินค้า" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
@@ -244,10 +234,10 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoNew();
       await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
-      const draftBadge = page.locator("[data-slot='status'], [data-slot='badge'], [class*='badge']").filter({ hasText: /draft/i }).first();
-      if ((await draftBadge.count()) > 0) {
-        await expect(draftBadge).toBeVisible();
-      }
+      // New form defaults: no line items yet, workflow still to be chosen, Save available.
+      await expect(pr.addItemButton(), "Add Item button missing on the new form").toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("combobox").first()).toContainText(/select workflow/i);
+      await expect(pr.requestedQtyInputs()).toHaveCount(0);
     },
   );
 
@@ -281,7 +271,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่ฟอร์มสร้าง PR โดยกรอก header แล้ว" },
         { type: "steps", description: "1. คลิก Add Item\n2. กรอก product, qty, uom, unit price\n3. บันทึกรายการ" },
-        { type: "expected", description: "ฟอร์มยังคงอยู่ที่ /new — การเพิ่มรายการไม่นำทางออกจากฟอร์มสร้าง" },
+        { type: "expected", description: "ตารางมี 1 แถว (requested qty = 1) และฟอร์มยังอยู่ที่ /new" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -292,6 +282,8 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       await pr.fillHeader({ prType: "general", deliveryDate: FUTURE_DATE });
       await pr.addLineItem({ product: "Test Item", quantity: 1, uom: "ea", unitPrice: 100 });
       await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(pr.requestedQtyInputs(), "the added line is not in the grid").toHaveCount(1);
+      await expect(pr.requestedQtyInputs().first()).toHaveValue("1");
     },
   );
 
@@ -301,7 +293,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่ฟอร์มสร้าง PR โดยกรอก header แล้ว" },
         { type: "steps", description: "1. เพิ่มรายการ\n2. Toggle checkbox FOC\n3. บันทึก" },
-        { type: "expected", description: "ฟอร์มยังคงอยู่ที่ /new หลังจากบันทึกรายการ FOC" },
+        { type: "expected", description: "ช่อง FOC qty ของแถวเก็บค่า 5 ไว้" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -312,6 +304,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       await pr.fillHeader({ prType: "general", deliveryDate: FUTURE_DATE });
       await pr.addLineItem({ product: "FOC Item", quantity: 5, uom: "ea", isFOC: true });
       await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(pr.focQtyInput(0), "FOC quantity was not kept on the row").toHaveValue("5");
     },
   );
 
@@ -321,7 +314,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่ฟอร์มสร้าง PR" },
         { type: "steps", description: "1. เพิ่มรายการสินค้า 3 รายการที่ราคาต่างกัน\n2. ตรวจสอบว่าฟอร์มยังแสดงอยู่" },
-        { type: "expected", description: "ฟอร์มยังคงอยู่ที่ /new หลังจากเพิ่ม 3 รายการ" },
+        { type: "expected", description: "หลังเพิ่ม 3 รายการ ตารางมี 3 แถว (ช่อง requested qty 3 ช่อง)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -334,6 +327,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
         await pr.addLineItem({ product: `Item ${i}`, quantity: i, uom: "ea", unitPrice: 50 * i });
       }
       await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(pr.requestedQtyInputs(), "three lines were not all added").toHaveCount(3);
     },
   );
 
@@ -343,7 +337,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       annotation: [
         { type: "preconditions", description: "กรอก header แล้วและเพิ่มรายการสินค้าอย่างน้อยหนึ่งรายการ" },
         { type: "steps", description: "1. เพิ่ม 1 รายการ\n2. แก้ไขจำนวน\n3. บันทึกรายการ" },
-        { type: "expected", description: "ฟอร์มยังคงอยู่ที่ /new หลังจากแก้ไข" },
+        { type: "expected", description: "ช่อง requested qty ของรายการแรกเปลี่ยนเป็น 5" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -354,7 +348,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       await pr.fillHeader({ prType: "general", deliveryDate: FUTURE_DATE });
       await pr.addLineItem({ product: "Edit Me", quantity: 1, uom: "ea", unitPrice: 100 });
       await pr.editLineItem(0, { quantity: 5 });
-      await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(pr.requestedQtyInputs().first()).toHaveValue("5");
     },
   );
 
@@ -364,7 +358,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       annotation: [
         { type: "preconditions", description: "กรอก header แล้วและเพิ่มรายการสินค้าอย่างน้อยหนึ่งรายการ" },
         { type: "steps", description: "1. เพิ่มรายการ\n2. คลิกปุ่มลบรายการนั้น" },
-        { type: "expected", description: "ฟอร์มยังคงอยู่ที่ /new หลังจากลบ" },
+        { type: "expected", description: "แถวถูกลบออกจากตาราง (ไม่เหลือช่อง requested qty)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -375,7 +369,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       await pr.fillHeader({ prType: "general", deliveryDate: FUTURE_DATE });
       await pr.addLineItem({ product: "Remove Me", quantity: 1, uom: "ea", unitPrice: 100 });
       await pr.removeLineItem(0);
-      await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(pr.requestedQtyInputs()).toHaveCount(0);
     },
   );
 
@@ -419,24 +413,23 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoNew();
       await pr.fillHeader({ prType: "general", deliveryDate: FUTURE_DATE });
+      // The grid is empty: Save is either disabled or refused with a message; it never creates a PR.
       const save = pr.saveDraftButton();
-      const disabled = await save.isDisabled().catch(() => false);
-      if (disabled) {
-        await expect(save).toBeDisabled();
-        return;
+      if (await save.isEnabled()) {
+        await save.click({ timeout: 5_000 });
+        await expect(pr.anyError().first().or(page.locator("[data-sonner-toast]").first()), "no validation message after saving an empty PR").toBeVisible({ timeout: 10_000 });
       }
-      await save.click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 5_000 });
     },
   );
 
   requestorTest(
-    "TC-PR-050211 Delivery date in the past → validation prevents save",
+    "TC-PR-050211 Delivery date in the past → calendar blocks past days",
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่ฟอร์มสร้าง PR" },
         { type: "steps", description: "1. ตั้ง delivery date เป็นวันที่ในอดีต\n2. เพิ่มรายการ\n3. พยายามบันทึก" },
-        { type: "expected", description: "ฟอร์มไม่นำทางออกจาก /new (validation ปฏิเสธวันที่ในอดีต)" },
+        { type: "expected", description: "ปฏิทินวันส่งของของรายการมีวันที่ก่อนวันนี้ที่เลือกไม่ได้ (disabled) — เลือกวันอดีตไม่ได้" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Validation" },
       ],
@@ -444,10 +437,14 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoNew();
-      await pr.fillHeader({ prType: "general", deliveryDate: PAST_DATE });
+      await pr.fillHeader({ prType: "general", deliveryDate: FUTURE_DATE });
       await pr.addLineItem({ product: "Past Date", quantity: 1, uom: "ea", unitPrice: 100 });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      // Delivery date is a per-line DatePicker with fromDate=today (FE pr-item-cells/delivery-date-cell.tsx):
+      // earlier days exist in the calendar but cannot be chosen.
+      await page.locator("tbody tr").first().getByRole("button", { name: /\d{4}-\d{2}-\d{2}/ }).first().click();
+      const calendar = page.getByRole("grid").first();
+      await expect(calendar, "delivery date calendar did not open").toBeVisible({ timeout: 10_000 });
+      await expect(calendar.locator("button[disabled], button[aria-disabled='true'], [data-disabled='true']").first(), "calendar offers selectable past days").toBeVisible();
     },
   );
 });
@@ -471,10 +468,7 @@ requestorTest.describe("Step 3 — Create from Template", () => {
       await pr.gotoList();
       await pr.newButton().click();
       const tmpl = pr.createDialogTemplateOption();
-      if ((await tmpl.count()) === 0) {
-        requestorTest.skip(true, "Template option not present in create dialog");
-        return;
-      }
+      await expect(tmpl, "From Template option missing in the create dialog").toBeVisible({ timeout: 10_000 });
       await tmpl.click();
       await expect(pr.templatePicker()).toBeVisible({ timeout: 10_000 });
     },
@@ -496,15 +490,10 @@ requestorTest.describe("Step 3 — Create from Template", () => {
       await pr.gotoList();
       await pr.newButton().click();
       const tmpl = pr.createDialogTemplateOption();
-      if ((await tmpl.count()) === 0) {
-        requestorTest.skip(true, "Template option not present in create dialog");
-        return;
-      }
+      await expect(tmpl, "From Template option missing in the create dialog").toBeVisible({ timeout: 10_000 });
       await tmpl.click();
-      if ((await pr.templatePickerEmpty().count()) > 0) {
-        requestorTest.skip(true, "No templates exist in this build");
-        return;
-      }
+      // data:reset guarantees an active PR template (verify-dataset: "PR template" min 1).
+      await expect(pr.templateCards().first(), "no template card — data:reset should seed one").toBeVisible({ timeout: 15_000 });
       await pr.selectFirstTemplate();
       // The wizard hands the chosen items to /new through router state, not a
       // query string — the URL is a plain /new (from-template-content.tsx:54).
@@ -519,7 +508,7 @@ requestorTest.describe("Step 3 — Create from Template", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่ฟอร์มสร้างจาก template ที่มีรายการสินค้ากรอกล่วงหน้า" },
         { type: "steps", description: "1. เปิดฟอร์ม template\n2. แก้ไขจำนวนรายการสินค้าแรกที่กรอกล่วงหน้า" },
-        { type: "expected", description: "ฟอร์มยังคงอยู่ที่ URL โหลด template หลังจากแก้ไข (ไม่นำทางออกก่อนเวลา)" },
+        { type: "expected", description: "ช่อง requested qty ของรายการจาก template เปลี่ยนเป็น 9" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -529,18 +518,14 @@ requestorTest.describe("Step 3 — Create from Template", () => {
       await pr.gotoList();
       await pr.newButton().click();
       const tmpl = pr.createDialogTemplateOption();
-      if ((await tmpl.count()) === 0) {
-        requestorTest.skip(true, "Template option not present in create dialog");
-        return;
-      }
+      await expect(tmpl, "From Template option missing in the create dialog").toBeVisible({ timeout: 10_000 });
       await tmpl.click();
-      if ((await pr.templatePickerEmpty().count()) > 0) {
-        requestorTest.skip(true, "No templates exist in this build");
-        return;
-      }
+      // data:reset guarantees an active PR template (verify-dataset: "PR template" min 1).
+      await expect(pr.templateCards().first(), "no template card — data:reset should seed one").toBeVisible({ timeout: 15_000 });
       await pr.selectFirstTemplate();
+      await expect(pr.requestedQtyInputs().first()).toBeVisible({ timeout: 15_000 });
       await pr.editLineItem(0, { quantity: 9 });
-      await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(pr.requestedQtyInputs().first()).toHaveValue("9");
     },
   );
 
@@ -560,15 +545,10 @@ requestorTest.describe("Step 3 — Create from Template", () => {
       await pr.gotoList();
       await pr.newButton().click();
       const tmpl = pr.createDialogTemplateOption();
-      if ((await tmpl.count()) === 0) {
-        requestorTest.skip(true, "Template option not present in create dialog");
-        return;
-      }
+      await expect(tmpl, "From Template option missing in the create dialog").toBeVisible({ timeout: 10_000 });
       await tmpl.click();
-      if ((await pr.templatePickerEmpty().count()) > 0) {
-        requestorTest.skip(true, "No templates exist in this build");
-        return;
-      }
+      // data:reset guarantees an active PR template (verify-dataset: "PR template" min 1).
+      await expect(pr.templateCards().first(), "no template card — data:reset should seed one").toBeVisible({ timeout: 15_000 });
       await pr.selectFirstTemplate();
       await pr.fillHeader({ description: e2eDescription("TC-PR-050304 from template") });
       await pr.saveDraftButton().click({ timeout: 5_000 });
@@ -577,15 +557,14 @@ requestorTest.describe("Step 3 — Create from Template", () => {
   );
 
   requestorTest(
-    "TC-PR-050305 Empty-state message when no templates exist",
+    "TC-PR-050305 Empty-state message when no template matches the search",
     {
       annotation: [
         { type: "preconditions", description: "Template picker เปิดอยู่และไม่มี template ในระบบ" },
         { type: "steps", description: "1. เปิด template picker\n2. ตรวจสอบเนื้อหา" },
-        { type: "expected", description: "ข้อความ empty-state ('No templates') แสดงผล ข้ามหากมี template อยู่" },
+        { type: "expected", description: "ค้นหา template ที่ไม่มีอยู่แล้วแสดง empty-state ('No Templates Available' / 'Try searching with different keywords') และไม่เหลือการ์ด" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Functional" },
-        { type: "note", description: "Dynamically skipped when at least one template is present." },
       ],
     },
     async ({ page }) => {
@@ -593,17 +572,13 @@ requestorTest.describe("Step 3 — Create from Template", () => {
       await pr.gotoList();
       await pr.newButton().click();
       const tmpl = pr.createDialogTemplateOption();
-      if ((await tmpl.count()) === 0) {
-        requestorTest.skip(true, "Template option not present in create dialog");
-        return;
-      }
+      await expect(tmpl, "From Template option missing in the create dialog").toBeVisible({ timeout: 10_000 });
       await tmpl.click();
-      const empty = pr.templatePickerEmpty();
-      if ((await empty.count()) === 0) {
-        requestorTest.skip(true, "Templates exist — empty-state cannot be asserted");
-        return;
-      }
-      await expect(empty).toBeVisible();
+      await expect(pr.templatePicker()).toBeVisible({ timeout: 10_000 });
+      // A template exists (data:reset), so the empty state is reached through a search that matches none.
+      await page.getByPlaceholder(/search/i).first().fill("zzz-no-such-template");
+      await expect(page.getByText(/no templates|try searching with different keywords/i).first(), "no empty state for an unmatched template search").toBeVisible({ timeout: 10_000 });
+      await expect(pr.templateCards()).toHaveCount(0);
     },
   );
 });
@@ -622,7 +597,7 @@ requestorTest.describe("Step 4 — PR Detail", () => {
       annotation: [
         { type: "preconditions", description: "มี Draft PR ของ Requestor นี้ (สร้างใน beforeEach)" },
         { type: "steps", description: "1. เปิดหน้ารายละเอียด Draft PR\n2. ตรวจสอบว่า Items tab ถูกเลือก" },
-        { type: "expected", description: "Detail URL เป็น /procurement/purchase-request/<ref>; ถ้า Items tab แสดงผล ต้องเป็น tab ที่เลือกอยู่" },
+        { type: "expected", description: "Detail URL เป็น /procurement/purchase-request/<ref>; ตารางรายการสินค้า (คอลัมน์ Product + อย่างน้อย 1 แถว) แสดงเป็นค่าเริ่มต้น" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -633,12 +608,8 @@ requestorTest.describe("Step 4 — PR Detail", () => {
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
-      const items = pr.tabItems();
-      if ((await items.count()) === 0) {
-        // Items tab UI not rendered — URL check above is sufficient
-        return;
-      }
-      await expect(items).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      await expect(page.getByRole("columnheader", { name: /product/i }).first(), "item table is not shown by default").toBeVisible({ timeout: 10_000 });
+      await expect(page.locator("tbody tr").first()).toBeVisible();
     },
   );
 
@@ -646,9 +617,9 @@ requestorTest.describe("Step 4 — PR Detail", () => {
     "TC-PR-050402 Switch to Workflow History tab",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้ารายละเอียด Draft PR" },
+        { type: "preconditions", description: "PR ถูกสร้างและ submit แล้ว (Draft ไม่มี workflow stepper — ประวัติ workflow เริ่มเมื่อ submit)" },
         { type: "steps", description: "1. คลิก tab Workflow History" },
-        { type: "expected", description: "tab Workflow History ถูกเลือกหลังคลิก" },
+        { type: "expected", description: "หลังคลิกตัวเปิดประวัติ (stepper) แสดง sheet Workflow History" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -656,15 +627,13 @@ requestorTest.describe("Step 4 — PR Detail", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       const created = await createDraftPR(page);
+      await submitDraftPR(page, created.ref);
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
       const wh = pr.tabWorkflowHistory();
-      if ((await wh.count()) === 0) {
-        requestorTest.skip(true, "Workflow History tab not present in this build");
-        return;
-      }
+      await expect(wh, "Workflow History control missing on PR detail").toBeVisible({ timeout: 10_000 });
       await wh.click();
-      await expect(wh).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      await expect(pr.workflowHistorySheet(), "Workflow History sheet did not open").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -733,11 +702,7 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       const created = await createDraftPR(page);
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       // .first() on the union, not on each side: `a.first().or(b.first())` still
       // resolves to both matches (edit mode shows Cancel *and* Save), which trips
@@ -755,7 +720,7 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       annotation: [
         { type: "preconditions", description: "Draft PR เปิดอยู่ในโหมดแก้ไข" },
         { type: "steps", description: "1. เข้าโหมดแก้ไข\n2. อัปเดต description\n3. บันทึก" },
-        { type: "expected", description: "หลังบันทึก หน้ากลับสู่ detail URL (ไม่ redirect ไปที่ /new หรือ list)" },
+        { type: "expected", description: "หลังบันทึก (toast สำเร็จ) เปิด PR ใหม่แล้วเห็น description ที่แก้" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -765,16 +730,14 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       const created = await createDraftPR(page);
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       const newDesc = e2eDescription("TC-PR-050502 edited");
-      await pr.fillHeader({ description: newDesc });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      // The workflow of a saved draft is fixed; only the description is changed here.
+      await pr.descriptionInput().fill(newDesc);
+      await pr.saveEditMode();
+      await page.goto(`${LIST_PATH}/${created.ref}`);
+      await expect(page.getByText(newDesc).first(), "edited description was not persisted").toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -784,7 +747,7 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       annotation: [
         { type: "preconditions", description: "Draft PR ที่มีรายการสินค้าอย่างน้อยหนึ่งรายการเปิดอยู่ในโหมดแก้ไข" },
         { type: "steps", description: "1. เข้าโหมดแก้ไข\n2. แก้ไขจำนวนรายการสินค้าแรก\n3. บันทึก" },
-        { type: "expected", description: "หลังบันทึก หน้ากลับสู่ detail URL" },
+        { type: "expected", description: "หลังบันทึก (toast สำเร็จ) เปิด PR ใหม่แล้วจำนวนของรายการแรกเป็น 7" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -794,15 +757,18 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       const created = await createDraftPR(page, { items: 1 });
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       await pr.editLineItem(0, { quantity: 7 });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      // Pinned suspected bug (cluster: BE): saving a Draft whose line was edited makes
+      // PATCH /purchase-requests/<id> answer 400 {"message":"Unknown argument `product_id`. Did you
+      // mean `product_code`?"} — the update path of `details` rejects the payload FE mapItemToPayload
+      // (pr-form-schema.ts:743) builds, while a header-only save (TC-PR-050505) is accepted.
+      // Measured 2026-11-21 on dev API v4.0.13-build.20261112, 3/3 runs. Flips red once accepted.
+      requestorTest.fail(true, "suspected bug: PATCH of a Draft with an edited line -> 400 'Unknown argument product_id' (BE details update path)");
+      await pr.saveEditMode();
+      await page.goto(`${LIST_PATH}/${created.ref}`);
+      await expect(page.locator("tbody tr").first().getByText(/7\.00/).first(), "saved quantity 7 is not shown").toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -812,7 +778,7 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       annotation: [
         { type: "preconditions", description: "Draft PR เปิดอยู่ในโหมดแก้ไข" },
         { type: "steps", description: "1. เข้าโหมดแก้ไข\n2. คลิก Add Item\n3. กรอก product/qty/uom\n4. บันทึก" },
-        { type: "expected", description: "หลังบันทึก หน้ากลับสู่ detail URL" },
+        { type: "expected", description: "หลังบันทึก (toast สำเร็จ) เปิด PR ใหม่แล้วมี 2 รายการ" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -822,15 +788,18 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       const created = await createDraftPR(page, { items: 1 });
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       await pr.addLineItem({ product: "Added in Edit", quantity: 2, uom: "ea", unitPrice: 50 });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      // Pinned suspected bug (cluster: BE): saving a Draft with a newly added line makes
+      // PATCH /purchase-requests/<id> answer 400 {"message":"Argument `is_tax_included` is missing."}
+      // although FE mapItemToPayload (pr-form-schema.ts:762) always sends is_tax_included. The
+      // create path (POST) accepts the same row. Measured 2026-11-21 on dev API v4.0.13-build.20261112.
+      // Flips red ("expected to fail but passed") once the update path accepts new lines.
+      requestorTest.fail(true, "suspected bug: PATCH of a Draft with an added line -> 400 'Argument is_tax_included is missing' (BE update/add path)");
+      await pr.saveEditMode();
+      await page.goto(`${LIST_PATH}/${created.ref}`);
+      await expect(page.locator("tbody tr").filter({ has: page.getByRole("button", { name: /expand row/i }) }), "the added line was not persisted (expected 2 lines)").toHaveCount(2, { timeout: 15_000 });
     },
   );
 
@@ -850,15 +819,14 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       const created = await createDraftPR(page);
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.fillHeader({ description: e2eDescription("TC-PR-050505 persisted") });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
+      const persisted = e2eDescription("TC-PR-050505 persisted");
+      await pr.descriptionInput().fill(persisted);
+      await pr.saveEditMode();
       await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
+      await page.goto(`${LIST_PATH}/${created.ref}`);
+      await expect(page.getByText(persisted).first(), "saved description was not persisted").toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -878,15 +846,12 @@ requestorTest.describe("Step 5 — Edit Draft", () => {
       const created = await createDraftPR(page);
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.fillHeader({ description: "DISCARD ME" });
+      await pr.descriptionInput().fill("DISCARD ME");
       await pr.cancelEditMode();
       await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByText("DISCARD ME")).toHaveCount(0);
     },
   );
 });
@@ -912,10 +877,7 @@ requestorTest.describe("Step 6 — Submit", () => {
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
       const submit = pr.submitButton();
-      if ((await submit.count()) === 0) {
-        requestorTest.skip(true, "Submit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(submit, "Submit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await submit.click({ timeout: 5_000 });
       await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 10_000 });
     },
@@ -938,18 +900,14 @@ requestorTest.describe("Step 6 — Submit", () => {
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
       const submit = pr.submitButton();
-      if ((await submit.count()) === 0) {
-        requestorTest.skip(true, "Submit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(submit, "Submit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await submit.click({ timeout: 5_000 });
       const cancel = page.getByRole("alertdialog").getByRole("button", { name: /cancel|no/i }).first();
-      if ((await cancel.count()) === 0) {
-        requestorTest.skip(true, "Cancel button not present in submit dialog");
-        return;
-      }
+      await expect(cancel, "confirm dialog has no Cancel button").toBeVisible({ timeout: 5_000 });
       await cancel.click({ timeout: 5_000 });
+      await expect(page.getByRole("alertdialog")).toBeHidden({ timeout: 5_000 });
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await expect(pr.editModeButton(), "Draft changed after cancelling").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -965,9 +923,12 @@ requestorTest.describe("Step 6 — Submit", () => {
       ],
     },
     async ({ page }) => {
+      const pr = new PurchaseRequestPage(page);
       const created = await createDraftPR(page, { items: 1 });
       await submitDraftPR(page, created.ref);
-      // submitDraftPR ends with pr.expectStatus("in.progress") which is a hard assertion.
+      // submitDraftPR only waits for the redirect to the list; read the status off the record itself.
+      await page.goto(`${LIST_PATH}/${created.ref}`);
+      await expect(pr.statusBadge(), "submitted PR is not In progress").toContainText(/in progress/i, { timeout: 15_000 });
     },
   );
 
@@ -990,11 +951,10 @@ requestorTest.describe("Step 6 — Submit", () => {
       await pr.gotoNew();
       await pr.fillHeader({ description: e2eDescription("TC-PR-050604 empty") });
       const save = pr.saveDraftButton();
-      if (await save.isDisabled().catch(() => false)) {
-        await expect(save).toBeDisabled();
-        return;
+      if (await save.isEnabled()) {
+        await save.click({ timeout: 5_000 });
+        await expect(pr.anyError().first().or(page.locator("[data-sonner-toast]").first()), "no validation message after saving an empty PR").toBeVisible({ timeout: 10_000 });
       }
-      await save.click({ timeout: 5_000 }).catch(() => {});
       await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 8_000 });
     },
   );
@@ -1021,10 +981,7 @@ requestorTest.describe("Step 8 — Delete", () => {
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
       const del = pr.deleteButton();
-      if ((await del.count()) === 0) {
-        requestorTest.skip(true, "Delete button not present on Draft detail in this build");
-        return;
-      }
+      await expect(del, "Delete button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await del.click({ timeout: 5_000 });
       await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 10_000 });
     },
@@ -1047,18 +1004,14 @@ requestorTest.describe("Step 8 — Delete", () => {
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
       const del = pr.deleteButton();
-      if ((await del.count()) === 0) {
-        requestorTest.skip(true, "Delete button not present on Draft detail in this build");
-        return;
-      }
+      await expect(del, "Delete button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await del.click({ timeout: 5_000 });
       const cancel = page.getByRole("alertdialog").getByRole("button", { name: /cancel|no/i }).first();
-      if ((await cancel.count()) === 0) {
-        requestorTest.skip(true, "Cancel button not present in delete dialog");
-        return;
-      }
+      await expect(cancel, "confirm dialog has no Cancel button").toBeVisible({ timeout: 5_000 });
       await cancel.click({ timeout: 5_000 });
+      await expect(page.getByRole("alertdialog")).toBeHidden({ timeout: 5_000 });
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await expect(pr.editModeButton(), "Draft changed after cancelling").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -1107,14 +1060,10 @@ requestorTest.describe.serial("Golden Journey", () => {
       // Step 5-7: Edit description and save
       await page.goto(`${LIST_PATH}/${created.ref}`);
       await page.waitForLoadState("networkidle");
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Draft detail in this build");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing on the Draft detail").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.fillHeader({ description: e2eDescription("TC-PR-050901 edited golden") });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
+      await pr.descriptionInput().fill(e2eDescription("TC-PR-050901 edited golden"));
+      await pr.saveEditMode();
       await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
 
       // Step 8: Submit (helper asserts In Progress at the end)

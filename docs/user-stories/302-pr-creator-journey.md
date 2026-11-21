@@ -29,12 +29,12 @@ _Generated from `tests/302-pr-creator-journey.spec.ts` annotations. Edit annotat
 | TC-PR-050208 | Remove line item | Medium | CRUD |
 | TC-PR-050209 | Save as Draft → redirect to detail with PR number | High | CRUD |
 | TC-PR-050210 | Save without line items → button disabled or stays on form | Medium | Validation |
-| TC-PR-050211 | Delivery date in the past → validation prevents save | Medium | Validation |
+| TC-PR-050211 | Delivery date in the past → calendar blocks past days | Medium | Validation |
 | TC-PR-050301 | Open Create dialog → Template option → picker opens | Medium | Smoke |
 | TC-PR-050302 | Select first template → form pre-fills | Medium | Functional |
 | TC-PR-050303 | Modify template-loaded items before save | Medium | CRUD |
 | TC-PR-050304 | Save template-based PR → Draft created | Medium | CRUD |
-| TC-PR-050305 | Empty-state message when no templates exist | Low | Functional |
+| TC-PR-050305 | Empty-state message when no template matches the search | Low | Functional |
 | TC-PR-050401 | Draft PR detail loads with Items tab default | High | Smoke |
 | TC-PR-050402 | Switch to Workflow History tab | Medium | Functional |
 | TC-PR-050403 | Edit / Delete / Submit buttons present for Draft | High | Functional |
@@ -95,7 +95,7 @@ URL เป็น /procurement/purchase-request, ปุ่ม viewMode 'My Pendin
 
 **Expected**
 
-tab All Documents ถูกเลือก; list แสดงผลใหม่
+หลังคลิก All Documents URL มี ?view=all-document
 
 ---
 
@@ -117,7 +117,7 @@ tab All Documents ถูกเลือก; list แสดงผลใหม่
 
 **Expected**
 
-List อัปเดตแสดงเฉพาะแถวที่เลขอ้างอิงมีข้อความที่พิมพ์
+ค้น PR2611 แล้วทุกแถวที่แสดงมีข้อความนั้น; ค้นข้อความที่ไม่มีอยู่แล้วไม่เหลือแถว
 
 ---
 
@@ -134,12 +134,11 @@ List อัปเดตแสดงเฉพาะแถวที่เลขอ
 **Steps**
 
 1. เปิดแผง Filter
-2. เลือก status = Draft
-3. Apply
+2. เลือกฟิลด์ Status แล้วติ๊ก Draft (ไม่มีปุ่ม Apply)
 
 **Expected**
 
-List แสดงเฉพาะ PR ที่มีสถานะ Draft (หรือ empty state)
+ทุกแถวที่แสดงมีสถานะ Draft (requestor มี Draft จากชุดข้อมูลทดสอบ)
 
 ---
 
@@ -266,7 +265,7 @@ URL เปลี่ยนเป็น /procurement/purchase-request/new แล�
 
 **Expected**
 
-ฟอร์มอยู่ที่ /new และแสดง Draft indicator เมื่อ badge แสดงผล
+ฟอร์มอยู่ที่ /new มีปุ่ม Add Item, workflow ยังไม่เลือก (Select workflow) และยังไม่มีรายการสินค้า
 
 ---
 
@@ -310,7 +309,7 @@ URL เปลี่ยนเป็น /procurement/purchase-request/new แล�
 
 **Expected**
 
-ฟอร์มยังคงอยู่ที่ /new — การเพิ่มรายการไม่นำทางออกจากฟอร์มสร้าง
+ตารางมี 1 แถว (requested qty = 1) และฟอร์มยังอยู่ที่ /new
 
 ---
 
@@ -332,7 +331,7 @@ URL เปลี่ยนเป็น /procurement/purchase-request/new แล�
 
 **Expected**
 
-ฟอร์มยังคงอยู่ที่ /new หลังจากบันทึกรายการ FOC
+ช่อง FOC qty ของแถวเก็บค่า 5 ไว้
 
 ---
 
@@ -353,7 +352,7 @@ URL เปลี่ยนเป็น /procurement/purchase-request/new แล�
 
 **Expected**
 
-ฟอร์มยังคงอยู่ที่ /new หลังจากเพิ่ม 3 รายการ
+หลังเพิ่ม 3 รายการ ตารางมี 3 แถว (ช่อง requested qty 3 ช่อง)
 
 ---
 
@@ -375,7 +374,7 @@ URL เปลี่ยนเป็น /procurement/purchase-request/new แล�
 
 **Expected**
 
-ฟอร์มยังคงอยู่ที่ /new หลังจากแก้ไข
+ช่อง requested qty ของรายการแรกเปลี่ยนเป็น 5
 
 ---
 
@@ -396,7 +395,7 @@ URL เปลี่ยนเป็น /procurement/purchase-request/new แล�
 
 **Expected**
 
-ฟอร์มยังคงอยู่ที่ /new หลังจากลบ
+แถวถูกลบออกจากตาราง (ไม่เหลือช่อง requested qty)
 
 ---
 
@@ -442,7 +441,7 @@ URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่
 
 ---
 
-## TC-PR-050211 — Delivery date in the past → validation prevents save
+## TC-PR-050211 — Delivery date in the past → calendar blocks past days
 
 > **As a** Requestor user, **I want** the system to block invalid Pr Creator Journey submissions, **so that** data quality is preserved.
 
@@ -460,7 +459,7 @@ URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่
 
 **Expected**
 
-ฟอร์มไม่นำทางออกจาก /new (validation ปฏิเสธวันที่ในอดีต)
+ปฏิทินวันส่งของของรายการมีวันที่ก่อนวันนี้ที่เลือกไม่ได้ (disabled) — เลือกวันอดีตไม่ได้
 
 ---
 
@@ -523,7 +522,7 @@ URL มี query param template_id (ฟอร์มกำลังโหลด�
 
 **Expected**
 
-ฟอร์มยังคงอยู่ที่ URL โหลด template หลังจากแก้ไข (ไม่นำทางออกก่อนเวลา)
+ช่อง requested qty ของรายการจาก template เปลี่ยนเป็น 9
 
 ---
 
@@ -548,7 +547,7 @@ URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่
 
 ---
 
-## TC-PR-050305 — Empty-state message when no templates exist
+## TC-PR-050305 — Empty-state message when no template matches the search
 
 > **As a** Requestor user, **I want** a clear empty-state when no Pr Creator Journey records match my search, **so that** I know nothing was found.
 
@@ -565,9 +564,7 @@ Template picker เปิดอยู่และไม่มี template ใน
 
 **Expected**
 
-ข้อความ empty-state ('No templates') แสดงผล ข้ามหากมี template อยู่
-
-> _Note: Dynamically skipped when at least one template is present._
+ค้นหา template ที่ไม่มีอยู่แล้วแสดง empty-state ('No Templates Available' / 'Try searching with different keywords') และไม่เหลือการ์ด
 
 ---
 
@@ -588,7 +585,7 @@ Template picker เปิดอยู่และไม่มี template ใน
 
 **Expected**
 
-Detail URL เป็น /procurement/purchase-request/<ref>; ถ้า Items tab แสดงผล ต้องเป็น tab ที่เลือกอยู่
+Detail URL เป็น /procurement/purchase-request/<ref>; ตารางรายการสินค้า (คอลัมน์ Product + อย่างน้อย 1 แถว) แสดงเป็นค่าเริ่มต้น
 
 ---
 
@@ -600,7 +597,7 @@ Detail URL เป็น /procurement/purchase-request/<ref>; ถ้า Items tab
 
 **Preconditions**
 
-อยู่ที่หน้ารายละเอียด Draft PR
+PR ถูกสร้างและ submit แล้ว (Draft ไม่มี workflow stepper — ประวัติ workflow เริ่มเมื่อ submit)
 
 **Steps**
 
@@ -608,7 +605,7 @@ Detail URL เป็น /procurement/purchase-request/<ref>; ถ้า Items tab
 
 **Expected**
 
-tab Workflow History ถูกเลือกหลังคลิก
+หลังคลิกตัวเปิดประวัติ (stepper) แสดง sheet Workflow History
 
 ---
 
@@ -693,7 +690,7 @@ Draft PR เปิดอยู่ในโหมดแก้ไข
 
 **Expected**
 
-หลังบันทึก หน้ากลับสู่ detail URL (ไม่ redirect ไปที่ /new หรือ list)
+หลังบันทึก (toast สำเร็จ) เปิด PR ใหม่แล้วเห็น description ที่แก้
 
 ---
 
@@ -715,7 +712,7 @@ Draft PR ที่มีรายการสินค้าอย่างน�
 
 **Expected**
 
-หลังบันทึก หน้ากลับสู่ detail URL
+หลังบันทึก (toast สำเร็จ) เปิด PR ใหม่แล้วจำนวนของรายการแรกเป็น 7
 
 ---
 
@@ -738,7 +735,7 @@ Draft PR เปิดอยู่ในโหมดแก้ไข
 
 **Expected**
 
-หลังบันทึก หน้ากลับสู่ detail URL
+หลังบันทึก (toast สำเร็จ) เปิด PR ใหม่แล้วมี 2 รายการ
 
 ---
 
@@ -961,4 +958,4 @@ PR ถูกสร้าง (detail URL พร้อม ref), แก้ไขแ
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git 9d79c62</sub>

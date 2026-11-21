@@ -23,7 +23,7 @@ const FUTURE_DATE = "2099-12-31";
  */
 export async function createDraftPR(
   page: Page,
-  opts?: { items?: number; description?: string; deliveryDate?: string },
+  opts?: { items?: number; description?: string; deliveryDate?: string; quantity?: number },
 ): Promise<CreatedPR> {
   const pr = new PurchaseRequestPage(page);
   await pr.gotoList();
@@ -41,7 +41,7 @@ export async function createDraftPR(
     await pr.addLineItem({
       product: "Test Item",
       description: `E2E item ${i + 1}`,
-      quantity: 1,
+      quantity: opts?.quantity ?? 1,
       uom: "ea",
       unitPrice: 100,
     });

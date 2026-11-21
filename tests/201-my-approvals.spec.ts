@@ -5,7 +5,7 @@ import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
 import { openRecordFromRow } from "./helpers/list-row";
-import { enterApproverEditMode } from "./pages/pr-approver.helpers";
+import { bulkReject, enterApproverEditMode } from "./pages/pr-approver.helpers";
 import { expectActionUnavailable } from "./helpers/unavailable";
 
 
@@ -250,15 +250,10 @@ hodTest.describe("My Approvals — Reject from PR detail", () => {
       await expect(pendingRow, "No pending PR to reject — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(pendingRow);
       // Approve/Reject live in edit mode only — the view page has just Edit/More.
-      const pr = await enterApproverEditMode(page);
-      await pr.bulkRejectInEditMode().click({ timeout: 10_000 });
-      await ma.reasonInput().fill("Rejected. Budget not available for this purchase.", { timeout: 10_000 });
-      const rejected = page.waitForResponse(
-        (r) => /purchase-requests\/[^/]+\/reject/.test(r.url()) && r.request().method() === "PATCH",
-        { timeout: 20_000 },
-      );
-      await ma.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
-      expect((await rejected).ok(), "PATCH .../reject was refused").toBe(true);
+      await enterApproverEditMode(page);
+      // Reject is two steps: toolbar Reject marks the rows (reason dialog), then the footer's
+      // document-level Reject confirms and sends PATCH .../reject.
+      await bulkReject(page, "Rejected. Budget not available for this purchase.");
     },
   );
 
@@ -313,15 +308,10 @@ hodTest.describe("My Approvals — Reject from PR detail", () => {
       await expect(pendingRow, "required record/element missing — seed it via `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       await openRecordFromRow(pendingRow);
       // Approve/Reject live in edit mode only — the view page has just Edit/More.
-      const pr = await enterApproverEditMode(page);
-      await pr.bulkRejectInEditMode().click({ timeout: 10_000 });
-      await ma.reasonInput().fill("Rejected. Incorrect PO number - please check PO-123456789.", { timeout: 10_000 });
-      const rejected = page.waitForResponse(
-        (r) => /purchase-requests\/[^/]+\/reject/.test(r.url()) && r.request().method() === "PATCH",
-        { timeout: 20_000 },
-      );
-      await ma.confirmDialogButton(/^reject$|confirm|ok|yes/i).click({ timeout: 10_000 });
-      expect((await rejected).ok(), "PATCH .../reject was refused").toBe(true);
+      await enterApproverEditMode(page);
+      // Reject is two steps: toolbar Reject marks the rows (reason dialog), then the footer's
+      // document-level Reject confirms and sends PATCH .../reject.
+      await bulkReject(page, "Rejected. Incorrect PO number - please check PO-123456789.");
     },
   );
 });

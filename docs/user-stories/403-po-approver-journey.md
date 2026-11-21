@@ -392,12 +392,12 @@ Reject dialog เปิดอยู่
 
 1. ทำเครื่องหมายรายการว่า Reject
 2. กด Document Reject
-3. กรอกเหตุผล (optional)
-4. ยืนยัน
+3. ยืนยันใน dialog แรก (are you sure)
+4. กรอกเหตุผลใน dialog ที่สอง แล้วยืนยัน
 
 **Expected**
 
-การยืนยันยิง PATCH .../reject สำเร็จ และ PO ที่เปิดใหม่มี status chip Voided (PO ไม่มี status Rejected — STD dataset po.rejected ก็จบที่ Voided). ปักหมุด test.fail: ปัจจุบัน confirm ไม่ยิง request ใด ๆ (suspected bug)
+การยืนยันยิง PATCH .../reject สำเร็จ และ PO ที่เปิดใหม่มี status chip Voided (PO ไม่มี status Rejected — STD dataset po.rejected ก็จบที่ Voided).
 
 ---
 
@@ -449,4 +449,4 @@ PATCH .../approve ของ FC ตอบ ok และหลัง GM อนุ�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git e958dbc</sub>
+<sub>Last regenerated: 2026-11-21 · git 9d79c62</sub>

@@ -494,8 +494,8 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
     {
       annotation: [
         { type: "preconditions", description: "Reject dialog เปิดอยู่" },
-        { type: "steps", description: "1. ทำเครื่องหมายรายการว่า Reject\n2. กด Document Reject\n3. กรอกเหตุผล (optional)\n4. ยืนยัน" },
-        { type: "expected", description: "การยืนยันยิง PATCH .../reject สำเร็จ และ PO ที่เปิดใหม่มี status chip Voided (PO ไม่มี status Rejected — STD dataset po.rejected ก็จบที่ Voided). ปักหมุด test.fail: ปัจจุบัน confirm ไม่ยิง request ใด ๆ (suspected bug)" },
+        { type: "steps", description: "1. ทำเครื่องหมายรายการว่า Reject\n2. กด Document Reject\n3. ยืนยันใน dialog แรก (are you sure)\n4. กรอกเหตุผลใน dialog ที่สอง แล้วยืนยัน" },
+        { type: "expected", description: "การยืนยันยิง PATCH .../reject สำเร็จ และ PO ที่เปิดใหม่มี status chip Voided (PO ไม่มี status Rejected — STD dataset po.rejected ก็จบที่ Voided)." },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "CRUD" },
       ],
@@ -519,25 +519,22 @@ fcTest.describe("Step 3 — Approval Actions", () => {  // ─ Item-level markin
       await expect(po.itemBadge(0, "rejected")).toBeVisible({ timeout: 10_000 });
       const docReject = po.documentRejectButton();
       await expect(docReject, "Document Reject not visible").toBeVisible({ timeout: 10_000 });
-      // Prove the reject reached the backend, then re-read the record. The old
-      // body swallowed the confirm in .catch() and asserted straight away against
-      // a page that had not been told anything changed.
+      // Document Reject is two dialogs (FE po-footer-action.tsx:311 openConfirm -> onReject ->
+      // po-form.tsx:306 setShowReject(true) -> PoActionDialog -> use-po-form-handlers.ts:497
+      // handleRejectConfirm -> PATCH .../reject). The first only asks "are you sure"; the request
+      // is sent by the second, which also takes the reason.
       const rejected = page.waitForResponse(
         (r) => /\/purchase-orders\/[^/]+\/reject/.test(r.url()) && r.request().method() === "PATCH",
         { timeout: 20_000 },
       );
       await docReject.click({ timeout: 5_000 });
-      // The document-level Reject dialog carries no reason field (its copy still says
-      // "Please provide a reason") — nothing to fill; the item-level reject has one.
-      await po.confirmDialogButton(/confirm|reject|ok|yes/i).click({ timeout: 10_000 });
-      const rejectRes = await rejected.catch(() => null);
-      // Pinned suspected bug (cluster: FE bug): confirming the document-level Reject fires
-      // no request at all — no PATCH .../reject, no toast, PO keeps its status — while the
-      // same transition works through the API (data:reset po.rejected). Flips red ("expected
-      // to fail but passed") once the confirm submits.
-      fcTest.fail(true, "suspected bug: Document Reject confirm sends no PATCH .../reject");
-      expect(rejectRes, "confirming Document Reject sent no PATCH .../reject").not.toBeNull();
-      expect(rejectRes!.ok()).toBe(true);
+      await po.confirmDialogButton(/^reject$/i).click({ timeout: 10_000 });
+      const reason = page.locator('[role="alertdialog"] textarea').first();
+      await expect(reason, "the second (reason) Reject dialog did not open").toBeVisible({ timeout: 10_000 });
+      await reason.fill("Rejected by E2E");
+      await po.confirmDialogButton(/^reject$/i).click({ timeout: 10_000 });
+      const rejectRes = await rejected;
+      expect(rejectRes.ok(), `PATCH .../reject was refused (${rejectRes.status()})`).toBe(true);
 
       // Re-open the record: confirming an action routes back to the PO list, so a
       // plain reload() would re-read the list instead of this document.
