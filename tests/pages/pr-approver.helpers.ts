@@ -108,9 +108,13 @@ export async function bulkReject(page: Page, reason: string): Promise<void> {
   await pr.bulkRejectInEditMode().click({ timeout: 5_000 });
   await pr.reasonInput().fill(reason, { timeout: 10_000 });
   await pr.confirmDialogButton(/^reject$/i).click({ timeout: 10_000 });
+  // Let the row-level dialog finish closing: `actionDialog()` takes the first dialog in the DOM, so
+  // a still-closing one would swallow the document-level confirm below (seen once in a full run).
+  await expect(pr.actionDialog(), "row Reject dialog did not close").toBeHidden({ timeout: 10_000 });
   // Every row now carries the Reject mark; only then does the footer offer the document Reject.
   const decided = waitForDecision(page, "reject");
   await pr.documentRejectButton().click({ timeout: 10_000 });
+  await expect(pr.actionDialog(), "document Reject confirm did not open").toBeVisible({ timeout: 10_000 });
   await pr.confirmDialogButton(/^reject$/i).click({ timeout: 10_000 });
   const res = await decided;
   expect(res.ok(), `document Reject was refused (${res.status()})`).toBe(true);
