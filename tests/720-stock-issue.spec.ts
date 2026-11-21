@@ -26,7 +26,9 @@ async function loadAllSrs(): Promise<Sr[]> {
 }
 /** The data:reset SRs only - 701-sr.spec.ts leaves finished/voided SRs ("E2E 701 ..." / SRs it seeded) behind. */
 async function loadSrs(): Promise<Sr[]> {
-  return (await loadAllSrs()).filter((s) => !/^E2E 701/.test(s.description ?? ""));
+  const seed = (await loadAllSrs()).filter((s) => !/^E2E 701/.test(s.description ?? ""));
+  expect(seed.length, "data:reset SRs are in the first 50 rows (run data:reset if 701 left many SRs behind)").toBeGreaterThan(0);
+  return seed;
 }
 /** An SR still waiting at the Issue stage (a voided SR keeps its last stage name). */
 const atIssue = (s: Sr) => s.workflow_current_stage === "Issue" && s.doc_status === "in_progress";

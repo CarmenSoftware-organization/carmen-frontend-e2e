@@ -8,8 +8,8 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1269 |
-| **Running** | **1085** |
+| Cases declared | 1271 |
+| **Running** | **1087** |
 | Skipped | 183 |
 | Fixme | 1 |
 | **Dormant** (skipped + fixme) | **14%** |
@@ -17,7 +17,7 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | **Running cases asserting nothing at all** | **0** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 22 |
-| Assertions in running cases | 2782 |
+| Assertions in running cases | 2790 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -88,7 +88,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |
 | `603-cn-doc-flow.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 21 | 0 |
-| `701-sr.spec.ts` | 33 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 152 | 0 |
+| `701-sr.spec.ts` | 35 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 160 | 0 |
 | `702-sr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
 | `710-wastage-reporting.spec.ts` | 18 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 67 | 0 |
 | `711-stock-replenishment.spec.ts` | 36 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 110 | 0 |

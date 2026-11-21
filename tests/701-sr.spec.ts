@@ -3,7 +3,7 @@ import { createAuthTest } from "./fixtures/auth.fixture";
 import { StoreRequisitionPage, LIST_PATH, NEW_PATH } from "./pages/store-requisition.page";
 import { recordRows } from "./helpers/list-row";
 import { buGet, buSend, rootGet } from "./helpers/bu-api";
-import { createDraftSr, disposeSr, getSr, seedSr, srSeedContext, type SeededSr } from "./helpers/sr-api";
+import { createDraftSr, disposeSr, getSr, seedSr, srSeedContext, touchDraftSr, type SeededSr } from "./helpers/sr-api";
 import { BU_CODE } from "./test-users";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -57,8 +57,12 @@ async function fillNewHeader(sr: StoreRequisitionPage, description: string) {
 
 /** Add one item row to the open form. */
 async function addItem(sr: StoreRequisitionPage, code: string, qty: string) {
+  // the product scope (workflow + both locations) loads in the background; adding a row before it is
+  // ready would open the "Can't add items yet" dialog instead of a row
+  await sr.waitSettled();
   await sr.addItemButton().click();
   const row = sr.itemRows().first();
+  await expect(sr.selectProductButton(row)).toBeVisible({ timeout: 15_000 });
   await sr.pickProduct(row, code);
   await sr.qtySpinbutton(row).fill(qty);
   return row;
@@ -150,29 +154,6 @@ purchaseTest.describe("Store Requisition — Create", () => {
     },
   );
 
-  purchaseTest(
-    "TC-SR-010003 Edge Case - Add Item Blocked Until Workflow and Locations Are Chosen",
-    {
-      annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase; เปิดฟอร์ม New ที่ยังไม่ได้เลือก Workflow และคลัง" },
-        { type: "steps", description: "1. เปิด /store-operation/store-requisition/new\n2. กด Add Item โดยยังไม่เลือก Workflow / Request From / Deliver To" },
-        { type: "expected", description: "ขึ้นกล่อง \"Can't add items yet\" บอกให้เลือก workflow, คลังต้นทางและปลายทางก่อน และตารางรายการยังว่าง (ไม่มีแถวใหม่)" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const sr = new StoreRequisitionPage(page);
-      await sr.gotoNew();
-      await sr.addItemButton().click();
-      const dialog = sr.actionDialog();
-      await expect(dialog.getByRole("heading", { name: "Can't add items yet" })).toBeVisible();
-      await expect(dialog).toContainText(/fill in the workflow, the store you are requesting from, and the destination store first/i);
-      await dialog.getByRole("button", { name: "Close" }).click();
-      await expect(sr.itemsPanel().getByText("No Items Yet")).toBeVisible();
-      await expect(sr.itemsPanel().getByRole("button", { name: /select product/i })).toHaveCount(0);
-    },
-  );
 
   purchaseTest(
     "TC-SR-010004 Negative - Invalid Input - Missing Expected Delivery Date",
@@ -180,7 +161,7 @@ purchaseTest.describe("Store Requisition — Create", () => {
       annotation: [
         { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase; ฟอร์ม New กรอก Workflow, คลังทั้งสอง และรายการสินค้าครบแล้ว" },
         { type: "steps", description: "1. เปิด /store-operation/store-requisition/new และกรอกฟอร์มให้ครบ\n2. กด Clear ที่ Expected Delivery\n3. กด Save" },
-        { type: "expected", description: "ไม่มี SR ใหม่ถูกสร้าง (ยังอยู่ที่หน้า /new และ API ไม่มีใบที่ใช้ Description นี้) และมี error แสดงให้ผู้ใช้เห็น" },
+        { type: "expected", description: "การบันทึกฉบับร่างไม่ผ่าน zod ฝั่ง FE จึงเป็น backend ที่ตอบ 400 ชี้ field details.expected_date และแสดง toast 'Some fields aren't filled in correctly'; ไม่มี SR ใหม่ถูกสร้าง (ยังอยู่ที่หน้า /new และ API ไม่มีใบที่ใช้ Description นี้)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
@@ -193,15 +174,19 @@ purchaseTest.describe("Store Requisition — Create", () => {
       const c = await fillNewHeader(sr, description);
       await addItem(sr, c.products[0].code, "2");
       await sr.headerGroup(/^Expected Delivery/).getByRole("button", { name: "Clear" }).click();
+      const rejected = page.waitForResponse((r) => /\/store-requisitions$/.test(r.url()) && r.request().method() === "POST");
       await sr.saveAsDraftButton().click();
-      await expect(page.locator(`[data-sonner-toast][data-type="error"], [aria-invalid="true"]`).first()).toBeVisible({ timeout: 15_000 });
+      const res = await rejected;
+      expect(res.status()).toBe(400);
+      expect(JSON.stringify(await res.json())).toContain("details.expected_date");
+      await expect(toasts(page).filter({ hasText: /some fields aren't filled in correctly/i }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page).toHaveURL(new RegExp(`${NEW_PATH}$`));
       expect(await allDescriptions()).not.toContain(description);
     },
   );
 
   purchaseTest(
-    "TC-SR-010005 Alternate Flow - Quick Create by Duplicating an Existing Requisition",
+    "TC-SR-010006 Alternate Flow - Quick Create by Duplicating an Existing Requisition",
     {
       annotation: [
         { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase; มี SR ที่ส่งแล้ว 1 ใบ (สร้างผ่าน API ใน test) — หน้า SR ไม่มี template จึงใช้ Duplicate เป็นทางลัดสร้างใบใหม่" },
@@ -237,6 +222,31 @@ purchaseTest.describe("Store Requisition — Create", () => {
       });
     },
   );
+
+  purchaseTest(
+    "TC-SR-010007 Edge Case - Add Item Blocked Until Workflow and Locations Are Chosen",
+    {
+      annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase; เปิดฟอร์ม New ที่ยังไม่ได้เลือก Workflow และคลัง" },
+        { type: "steps", description: "1. เปิด /store-operation/store-requisition/new\n2. กด Add Item โดยยังไม่เลือก Workflow / Request From / Deliver To" },
+        { type: "expected", description: "ขึ้นกล่อง \"Can't add items yet\" บอกให้เลือก workflow, คลังต้นทางและปลายทางก่อน และตารางรายการยังว่าง (ไม่มีแถวใหม่)" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const sr = new StoreRequisitionPage(page);
+      await sr.gotoNew();
+      await sr.addItemButton().click();
+      const dialog = sr.actionDialog();
+      await expect(dialog.getByRole("heading", { name: "Can't add items yet" })).toBeVisible();
+      await expect(dialog).toContainText(/fill in the workflow, the store you are requesting from, and the destination store first/i);
+      await dialog.getByRole("button", { name: "Close" }).click();
+      await expect(sr.itemsPanel().getByText("No Items Yet")).toBeVisible();
+      await expect(sr.itemsPanel().getByRole("button", { name: /select product/i })).toHaveCount(0);
+    },
+  );
+
 });
 
 // ═════════════════════════════════════════════════════════════════════════
@@ -622,6 +632,41 @@ purchaseTest.describe("Store Requisition — Approver list actions", () => {
     "TC-SR-060002 View Requisition Details with Filtered Columns",
     {
       annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase; BU มี SR สถานะ Completed อย่างน้อย 1 ใบ และ SR สถานะอื่น (data:reset)" },
+        { type: "steps", description: "1. เปิด All Documents\n2. เปิด Toggle columns แล้วซ่อนคอลัมน์ Department\n3. เปิด Filter เลือก Status = COMPLETED" },
+        { type: "expected", description: "หัวคอลัมน์ Department หายไปและคอลัมน์อื่นยังอยู่; หลังกรอง Status = Completed ทุกแถวที่แสดงเป็น Completed และจำนวนแถวไม่เกินจำนวนใบ Completed ใน API" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const sr = new StoreRequisitionPage(page);
+      await page.setViewportSize(BIG);
+      await sr.gotoAllDocuments();
+      await expect(page.getByRole("columnheader", { name: "Department" })).toBeVisible();
+      await page.getByRole("button", { name: "Toggle columns" }).click();
+      await page.getByRole("menuitemcheckbox", { name: "Department" }).click();
+      await page.keyboard.press("Escape");
+      await expect(page.getByRole("columnheader", { name: "Department" })).toHaveCount(0);
+      for (const h of ["SR No.", "Workflow", "Status"]) await expect(page.getByRole("columnheader", { name: h })).toBeVisible();
+      const all = await rootGet("Purchase", `/store-requisitions?perpage=100&bu_code=${BU_CODE}`);
+      const completed = (all.body.data.find((b: any) => b.bu_code === BU_CODE).data as any[]).filter((r) => r.doc_status === "completed").length;
+      expect(completed, "BU has Completed SRs (API-checked precondition)").toBeGreaterThan(0);
+      await page.getByRole("button", { name: "Filter" }).click();
+      await page.getByRole("dialog").getByRole("button", { name: "Status" }).click();
+      await page.getByRole("option", { name: "COMPLETED" }).click();
+      await page.keyboard.press("Escape");
+      await expect.poll(async () => {
+        const texts = await recordRows(page).allInnerTexts();
+        return texts.length > 0 && texts.length <= Math.min(10, completed) && texts.every((t) => /completed/i.test(t));
+      }, { timeout: 20_000 }).toBe(true);
+    },
+  );
+
+  purchaseTest(
+    "TC-SR-060006 Sort the Requisition List by SR No.",
+    {
+      annotation: [
         { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase; BU มี SR หลายใบ (data:reset)" },
         { type: "steps", description: "1. เปิด All Documents\n2. กดหัวคอลัมน์ SR No. เพื่อเรียง แล้วกดซ้ำ" },
         { type: "expected", description: "แถวถูกเรียงตามเลข SR (คอลัมน์ SR No. เรียงต่อเนื่องในทิศทางเดียว) และกดซ้ำแล้วทิศทางกลับกัน" },
@@ -646,8 +691,9 @@ purchaseTest.describe("Store Requisition — Approver list actions", () => {
     },
   );
 
+
   purchaseTest(
-    "TC-SR-060003 Bulk Action - Export Selected Requisitions",
+    "TC-SR-060003 Export the Current Requisition List Page",
     {
       annotation: [
         { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase; BU มี SR (data:reset); หน้า list ไม่มีการเลือกหลายแถว จึงใช้ปุ่ม Export ของ list ที่ส่งออกตามตัวกรองปัจจุบัน" },
@@ -927,6 +973,45 @@ purchaseTest.describe("Store Requisition — Adjust approved quantity", () => {
       });
     },
   );
+
+  // A real version conflict: the SR header is bumped through the API after the FE has fetched the fresh
+  // doc_version and before its PUT reaches the backend (the route only sequences the real requests).
+  purchaseTest(
+    "TC-SR-090005 Concurrent modification detected",
+    {
+      annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase; มี SR Draft; ผู้ใช้รายอื่นบันทึกใบเดียวกันหลังจากที่หน้าอ่านเลขรุ่นล่าสุดแล้ว (จำลองด้วยการ PUT หัวใบผ่าน API ก่อนคำขอบันทึกของหน้าไปถึง backend)" },
+        { type: "steps", description: "1. เปิดรายละเอียด SR Draft แล้วกด Edit\n2. แก้ Description\n3. ระหว่างกด Save มีอีกผู้ใช้บันทึกใบเดียวกันก่อน" },
+        { type: "expected", description: "แสดงข้อความ 'Someone else changed this document. Refresh the page and try again.' และข้อความของผู้ใช้อีกคนยังอยู่ใน API (ไม่ถูกเขียนทับ)" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const draft = await createDraftSr({ products: 1 });
+      try {
+        const sr = new StoreRequisitionPage(page);
+        await openSr(page, draft);
+        await sr.editButton().click();
+        await sr.descriptionInput().fill("mine");
+        let bumped = false;
+        await page.route(new RegExp(`/store-requisitions/${draft.id}$`), async (route) => {
+          if (route.request().method() === "PUT" && !bumped) {
+            bumped = true;
+            await touchDraftSr(draft.id, "theirs");
+          }
+          await route.continue();
+        });
+        await sr.saveAsDraftButton().click();
+        expect((await getSr(draft.id)).description).not.toBe("mine");
+        purchaseTest.fail(true, "suspected bug: a stale doc_version on PUT /store-requisitions/{id} is answered 404 SR_NOT_FOUND (document and line still exist) so the FE shows 'This requisition no longer exists. Someone may have deleted it.'; the FE maps COMMON_DOC_VERSION_CONFLICT / 409 to 'Someone else changed this document' (lib/error-message.ts:40-42) but the backend never sends it for SR update");
+        await expect(toasts(page).filter({ hasText: "Someone else changed this document" })).toBeVisible({ timeout: 15_000 });
+      } finally {
+        await disposeSr(draft.id);
+      }
+    },
+  );
+
 });
 
 // ═════════════════════════════════════════════════════════════════════════

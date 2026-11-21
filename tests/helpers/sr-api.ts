@@ -112,29 +112,55 @@ export async function seedSr(stage: SrStage, opts: { products?: number; qty?: nu
   return done();
 }
 
+/** Bump a draft SR's doc_version the way another user's save would (header update through the API). */
+export async function touchDraftSr(id: string, description: string): Promise<void> {
+  const c = await srSeedContext();
+  const doc = await getSr(id);
+  const res = await buSend("Purchase", "PUT", `/store-requisitions/${id}`, {
+    stage_role: "create",
+    details: {
+      sr_date: doc.sr_date,
+      expected_date: doc.expected_date,
+      description,
+      requestor_id: c.requestor_id,
+      workflow_id: c.workflow_id,
+      department_id: c.department_id,
+      from_location_id: c.from_location.id,
+      to_location_id: c.to_location.id,
+      doc_version: doc.doc_version,
+    },
+  });
+  expect(res.status, `touch ${doc.sr_no}: ${JSON.stringify(res.body).slice(0, 200)}`).toBeLessThan(300);
+}
+
 /**
- * Best-effort clean up so the shared dataset does not accumulate live SRs: a draft is deleted,
- * an SR still at Store Approval / Issue is rejected (-> voided), a finished one stays (no API to undo it).
+ * Clean up so the shared dataset does not accumulate live SRs: a draft is deleted, an SR still at
+ * Store Approval / Issue is rejected (-> voided, verified at the Issue stage too), a finished one stays
+ * (no API to undo it). Failures throw so a leaked in-progress SR is never silent.
  */
 export async function disposeSr(id: string): Promise<void> {
-  const doc = await getSr(id).catch(() => null);
-  if (!doc) return;
+  const res = await buGet("Purchase", `/store-requisitions/${id}`);
+  if (res.status === 404) return; // already gone (e.g. the test deleted it)
+  expect(res.status, `dispose: GET store-requisition ${id}`).toBe(200);
+  const doc = res.body.data;
   if (doc.doc_status === "draft") {
-    await buSend("Purchase", "DELETE", `/store-requisitions/${id}`);
-  } else if (doc.doc_status === "in_progress" && doc.role !== "view_only") {
+    const del = await buSend("Purchase", "DELETE", `/store-requisitions/${id}`);
+    expect(del.status, `dispose: DELETE draft ${doc.sr_no}: ${JSON.stringify(del.body).slice(0, 200)}`).toBeLessThan(300);
+  } else if (doc.doc_status === "in_progress") {
+    if (doc.role === "create") {
+      // sent back to Create Request: only a re-submit puts it where Purchase can reject it
+      await step(id, "submit", (d) => ({
+        stage_role: "create",
+        sr_date_pattern: "today",
+        details: lines(d).map((l) => ({ id: l.id, stage_status: "submit", stage_message: null })),
+      }));
+      return disposeSr(id);
+    }
+    expect(doc.role, `dispose: Purchase must be able to act on ${doc.sr_no} (stage ${doc.workflow_current_stage})`).not.toBe("view_only");
     await step(id, "reject", (d) => ({
       stage_role: d.role,
       details: lines(d).map((l) => ({ id: l.id, stage_status: "reject", stage_message: "E2E cleanup" })),
-    })).catch(() => {});
-  }
-}
-
-/** Run `fn` against a fresh SR at `stage`; the SR is disposed of afterwards whatever the outcome. */
-export async function withSr<T>(stage: SrStage, fn: (sr: SeededSr) => Promise<T>, opts: { products?: number; qty?: number } = {}): Promise<T> {
-  const sr = await seedSr(stage, opts);
-  try {
-    return await fn(sr);
-  } finally {
-    await disposeSr(sr.id);
+    }));
+    expect((await getSr(id)).doc_status, `dispose: ${doc.sr_no} voided`).toBe("voided");
   }
 }

@@ -32,6 +32,11 @@ export class StoreRequisitionPage extends BasePage {
     return this.page.getByRole("button", { name: /all documents?|^all$/i }).first();
   }
 
+  /** Let background lookups (e.g. the product scope of the chosen locations) finish. */
+  async waitSettled() {
+    await this.page.waitForLoadState("networkidle");
+  }
+
   async gotoNew() {
     await this.page.goto(NEW_PATH);
     await this.page.waitForLoadState("networkidle");
