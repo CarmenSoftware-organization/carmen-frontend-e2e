@@ -1,4 +1,24 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+
+// `bun run test` does not hand .env.local to the `playwright` child process (verified: the
+// variable is empty inside this config), so read the one key we need from the file ourselves.
+// A value already in the environment (CI, scripts/run-env.ts) wins.
+function readRateLimitBypassToken(): string {
+  const fromEnv = process.env.E2E_RATE_LIMIT_BYPASS_TOKEN || process.env.RATE_LIMIT_BYPASS_TOKEN;
+  if (fromEnv) return fromEnv;
+  try {
+    const text = readFileSync(resolve(__dirname, ".env.local"), "utf8");
+    const m = /^(?:E2E_)?RATE_LIMIT_BYPASS_TOKEN=(.*)$/m.exec(text);
+    const value = m?.[1]?.trim().replace(/^(['"])(.*)\1$/, "$2");
+    if (value) return value;
+  } catch {
+    // no .env.local — fall through
+  }
+  return "true";
+}
+const RATE_LIMIT_BYPASS_TOKEN = readRateLimitBypassToken();
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
 const FRONTEND_DIR =
@@ -46,7 +66,15 @@ export default defineConfig({
     // 9 roles, and a day of iterating re-runs it many times. The backend accepts
     // this header as an opt-out for automated clients — it is sent on every
     // request the browser context makes, including the real-UI logins.
-    extraHTTPHeaders: { "x-rate-limit-bypass": "true" },
+    //
+    // The gateway only skips the throttler when the header equals its configured
+    // RATE_LIMIT_BYPASS_TOKEN (backend-gateway rate-limit-bypass.ts, fail-closed: a
+    // mismatching value is counted like any other request). The literal "true" only
+    // matches a gateway whose token is "true", so it 429'd the login suite
+    // (TC-LOGIN-010003..010005, 100006, 010037 ... — a different set every run).
+    // Put the gateway's token in .env.local as E2E_RATE_LIMIT_BYPASS_TOKEN
+    // (RATE_LIMIT_BYPASS_TOKEN is read as a fallback).
+    extraHTTPHeaders: { "x-rate-limit-bypass": RATE_LIMIT_BYPASS_TOKEN },
     trace: "on-first-retry",
     screenshot: "on",
     video: "on",

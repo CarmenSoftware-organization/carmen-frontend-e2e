@@ -201,12 +201,13 @@ tab All Documents ถูกเลือก
 
 **Steps**
 
-1. เปิด dropdown All Stage
-2. เลือก In Progress
+1. เปิดแผง Filter
+2. เลือกฟิลด์ Stage
+3. ติ๊ก stage แรกในรายการ
 
 **Expected**
 
-URL ยังคงอยู่ที่ PR list (filter ถูก apply หรือไม่ทำงานเมื่อไม่มี dropdown)
+ตอนเปิด ตัวเลือก All Stage ถูกติ๊ก; หลังติ๊ก stage แรก stage นั้นถูกติ๊กและ All Stage ถูกยกเลิกติ๊ก
 
 ---
 
@@ -646,4 +647,4 @@ URL ยังคงอยู่ที่ ref ของ PR หลัง bulk appr
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>

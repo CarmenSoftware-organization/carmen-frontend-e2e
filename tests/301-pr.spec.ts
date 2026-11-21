@@ -4,7 +4,7 @@ import { PurchaseRequestPage, LIST_PATH, NEW_PATH, APPROVALS_PATH } from "./page
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
-import { openRecordFromRow } from "./helpers/list-row";
+import { openRecordFromRow, recordRows } from "./helpers/list-row";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Multi-role auth — each createAuthTest registers a per-role login fixture.
@@ -656,7 +656,7 @@ fcTest.describe("PR — Approve — FC permission denial", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
+      await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
       if ((await row.count()) === 0) {
         fcTest.skip(true, "No PR available in this environment");
@@ -823,7 +823,7 @@ fcTest.describe("PR — Reject — Permission denial", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
+      await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
       if ((await row.count()) === 0) {
         fcTest.skip(true, "No PR available");
@@ -1050,7 +1050,7 @@ fcTest.describe("PR — Cancel — Permission denial", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
+      await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
       if ((await row.count()) === 0) {
         fcTest.skip(true, "No PR available");
@@ -1234,15 +1234,11 @@ requestorTest.describe("PR — Comments", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const addComment = page.getByRole("button", { name: /add comment|post comment|comment/i }).first();
-      if ((await addComment.count()) === 0) {
-        requestorTest.skip(true, "Comment UI not available");
-        return;
-      }
+      await pr.gotoAllDocuments();
+      await openRecordFromRow(recordRows(page).first());
+      // Header action bar (DocActions): the Comment button renders once the detail has loaded.
+      const addComment = pr.commentButton();
+      await expect(addComment).toBeVisible({ timeout: 10_000 });
       await addComment.click().catch(() => {});
       const post = page.getByRole("button", { name: /post comment/i }).first();
       if ((await post.count()) > 0) await post.click().catch(() => {});
@@ -1267,15 +1263,11 @@ requestorTest.describe("PR — Comments", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const addComment = page.getByRole("button", { name: /add comment|comment/i }).first();
-      if ((await addComment.count()) === 0) {
-        requestorTest.skip(true, "Comment UI not available");
-        return;
-      }
+      await pr.gotoAllDocuments();
+      await openRecordFromRow(recordRows(page).first());
+      // Header action bar (DocActions): the Comment button renders once the detail has loaded.
+      const addComment = pr.commentButton();
+      await expect(addComment).toBeVisible({ timeout: 10_000 });
       await addComment.click().catch(() => {});
       const ta = page.getByRole("textbox").last();
       if ((await ta.count()) > 0) await ta.fill(LONG_TEXT_2001).catch(() => {});
@@ -1300,7 +1292,7 @@ fcTest.describe("PR — Comments — Permission denial", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
+      await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
       if ((await row.count()) === 0) return;
       await openRecordFromRow(row);
@@ -2137,7 +2129,7 @@ fcTest.describe("PR — Return for revision — Permission denial", () => {
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
+      await pr.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
       if ((await row.count()) === 0) return;
       await openRecordFromRow(row);

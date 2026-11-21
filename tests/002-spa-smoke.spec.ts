@@ -14,6 +14,7 @@
  */
 import { test as base, expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
+import { openRecordFromRow, recordRows } from "./helpers/list-row";
 
 const test = createAuthTest("carmensoftware.dev+admin@gmail.com");
 
@@ -25,14 +26,16 @@ test.describe("SPA Smoke — auth guard", () => {
       annotation: [
         { type: "preconditions", description: "ไม่มี session (browser context สะอาด)" },
         { type: "steps", description: "1. เปิด /dashboard ตรงๆ โดยไม่ login" },
-        { type: "expected", description: "ถูก redirect ไป /login และฟอร์ม login แสดง (email field + ปุ่ม Sign In)" },
+        { type: "expected", description: "ถูก redirect ไป /login?next=%2Fdashboard และฟอร์ม login แสดง (email field + ปุ่ม Sign In)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
     },
     async ({ page }) => {
       await page.goto("/dashboard");
-      await expect(page).toHaveURL(/\/login$/, { timeout: 15_000 });
+      // RequireAuth sends the visitor to /login?next=<original path> so login can return them
+      // (routes/login — covered by TC-LOGIN-010035), so the path is no longer a bare /login.
+      await expect(page).toHaveURL(/\/login\?next=%2Fdashboard$/, { timeout: 15_000 });
       await expect(page.getByRole("textbox").first()).toBeVisible();
       await expect(
         page.getByRole("button", { name: /sign in/i }),
@@ -150,28 +153,25 @@ test.describe("SPA Smoke — procurement", () => {
   );
 
   test(
-    "TC-SPA-010006 PR detail เปิดจาก list ได้ (ถ้ามีข้อมูล) + landing/approval ไม่เป็น 404",
+    "TC-SPA-010006 PR detail เปิดจาก list All Documents ได้ + landing/approval ไม่เป็น 404",
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น admin ผ่าน auth fixture" },
-        { type: "steps", description: "1. /procurement/purchase-request คลิกปุ่มแถวแรกใน tbody 2. /procurement 3. /procurement/my-approval" },
-        { type: "expected", description: "คลิกแล้ว URL เป็น /purchase-request/<id> (ข้ามถ้า list ว่าง); landing + approval ไม่เป็น 404" },
+        { type: "steps", description: "1. /procurement/purchase-request?view=all-document คลิกเลขที่เอกสารของแถวแรก 2. /procurement 3. /procurement/my-approval" },
+        { type: "expected", description: "คลิกแล้ว URL เป็น /purchase-request/<id> (ชุดข้อมูลมาตรฐานมี PR อยู่แล้ว list จึงต้องไม่ว่าง); landing + approval ไม่เป็น 404" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Smoke" },
       ],
     },
     async ({ page }) => {
-      await page.goto("/procurement/purchase-request");
-      await expect(page.getByRole("table").first()).toBeVisible({
-        timeout: 10_000,
+      // The list opens on "My pending" (empty for admin); the seeded PRs are under All Documents.
+      await page.goto("/procurement/purchase-request?view=all-document");
+      const firstRecord = recordRows(page).first();
+      await expect(firstRecord, "data:reset seeds PRs, so All Documents must list at least one").toBeVisible({
+        timeout: 15_000,
       });
-      const firstCellButton = page.locator("table tbody button").first();
-      if (await firstCellButton.count()) {
-        await firstCellButton.click();
-        await expect(page).toHaveURL(/purchase-request\/[\w-]+/, {
-          timeout: 10_000,
-        });
-      }
+      await openRecordFromRow(firstRecord);
+      await expect(page).toHaveURL(/purchase-request\/[\w-]+/, { timeout: 10_000 });
 
       for (const path of ["/procurement", "/procurement/my-approval"]) {
         await page.goto(path);

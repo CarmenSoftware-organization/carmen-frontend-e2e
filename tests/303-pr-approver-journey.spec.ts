@@ -205,24 +205,29 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list" },
-        { type: "steps", description: "1. เปิด dropdown All Stage\n2. เลือก In Progress" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PR list (filter ถูก apply หรือไม่ทำงานเมื่อไม่มี dropdown)" },
+        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือกฟิลด์ Stage\n3. ติ๊ก stage แรกในรายการ" },
+        { type: "expected", description: "ตอนเปิด ตัวเลือก All Stage ถูกติ๊ก; หลังติ๊ก stage แรก stage นั้นถูกติ๊กและ All Stage ถูกยกเลิกติ๊ก" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const trigger = page.getByRole("button", { name: /all stage|stage/i }).first();
-      if ((await trigger.count()) === 0) {
-        hodTest.skip(true, "Stage dropdown not present on this list");
-        return;
-      }
-      await trigger.click();
-      const inprog = page.getByRole("option", { name: /in.progress/i }).first();
-      if ((await inprog.count()) > 0) await inprog.click();
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 10_000 });
+      // GET purchase-requests/workflow-stages only returns the stages of workflows used by
+      // PRs the *caller requested* (purchase-request.service.ts findAllWorkflowStagesByPr,
+      // `where: { requestor_id: user_id }`), so an approver/purchaser who raised no PR gets
+      // an empty stage list and nothing to pick. Measured 2026-11-21: data = [] for this role.
+      hodTest.fail(true, "suspected bug: PR workflow-stages is scoped to requestor_id, so the stage filter is empty for approvers/purchasers");
+      await pr.gotoAllDocuments();
+      await pr.openStageFilter();
+      await expect(pr.stageFilterOption(/^all stage$/i)).toBeChecked();
+      const stage = page.getByRole("dialog").getByRole("checkbox").nth(1);
+      // Bounded wait: a click on a missing option burns the whole test timeout, and a timed-out
+      // test is not accepted by test.fail(); a failed expect is.
+      await expect(stage).toBeVisible({ timeout: 5_000 });
+      await stage.click();
+      await expect(stage).toBeChecked();
+      await expect(pr.stageFilterOption(/^all stage$/i)).not.toBeChecked();
     },
   );
 

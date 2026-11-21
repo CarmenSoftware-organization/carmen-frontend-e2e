@@ -34,7 +34,7 @@ purchaseTest.describe("Step 1 — PO List", () => {
       await expect(page).toHaveURL(new RegExp(LIST_PATH));
       const tab = po.tabMyPending();
       if ((await tab.count()) === 0) return;
-      await expect(tab).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      await po.expectScopeSelected(tab);
     },
   );
 
@@ -58,7 +58,7 @@ purchaseTest.describe("Step 1 — PO List", () => {
         return;
       }
       await tab.click();
-      await expect(tab).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      await po.expectScopeSelected(tab);
     },
   );
 

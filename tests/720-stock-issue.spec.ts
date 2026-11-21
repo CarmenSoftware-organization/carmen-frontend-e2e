@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { StockIssuePage, LIST_PATH } from "./pages/stock-issue.page";
-import { openRecordFromRow } from "./helpers/list-row";
+import { openRecordFromRow, recordRows } from "./helpers/list-row";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Multi-role auth — Warehouse/Store-Operations Staff == carmensoftware.dev+purchase@gmail.com.
@@ -400,9 +400,11 @@ requestorTest.describe("Stock Issue — View Full SR — Permission denial", () 
     },
     async ({ page }) => {
       const si = new StockIssuePage(page);
-      await si.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
+      await si.gotoAllDocuments();
+      const row = recordRows(page).first();
+      // Data guard: the STD seed creates every SR as the purchase user, and the
+      // requestor's All Documents list is empty (measured 2026-11-21).
+      requestorTest.skip((await row.count()) === 0, "env-data: requestor sees no SR in All Documents (STD seed creates SRs as purchase)");
       await openRecordFromRow(row);
       const view = si.viewFullSRButton();
       // Either button is hidden (correct) or disabled
@@ -637,9 +639,11 @@ requestorTest.describe("Stock Issue — Expense Allocation — Permission denial
     },
     async ({ page }) => {
       const si = new StockIssuePage(page);
-      await si.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
+      await si.gotoAllDocuments();
+      const row = recordRows(page).first();
+      // Data guard: the STD seed creates every SR as the purchase user, and the
+      // requestor's All Documents list is empty (measured 2026-11-21).
+      requestorTest.skip((await row.count()) === 0, "env-data: requestor sees no SR in All Documents (STD seed creates SRs as purchase)");
       await openRecordFromRow(row);
       const exp = si.viewExpenseAllocationButton();
       // Either button is hidden (correct) or disabled

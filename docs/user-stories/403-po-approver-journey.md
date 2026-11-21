@@ -66,12 +66,12 @@ URL มี 'approval' หรือ 'dashboard'; count/badge หรือ row cou
 
 **Steps**
 
-1. กดแท็บ filter PO/Purchase Order
-2. ตรวจสอบว่าแถวแสดงหรือมี empty state
+1. กดชิป filter Purchase Order บนหน้า My Approval
+2. ตรวจสอบว่าชิปถูกเลือก
 
 **Expected**
 
-แท็บ PO ถูกเลือก (aria-selected=true) เมื่อมี
+ชิป Purchase Order ถูกเลือก (aria-pressed=true)
 
 ---
 
@@ -449,4 +449,4 @@ PATCH .../approve ของ FC ตอบ ok และหลัง GM อนุ�
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>

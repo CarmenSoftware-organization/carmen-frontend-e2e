@@ -5,7 +5,7 @@ _Generated from `tests/160-pl-template.spec.ts` annotations. Edit annotations, n
 **Module:** Price List Template
 **Spec:** `tests/160-pl-template.spec.ts`
 **Default role:** Admin
-**Total test cases:** 33 (21 High / 12 Medium / 0 Low)
+**Total test cases:** 32 (21 High / 11 Medium / 0 Low)
 
 ## Test Cases at a Glance
 
@@ -41,7 +41,6 @@ _Generated from `tests/160-pl-template.spec.ts` annotations. Edit annotations, n
 | TC-PT-060001 | Search and View Templates - Happy Path | High | Happy Path |
 | TC-PT-060002 | Search and View Templates - Negative - Invalid Search Term | High | Negative |
 | TC-PT-060003 | Search and View Templates - Negative - Insufficient Permission | High | Negative |
-| TC-PT-060004 | Search and View Templates - Edge Case - Filter by Product Count | Medium | Edge Case |
 | TC-PT-060005 | Search and View Templates - Edge Case - Sort by Name (Z-A) | Medium | Edge Case |
 | TC-PT-200050 | สร้าง template ชื่อซ้ำ ต้องถูก reject | High | Negative |
 
@@ -788,32 +787,6 @@ Login เข้า Carmen Blue แต่ไม่มีสิทธิ์ดู 
 
 ---
 
-## TC-PT-060004 — Search and View Templates - Edge Case - Filter by Product Count
-
-> **As a** Admin user, **I want** this Price List Template behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
-
-**Priority:** Medium · **Test Type:** Edge Case
-
-**Preconditions**
-
-Login เข้า Carmen Blue พร้อมสิทธิ์ดู template
-
-**Steps**
-
-1. ไปที่ /vendor-management/price-list-template
-2. คลิก status tab 'All'
-3. คลิก 'Filter by Product Count'
-4. กรอก '0' ในช่องจำนวนต่ำสุด
-5. กรอก '10' ในช่องจำนวนสูงสุด
-6. คลิก 'Apply Filter'
-
-**Expected**
-
-ระบบแสดง list ของ template ที่กรองแล้วโดยมีจำนวน product อยู่ในช่วงที่ระบุ
-
----
-
 ## TC-PT-060005 — Search and View Templates - Edge Case - Sort by Name (Z-A)
 
 > **As a** Admin user, **I want** this Price List Template behavior verified, **so that** the feature works as expected.
@@ -862,4 +835,4 @@ TC-PT-040050 ผ่านแล้ว → template ADMIN_NAME_UPDATED มีอ�
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>
