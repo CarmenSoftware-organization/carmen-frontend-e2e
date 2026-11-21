@@ -246,7 +246,7 @@ export class PurchaseRequestPage extends BasePage {
 
   /** Open a lookup trigger (button/combobox) and pick the first option. Capped
    *  wait so a still-disabled cascading trigger doesn't eat the whole timeout. */
-  private async pickFirstInCombobox(trigger: Locator): Promise<boolean> {
+  async pickFirstInCombobox(trigger: Locator): Promise<boolean> {
     // No early count-check: cascading triggers mount/enable after the prior
     // selection re-renders, so let click() auto-wait for it (then catch absence).
     try {
@@ -296,13 +296,13 @@ export class PurchaseRequestPage extends BasePage {
    * Purchase stage: give item `index` the three things Approve demands (FE pr-footer-action.tsx
    * allItemsReadyForPurchase): a vendor, a unit price > 0 and a tax profile.
    */
-  async allocateVendorPriceTax(index: number, price: number) {
+  async allocateVendorPriceTax(index: number, price: number, withTax = true) {
     await this.expandItem(index);
     await this.pickFirstOption(this.vendorInput(index), "vendor");
     const priceInput = this.unitPriceInput(index);
     await expect(priceInput, "Unit Price input missing for the purchaser").toBeVisible({ timeout: 10_000 });
     await this.setAmount(priceInput, price);
-    await this.pickFirstOption(this.taxProfileSelect(index), "tax profile");
+    if (withTax) await this.pickFirstOption(this.taxProfileSelect(index), "tax profile");
   }
 
   async selectFirstWorkflow(): Promise<boolean> {

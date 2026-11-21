@@ -3,6 +3,7 @@ import { createAuthTest } from "./fixtures/auth.fixture";
 import { PurchaseRequestPage, LIST_PATH } from "./pages/purchase-request.page";
 import { createDraftPR, submitDraftPR, deleteDraftPR, e2eDescription } from "./pages/pr-creator.helpers";
 import { openRecordFromRow, recordRows } from "./helpers/list-row";
+import { buGet } from "./helpers/bu-api";
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
@@ -192,6 +193,8 @@ requestorTest.describe("Step 1 — PR List", () => {
       await pr.gotoList();
       await pr.openCreateDialog();
       await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(pr.addItemButton(), "create form did not render its Add Item button").toBeVisible({ timeout: 10_000 });
+      await expect(pr.saveDraftButton(), "create form did not render Save as Draft").toBeVisible({ timeout: 10_000 });
     },
   );
 });
@@ -216,6 +219,8 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       await pr.gotoList();
       await pr.openCreateDialog();
       await expect(page).toHaveURL(/purchase-request\/new/, { timeout: 10_000 });
+      await expect(pr.addItemButton(), "create form did not render its Add Item button").toBeVisible({ timeout: 10_000 });
+      await expect(pr.saveDraftButton(), "create form did not render Save as Draft").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -379,7 +384,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       annotation: [
         { type: "preconditions", description: "กรอก header และมีรายการสินค้า ≥1 รายการ" },
         { type: "steps", description: "1. คลิก Save as Draft\n2. รอ redirect ไปยังหน้ารายละเอียด" },
-        { type: "expected", description: "URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่ /new) และหน้ารายละเอียดแสดงผล" },
+        { type: "expected", description: "URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่ /new) และหน้ารายละเอียดแสดงเลขเอกสารร่างที่ระบบออกให้ (รูปแบบ draft-N) พร้อมสถานะ DRAFT" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -395,6 +400,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       await pr.addLineItem({ product: "Save Item", quantity: 1, uom: "ea", unitPrice: 100 });
       await pr.saveDraftButton().click({ timeout: 5_000 });
       await expect(page).toHaveURL(/purchase-request\/(?!new$)[^\/?#]+$/, { timeout: 15_000 });
+      await expect(page.locator("main"), "detail page does not show the generated draft number (draft-N)").toContainText(/draft-\d+/i, { timeout: 15_000 });
     },
   );
 
@@ -1021,7 +1027,7 @@ requestorTest.describe("Step 8 — Delete", () => {
       annotation: [
         { type: "preconditions", description: "dialog ยืนยันการลบเปิดอยู่" },
         { type: "steps", description: "1. เปิด dialog Delete\n2. คลิก Confirm" },
-        { type: "expected", description: "หน้านำทางกลับไปที่ PR list (URL ลงท้ายด้วย /procurement/purchase-request)" },
+        { type: "expected", description: "หน้านำทางกลับไปที่ PR list และ backend ไม่พบ PR ใบนั้นอีก (GET ตอบ 404)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -1031,6 +1037,7 @@ requestorTest.describe("Step 8 — Delete", () => {
       await deleteDraftPR(page, created.ref);
       // deleteDraftPR uses lenient waitForURL; assert hard here that list URL is current.
       await expect(page).toHaveURL(/\/procurement\/purchase-request($|\?)/, { timeout: 10_000 });
+      await expect.poll(async () => (await buGet("Requestor", `/purchase-requests/${created.ref}`)).status, { message: "the deleted PR is still readable", timeout: 10_000 }).toBe(404);
     },
   );
 });

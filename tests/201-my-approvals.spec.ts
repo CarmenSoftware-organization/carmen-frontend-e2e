@@ -73,9 +73,9 @@ hodTest.describe("My Approvals — Queue", () => {
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/my-approval\n2. ตรวจสอบว่า document count badges แสดงผลถูกต้อง\n3. ตรวจสอบว่า total pending count แสดงเด่นชัด\n4. ตรวจสอบว่าเอกสารเรียงตามวันที่ส่ง (เก่าสุดก่อน)\n5. ตรวจสอบว่า visual urgency indicators แสดงผลถูกต้อง",
+            "1. ไปที่ /procurement/my-approval\n2. อ่านจำนวนในการ์ด Total Pending\n3. เทียบกับจำนวนรวมใน footer ของตาราง",
         },
-        { type: "expected", description: "ผู้ใช้เห็น unified approval queue ที่มีเอกสาร pending ทั้งหมด เรียงลำดับและกรองถูกต้อง พร้อม urgency indicators" },
+        { type: "expected", description: "ผู้ใช้เห็นคิวอนุมัติรวม: การ์ด Total Pending แสดงจำนวนมากกว่า 0 และเท่ากับจำนวนรวมใน footer ของตาราง (Showing 1–N of <จำนวน>)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -84,6 +84,11 @@ hodTest.describe("My Approvals — Queue", () => {
       const ma = new MyApprovalsPage(page);
       await ma.gotoList();
       await expect(page).toHaveURL(/approval/);
+      const badge = ma.pendingCountBadge();
+      await expect(badge, "Total Pending card missing").toBeVisible({ timeout: 15_000 });
+      const pending = Number((await badge.innerText()).match(/\d+/)?.[0]);
+      expect(pending, "HOD has pending approvals in the dataset").toBeGreaterThan(0);
+      await expect(ma.paginationTotal()).toContainText(new RegExp(`of\\s+${pending}\\b`));
     },
   );
 

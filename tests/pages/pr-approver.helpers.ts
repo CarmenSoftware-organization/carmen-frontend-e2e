@@ -46,13 +46,14 @@ async function withRoleContext<T>(
  */
 export async function submitPRAsRequestor(
   browser: Browser,
-  opts?: { items?: number; description?: string; quantity?: number },
+  opts?: { items?: number; description?: string; quantity?: number; foc?: boolean },
 ): Promise<CreatedPR> {
   return withRoleContext(browser, "carmensoftware.dev+requestor@gmail.com", async (page) => {
     const created = await createDraftPR(page, {
       items: opts?.items ?? 1,
       description: opts?.description ?? "approver-fixture",
       quantity: opts?.quantity,
+      foc: opts?.foc,
     });
 
     const pr = new PurchaseRequestPage(page);

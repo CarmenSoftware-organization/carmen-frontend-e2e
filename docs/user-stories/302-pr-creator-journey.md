@@ -416,7 +416,7 @@ URL เปลี่ยนเป็น /procurement/purchase-request/new แล�
 
 **Expected**
 
-URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่ /new) และหน้ารายละเอียดแสดงผล
+URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่ /new) และหน้ารายละเอียดแสดงเลขเอกสารร่างที่ระบบออกให้ (รูปแบบ draft-N) พร้อมสถานะ DRAFT
 
 ---
 
@@ -926,7 +926,7 @@ dialog ยืนยันการลบเปิดอยู่
 
 **Expected**
 
-หน้านำทางกลับไปที่ PR list (URL ลงท้ายด้วย /procurement/purchase-request)
+หน้านำทางกลับไปที่ PR list และ backend ไม่พบ PR ใบนั้นอีก (GET ตอบ 404)
 
 ---
 
@@ -958,4 +958,4 @@ PR ถูกสร้าง (detail URL พร้อม ref), แก้ไขแ
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 9d79c62</sub>
+<sub>Last regenerated: 2026-11-21 · git 1107d0c</sub>

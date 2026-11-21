@@ -23,7 +23,7 @@ const FUTURE_DATE = "2099-12-31";
  */
 export async function createDraftPR(
   page: Page,
-  opts?: { items?: number; description?: string; deliveryDate?: string; quantity?: number },
+  opts?: { items?: number; description?: string; deliveryDate?: string; quantity?: number; foc?: boolean },
 ): Promise<CreatedPR> {
   const pr = new PurchaseRequestPage(page);
   await pr.gotoList();
@@ -44,6 +44,7 @@ export async function createDraftPR(
       quantity: opts?.quantity ?? 1,
       uom: "ea",
       unitPrice: 100,
+      isFOC: opts?.foc,
     });
   }
 
