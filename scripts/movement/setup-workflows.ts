@@ -18,7 +18,9 @@ import { apiSend } from "../../tests/helpers/movement/api";
 const BU = "CARMEN-AVG";
 const BACKUP = "runs/movement/workflows-backup.json";
 const SOURCE = "ทดสอบสร้าง PR";
-const TARGETS = ["general item", "PO inherit-sig test", "SR Test Flow v2 (with Issue)"];
+// The SR workflow ("SR Test Flow v2 (with Issue)") was renamed on dev and already carries its products,
+// so only the PR/PO targets are needed; a target that no longer exists is reported and skipped.
+const TARGETS = ["general item", "PO inherit-sig test"];
 
 async function getWorkflow(id: string) {
   const r = await apiSend("GET", `/api/config/${BU}/workflows/${id}`);

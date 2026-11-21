@@ -88,7 +88,8 @@ export const test = base.extend<{ bu: string; user: MovementUser; signals: Signa
 /** Navigate, then wait until the header shows the intended BU — never post a document into the wrong BU. */
 export async function gotoBu(page: Page, path: string, bu: string): Promise<void> {
   await page.goto(path);
-  await expect(page.locator("header").getByText(bu, { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+  // The BU switcher button reads "<short name> - <BU code>" (it no longer sits in a <header> landmark).
+  await expect(page.getByRole("button", { name: new RegExp(`- ${bu}$`) }).first()).toBeVisible({ timeout: 30_000 });
 }
 
 /** Record what was actually observed — shows in the HTML report next to the case. */

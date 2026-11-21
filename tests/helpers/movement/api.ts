@@ -118,3 +118,24 @@ export async function apiSend<T = any>(
 export function apiGet<T = any>(path: string, user: MovementUser = "admin"): Promise<ApiResult<T>> {
   return apiSend<T>("GET", path, undefined, user);
 }
+
+export interface TxDetail {
+  qty_in: number;
+  qty_out: number;
+  cost_per_unit: number;
+  total_cost: number;
+  location?: { code?: string };
+  product?: { code?: string };
+}
+
+/**
+ * Inventory transaction details a document posted (API `inventory-transactions`, matched by
+ * the parent document id) — what "the document moved stock" means, without reading the DB.
+ */
+export async function txOfDoc(bu: string, docId: string, docNo: string): Promise<TxDetail[]> {
+  const { status, body } = await apiGet(`/api/${bu}/inventory-transactions?perpage=100&search=${encodeURIComponent(docNo)}`);
+  if (status !== 200) throw new Error(`inventory-transactions ${docNo}: HTTP ${status}`);
+  return (body?.data ?? [])
+    .filter((t: any) => t.parent_document_id === docId)
+    .flatMap((t: any) => t.details ?? []) as TxDetail[];
+}

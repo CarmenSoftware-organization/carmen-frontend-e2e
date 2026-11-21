@@ -73,3 +73,36 @@ export async function activePeriodDate(bu: string = DOC_FLOW_BU): Promise<string
   const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
   return today.startsWith(month) ? today : `${month}-15`;
 }
+
+/**
+ * Today (Asia/Bangkok) when it lies inside the BU's active period, else null.
+ * Stock In / Stock Out (and SR issue) cannot be dated beyond today (FE 90018c6d), so on a BU whose
+ * active period starts in the future (e.g. the previous month was closed) there is no valid date.
+ */
+export async function todayInActivePeriod(bu: string = DOC_FLOW_BU): Promise<string | null> {
+  const { status, body } = await apiGet(`/api/${bu}/period-ends/current`);
+  if (status !== 200 || !body?.data?.start_at) throw new Error(`current period of ${bu}: HTTP ${status}`);
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+  const day = (iso: string) => String(iso).slice(0, 10);
+  return today >= day(body.data.start_at) && today <= day(body.data.end_at) ? today : null;
+}
+
+const srWorkflowCache = new Map<string, string>();
+/**
+ * Name of the active SR workflow shaped Create Request -> HOD -> Issue -> Completed. It was created as
+ * "SR Test Flow v2 (with Issue)" and has since been renamed on dev, so it is found by its stages.
+ */
+export async function srIssueWorkflowName(bu: string = DOC_FLOW_BU): Promise<string> {
+  const hit = srWorkflowCache.get(bu);
+  if (hit) return hit;
+  const list = await apiGet(`/api/config/${bu}/workflows?perpage=100`);
+  for (const w of (list.body?.data ?? []).filter((x: any) => x.workflow_type === "store_requisition" && x.is_active)) {
+    const d = await apiGet(`/api/config/${bu}/workflows/${w.id}`);
+    const stages = (d.body?.data?.data?.stages ?? []).map((x: any) => x.role).join(">");
+    if (stages === "create>approve>issue>approve") {
+      srWorkflowCache.set(bu, w.name);
+      return w.name;
+    }
+  }
+  throw new Error(`${bu}: no active store_requisition workflow with stages create > approve (HOD) > issue > approve`);
+}
