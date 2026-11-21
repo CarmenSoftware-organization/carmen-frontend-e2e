@@ -787,7 +787,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
       const posted = createPost(page);
       await dialog.getByRole("button", { name: /^Create$/ }).click();
       const res = await posted;
-      test.fail(true, "suspected bug: POST /stock-replenishments/pr answers 400 'products.0.location_id: expected string, received undefined' on dev BE v4.0.13-build.20261112 — FE main sends location_id at the top level (FE c6627bb0); cluster: fe-be-contract");
+      test.fail(true, "suspected bug: FE/BE contract mismatch on both mains — POST /stock-replenishments/pr answers 400 'products.0.location_id: expected string, received undefined'; FE main (carmen-frontend routes/store-operation/stock-replenishment/use-stock-replenishment.ts:64-75 CreateStockReplPrDto) sends location_id at the top level, BE main (carmen-turborepo-backend apps/backend-gateway/src/common/dto/stock-replenishment/stock-replenishment.dto.ts:30, since 400fff4a9 2026-08-24 'ย้าย location ไปอยู่ที่บรรทัด') requires products[].location_id; cluster: fe-be-contract");
       expect(res.status(), await res.text()).toBeLessThan(300);
       await expect(page.getByText(/Created 1 purchase request/i)).toBeVisible();
       await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -821,7 +821,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
       const posted = createPost(page);
       await dialog.getByRole("button", { name: /^Create$/ }).click();
       const res = await posted;
-      test.fail(true, "suspected bug: POST /stock-replenishments/sr answers 400 'products.0.location_id / products.0.from_location: expected string, received undefined' on dev BE v4.0.13-build.20261112 — FE main sends them at the top level (FE c6627bb0); cluster: fe-be-contract");
+      test.fail(true, "suspected bug: FE/BE contract mismatch on both mains — POST /stock-replenishments/sr answers 400 'products.0.location_id / products.0.from_location: expected string, received undefined'; FE main (use-stock-replenishment.ts:77-83 CreateStockReplSrDto) sends location_id/from_location at the top level, BE main (stock-replenishment.dto.ts:68-69, since 400fff4a9) requires them per product line; cluster: fe-be-contract");
       expect(res.status(), await res.text()).toBeLessThan(300);
       await expect(page.getByRole("dialog")).toHaveCount(0, { timeout: 30_000 });
       await expect(selectedText(page)).toHaveCount(0);
@@ -854,7 +854,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
       const posted = createPost(page);
       await dialog.getByRole("button", { name: /^Create$/ }).click();
       const res = await posted;
-      test.fail(true, "suspected bug: POST /stock-replenishments/pr answers 400 'products.0.location_id: expected string, received undefined' on dev BE v4.0.13-build.20261112 — FE main sends location_id at the top level (FE c6627bb0); cluster: fe-be-contract");
+      test.fail(true, "suspected bug: FE/BE contract mismatch on both mains — POST /stock-replenishments/pr answers 400 'products.0.location_id: expected string, received undefined'; FE main (carmen-frontend routes/store-operation/stock-replenishment/use-stock-replenishment.ts:64-75 CreateStockReplPrDto) sends location_id at the top level, BE main (carmen-turborepo-backend apps/backend-gateway/src/common/dto/stock-replenishment/stock-replenishment.dto.ts:30, since 400fff4a9 2026-08-24 'ย้าย location ไปอยู่ที่บรรทัด') requires products[].location_id; cluster: fe-be-contract");
       expect(res.status(), await res.text()).toBeLessThan(300);
       await expect(page.getByText(/Created 2 purchase request/i)).toBeVisible({ timeout: 10_000 });
       expect(await prCount()).toBe(before + 2);
