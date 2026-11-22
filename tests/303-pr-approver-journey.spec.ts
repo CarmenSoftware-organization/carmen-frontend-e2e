@@ -205,24 +205,35 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list" },
-        { type: "steps", description: "1. เปิด dropdown All Stage\n2. เลือก In Progress" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PR list (filter ถูก apply หรือไม่ทำงานเมื่อไม่มี dropdown)" },
+        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือกฟิลด์ Stage\n3. ติ๊ก stage แรกในรายการ" },
+        { type: "expected", description: "ตอนเปิด ตัวเลือก All Stage ถูกติ๊ก; หลังติ๊ก stage แรก stage นั้นถูกติ๊กและ All Stage ถูกยกเลิกติ๊ก" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const trigger = page.getByRole("button", { name: /all stage|stage/i }).first();
-      if ((await trigger.count()) === 0) {
-        hodTest.skip(true, "Stage dropdown not present on this list");
-        return;
-      }
-      await trigger.click();
-      const inprog = page.getByRole("option", { name: /in.progress/i }).first();
-      if ((await inprog.count()) > 0) await inprog.click();
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 10_000 });
+      // GET purchase-requests/workflow-stages only returns the stages of workflows used by
+      // PRs the *caller requested* (purchase-request.service.ts findAllWorkflowStagesByPr,
+      // `where: { requestor_id: user_id }`), so an approver/purchaser who raised no PR gets
+      // data = [] and the filter lists nothing but "All Stage". Measured 2026-11-21.
+      await pr.gotoAllDocuments();
+      await pr.openStageFilter();
+      // These two steps are the openStageFilter() contract. They run BEFORE the bug is declared
+      // below, so a regression in the page object fails the case for real instead of being
+      // swallowed by test.fail.
+      await expect(pr.stageFilterOption(/^all stage$/i)).toBeVisible({ timeout: 10_000 });
+      await expect(pr.stageFilterOption(/^all stage$/i)).toBeChecked();
+
+      hodTest.fail(true, "suspected bug: PR workflow-stages is scoped to requestor_id, so the stage filter lists no stage for approvers/purchasers");
+      // Desired behaviour: at least one stage besides "All Stage". Flips red ("expected to fail
+      // but passed") only when the backend stops scoping the list to the requestor.
+      const stageOptions = page.getByRole("dialog").getByRole("checkbox");
+      await expect(stageOptions).not.toHaveCount(1, { timeout: 5_000 });
+      const stage = stageOptions.nth(1);
+      await stage.click();
+      await expect(stage).toBeChecked();
+      await expect(pr.stageFilterOption(/^all stage$/i)).not.toBeChecked();
     },
   );
 

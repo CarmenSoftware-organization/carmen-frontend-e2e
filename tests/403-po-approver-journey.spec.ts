@@ -1,6 +1,7 @@
 import { test as baseTest, expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { PurchaseOrderPage, LIST_PATH } from "./pages/purchase-order.page";
+import { MyApprovalsPage } from "./pages/my-approvals.page";
 import {
   submitPOAsPurchaser,
   approveAsGM,
@@ -42,23 +43,20 @@ fcTest.describe("Step 1 — My Approval", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่ My Approval dashboard พร้อม PO ที่รอดำเนินการอย่างน้อยหนึ่งรายการ" },
-        { type: "steps", description: "1. กดแท็บ filter PO/Purchase Order\n2. ตรวจสอบว่าแถวแสดงหรือมี empty state" },
-        { type: "expected", description: "แท็บ PO ถูกเลือก (aria-selected=true) เมื่อมี" },
+        { type: "steps", description: "1. กดชิป filter Purchase Order บนหน้า My Approval\n2. ตรวจสอบว่าชิปถูกเลือก" },
+        { type: "expected", description: "ชิป Purchase Order ถูกเลือก (aria-pressed=true)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
-      await page.goto("/procurement/my-approvals").catch(async () => {
-        await page.goto("/procurement/purchase-requests/my-approvals");
-      });
-      const tab = page.getByRole("tab", { name: /^po$|purchase order/i }).first();
-      if ((await tab.count()) === 0) {
-        fcTest.skip(true, "PO filter tab not present on this dashboard build");
-        return;
-      }
-      await tab.click();
-      await expect(tab).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      const approvals = new MyApprovalsPage(page);
+      await approvals.gotoList();
+      const chip = approvals.docTypeChip("po");
+      await chip.click();
+      // The type filter is now a toggle chip, not a Radix tab: aria-pressed, not aria-selected
+      // (routes/procurement/my-approval/approval-component.tsx, 6711160c / c4a603bb).
+      await expect(chip).toHaveAttribute("aria-pressed", "true", { timeout: 5_000 });
     },
   );
 

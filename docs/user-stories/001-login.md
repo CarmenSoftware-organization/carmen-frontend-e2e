@@ -478,7 +478,7 @@ User carmensoftware.dev+requestor@gmail.com มีอยู่จริงแล
 **Steps**
 
 1. เปิด /login
-2. กรอก email = 'REQUESTOR@BLUELEDGERS.COM' (ตัวพิมพ์ใหญ่ทั้งหมด) + password ที่ถูกต้อง
+2. กรอก email = 'CARMENSOFTWARE.DEV+REQUESTOR@GMAIL.COM' (ตัวพิมพ์ใหญ่ทั้งหมด) + password ที่ถูกต้อง
 3. กด Sign In
 
 **Expected**
@@ -753,7 +753,7 @@ browser logged out; อยู่ที่ /login; mock /api/auth/login ให้
 
 **Expected**
 
-แสดง alert ข้อความ 'Auth server unavailable' (ไม่ crash / ไม่โชว์ raw stack) และคงอยู่ที่ /login
+แสดง alert ข้อความ 'Could not reach the server' (ไม่ crash / ไม่โชว์ raw stack) และคงอยู่ที่ /login
 
 ---
 
@@ -1026,4 +1026,4 @@ User carmensoftware.dev+requestor@gmail.com login สำเร็จและม
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>

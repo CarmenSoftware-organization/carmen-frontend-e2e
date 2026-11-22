@@ -198,7 +198,9 @@ test.describe("เข้าสู่ระบบ", () => {
     async ({ page }) => {
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login("invalid@test.com", "wrongpassword");
+    // unique per run: the backend locks (email+IP) for 3 min after 3 failures and a non-existent
+    // address never succeeds, so a fixed one is locked by the third run inside 3 minutes.
+    await loginPage.login(`invalid-${Date.now()}@test.com`, "wrongpassword");
 
     const errorVisible = page.locator("form p.text-destructive");
     const dialogVisible = page.getByRole("alertdialog");
@@ -234,7 +236,7 @@ test.describe("เข้าสู่ระบบ", () => {
     {
       annotation: [
         { type: "preconditions", description: "User carmensoftware.dev+requestor@gmail.com มีอยู่จริงและ active; browser logged out" },
-        { type: "steps", description: "1. เปิด /login\n2. กรอก email = 'REQUESTOR@BLUELEDGERS.COM' (ตัวพิมพ์ใหญ่ทั้งหมด) + password ที่ถูกต้อง\n3. กด Sign In" },
+        { type: "steps", description: "1. เปิด /login\n2. กรอก email = 'CARMENSOFTWARE.DEV+REQUESTOR@GMAIL.COM' (ตัวพิมพ์ใหญ่ทั้งหมด) + password ที่ถูกต้อง\n3. กด Sign In" },
         { type: "expected", description: "Login สำเร็จและ redirect ไปที่ /dashboard (อีเมลไม่ case-sensitive)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
@@ -243,7 +245,7 @@ test.describe("เข้าสู่ระบบ", () => {
     async ({ page }) => {
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login("REQUESTOR@BLUELEDGERS.COM", TEST_PASSWORD);
+    await loginPage.login("CARMENSOFTWARE.DEV+REQUESTOR@GMAIL.COM", TEST_PASSWORD);
     await expect(page).toHaveURL(/dashboard/, { timeout: 15_000 });
   });
 
@@ -434,7 +436,7 @@ test.describe("เข้าสู่ระบบ", () => {
       { timeout: 10_000 },
     );
 
-    await loginPage.login("wrong-user@nonexistent.com", "anypassword");
+    await loginPage.login(`wrong-user-${Date.now()}@nonexistent.com`, "anypassword");
 
     const response = await responsePromise;
     expect(response.status()).toBe(401);
@@ -526,7 +528,7 @@ test.describe("เข้าสู่ระบบ", () => {
       annotation: [
         { type: "preconditions", description: "browser logged out; อยู่ที่ /login; mock /api/auth/login ให้ fail (network error)" },
         { type: "steps", description: "1. intercept POST **/api/auth/login แล้ว abort\n2. เปิด /login\n3. กรอก carmensoftware.dev+requestor@gmail.com + password\n4. กด Sign In" },
-        { type: "expected", description: "แสดง alert ข้อความ 'Auth server unavailable' (ไม่ crash / ไม่โชว์ raw stack) และคงอยู่ที่ /login" },
+        { type: "expected", description: "แสดง alert ข้อความ 'Could not reach the server' (ไม่ crash / ไม่โชว์ raw stack) และคงอยู่ที่ /login" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Validation" },
       ],

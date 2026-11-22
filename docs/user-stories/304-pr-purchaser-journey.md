@@ -98,12 +98,13 @@ URL อยู่ที่หน้า PR list; แท็บ My Pending ถูก
 
 **Steps**
 
-1. เปิด dropdown All Stage
-2. เลือก In Progress
+1. เปิดแผง Filter
+2. เลือกฟิลด์ Stage
+3. ติ๊ก stage แรกในรายการ
 
 **Expected**
 
-URL ยังคงอยู่ที่หน้า PR list (filter ถูกใช้งานหรือไม่มีผลเมื่อ dropdown ไม่มีอยู่)
+ตอนเปิด ตัวเลือก All Stage ถูกติ๊ก; หลังติ๊ก stage แรก stage นั้นถูกติ๊กและ All Stage ถูกยกเลิกติ๊ก
 
 ---
 
@@ -735,4 +736,4 @@ URL ยังคงอยู่ที่ PR ref หลังจาก bulk appro
 ---
 
 
-<sub>Last regenerated: 2026-11-10 · git 3d9ae0d</sub>
+<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>

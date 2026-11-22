@@ -26,6 +26,13 @@ export class PurchaseOrderPage extends BasePage {
     await this.page.waitForLoadState("networkidle");
   }
 
+  /** List opens on "My pending" (`?view=my-pending`); this opens "All Documents". */
+  async gotoAllDocuments() {
+    await this.page.goto(`${LIST_PATH}?view=all-document`);
+    await this.page.waitForLoadState("networkidle");
+    await this.waitForListRows();
+  }
+
   async gotoDetail(orderNumber: string) {
     await this.page.goto(`${LIST_PATH}/${orderNumber}`);
     await this.page.waitForLoadState("networkidle");
@@ -74,11 +81,11 @@ export class PurchaseOrderPage extends BasePage {
 
   // ── List filters / search / sort / tabs ──────────────────────────────
   tabMyPending(): Locator {
-    return this.page.getByRole("tab", { name: /my pending|my po/i }).first();
+    return this.page.getByRole("button", { name: /my pending|my po/i }).first();
   }
 
   tabAllDocuments(): Locator {
-    return this.page.getByRole("tab", { name: /all documents|^all$/i }).first();
+    return this.page.getByRole("button", { name: /all documents?|^all$/i }).first();
   }
 
   async searchFor(text: string) {

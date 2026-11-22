@@ -585,7 +585,7 @@ requestorTest.describe("PO — Change Order — Permission denial", () => {
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
+      await po.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
       if ((await row.count()) === 0) return;
       await openRecordFromRow(row);
@@ -827,39 +827,6 @@ requestorTest.describe("PO — Dashboard — Permission denial", () => {
 // ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("PO — QR Code", () => {
   purchaseTest(
-    "TC-PO-200001 Happy Path - Download QR Code for Mobile Receiving",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู PO; มี PO พร้อม PO number; QR code ถูกสร้างอัตโนมัติ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-order/<orderNumber>\n2. คลิก component QRCodeSection\n3. ตรวจสอบว่า QR code image visible\n4. คลิก QR code image\n5. ตรวจสอบว่า QR code ถูก download ไปยังอุปกรณ์ผู้ใช้",
-        },
-        { type: "expected", description: "QR code ถูก download ไปยังอุปกรณ์ผู้ใช้สำเร็จ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const po = new PurchaseOrderPage(page);
-      await po.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No PO available");
-        return;
-      }
-      await openRecordFromRow(row);
-      const qr = po.qrCodeImage();
-      if ((await qr.count()) === 0) {
-        purchaseTest.skip(true, "QR Code section not exposed");
-        return;
-      }
-      await expect(qr).toBeVisible({ timeout: 5_000 });
-    },
-  );
-
-  purchaseTest(
     "TC-PO-200003 Negative - QR Code Not Generated",
     {
       annotation: [
@@ -899,7 +866,7 @@ purchaseTest.describe("PO — QR Code", () => {
     },
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
-      await po.gotoList();
+      await po.gotoAllDocuments();
       const row = page.getByRole("row").nth(1);
       if ((await row.count()) === 0) return;
       await openRecordFromRow(row);

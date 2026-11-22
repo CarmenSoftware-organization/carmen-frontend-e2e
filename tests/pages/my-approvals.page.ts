@@ -22,6 +22,16 @@ export class MyApprovalsPage extends BasePage {
     return this.page.getByRole("button", { name: /total pending/i }).first();
   }
 
+  /**
+   * Document-type filter chip ("Purchase Request" / "Purchase Order" / "Store
+   * Requisition"). The old Radix tabs became toggle <button>s with `aria-pressed`
+   * and a `title` = full label (approval-component.tsx, 6711160c / c4a603bb).
+   */
+  docTypeChip(type: "pr" | "po" | "sr"): Locator {
+    const name = { pr: /purchase request/i, po: /purchase order/i, sr: /store requisition/i }[type];
+    return this.page.getByRole("group").getByRole("button", { name }).first();
+  }
+
   // "Showing 1–N of TOTAL" pagination label — the authoritative total count.
   paginationTotal(): Locator {
     return this.page.getByText(/showing\s+\d+.*of\s+\d+/i).first();
