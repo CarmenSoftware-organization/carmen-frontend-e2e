@@ -61,8 +61,8 @@ Cites are `file:line`. `inv` = `specs/accounts-payable-invoice-design.md`, `pay`
 
 - **Does WHT reduce the AP open balance? Not at invoice; yes at payment, as a settlement component.**
   - Invoice: WHT "ไม่หักจาก Invoice grand total ใน default Thailand policy" (inv:102); "ไม่ลด AP liability ตอน Invoice" (inv:83); acceptance "WHT eligibility ไม่ลด default invoice liability ก่อน payment" (inv:254).
-  - Payment: the save rule is `Invoice total = Payment total + WHT total - Other Expense total` (rules:17), so the amount applied to the invoice equals cash + WHT - other expense. The payment JV is `Dr AP control (carrying amount settled) / Cr WHT payable / Cr Bank` (pay:127-130). So a payment with WHT reduces the open amount by cash + WHT, not by cash alone.
-  - `open_amount = posted document total - posted applications - posted credits` (inv:97).
+  - Payment: the save rule is `Invoice total = Payment total + WHT total - Other Expense total` (rules:17), so the amount applied to the invoice equals cash + WHT - other expense. The payment JV is `Dr AP control (carrying amount settled) / Cr WHT payable / Cr Bank` (pay:127-130). So a payment with WHT reduces the open amount by cash + WHT, not by cash alone. **This is an inference**, not a single stated sentence: it combines rules:17, inv:99 and pay:127-130, and is supported by pay:93 ("Net Cash = applied payable less credits/deposits/WHT").
+  - `open_amount = posted document total - posted applications - posted credits` (inv:99).
   - For `E2E-AP-PARTIAL` (1,070.00 invoice): **670.00 is correct only if the 400.00 payment carries no WHT** (the open amount drops by exactly 400.00). If the case adds WHT of W, open = 1,070.00 - (cash + W). Decide the amounts so that the equation at rules:17 holds, and say in the case which one it is. Do not change 670.00 unless WHT is added.
 - **When is WHT computed? At payment, not at invoice.** Invoice shows only an "eligible / estimated" amount (inv:83, inv:102). The WHT amount, base, rate and certificate belong to the payment (pay:98-106). Backend re-validates the balance equation using the WHT amount it resolves from master, not the browser's (rules:22). Certificate is created once when the payment posts (pay:112).
 - **WHT base:** eligible pre-VAT / service amount, not the whole invoice total (pay:110). Amount = base x service rate, with an override that stores calculated value, override, reason and approver (rules:12, pay:111). Matches the plan's "WHT on the pre-VAT base" assumption.
@@ -71,10 +71,10 @@ Cites are `file:line`. `inv` = `specs/accounts-payable-invoice-design.md`, `pay`
 
 | Topic | Rule | Cite |
 |---|---|---|
-| Line math | `line_subtotal = qty x unit_price`; `line_net = subtotal - discount`; `line_payable = line_net + line_vat + other payable taxes`; `document_total = sum(line_payable) + header charges - document offsets` | inv:92-98 |
+| Line math | `line_subtotal = qty x unit_price`; `line_net = subtotal - discount`; `line_payable = line_net + line_vat + other payable taxes`; `document_total = sum(line_payable) + header charges - document offsets` | inv:93-99 |
 | VAT | per line from tax profile (or approved override with permission and reason); taxable base, rate, amount, input / pending VAT account | inv:82, inv:96 |
 | VAT inclusive | taxable base is backed out with a defined rounding rule; "not always `amount x 7%`" | inv:103 |
-| Rounding | decimal arithmetic at currency precision; functional amount rounded per posting line; difference goes to the rounding account when in tolerance | inv:90, inv:105 |
+| Rounding (rule, not assumption) | `HALF_UP` per journal line at the functional currency's `decimal_places`; JV totals sum the rounded lines; any variance is an explicit Rounding Adjustment line to the BU rounding account, auto-created only within `rounding_tolerance` (default 1 minor unit), else validation fails. Source is a 5th doc outside the original oracle list: `accounting-foundation.md:103,107-108,120-121`; per-line also at inv:105 |
 | Invoice JV | `Dr Expense/Inventory/Asset = line net`, `Dr (Pending) Input VAT = claimable tax`, `Cr Trade AP = document payable` | inv:162-166 |
 | Settlement | partial payment -> `partially_paid`, full -> `paid`; lifecycle stays `posted` | inv:188, inv:257 |
 | Debit / credit note sign | one sign convention in the API; never flip both document sign and Dr/Cr | inv:106 |
@@ -100,13 +100,15 @@ All use the plan's Global Constraints rule; each case writes `assumption:` in `e
 
 | Gap | Assumption |
 |---|---|
-| Rounding per line vs per document | round half-up per line to the BU decimals, then sum |
+| Rounding per line vs per document | not a gap: fixed by accounting-foundation.md:103,120 (see 4.2) |
 | VAT on a discounted line | 7% on `line_net` (after discount) |
 | WHT rate per service | take from the seeded WHT tax profile (Task 1), not from the doc |
 | WHT rounding | half-up to the BU decimals on the WHT total per payment (the doc says only "aggregate per certificate rule", pay:92) |
 | WHT base on Inc-VAT lines | the backed-out pre-VAT base (inv:103), then the rate |
 | Credit / debit note sign in API | positive amounts; credit note reduces the vendor's open balance, debit note increases it. The doc fixes no sign (inv:106) |
 | Deposit application ordering / allocation across invoices | oldest invoice first; the doc only says a "configured allocation rule" (pay:134) |
+| Deposit invoice posting (inv:266 open question: AP liability, prepaid asset, or both) | assumption: posts Dr advance-deposit account / Cr AP control (`advance_deposit_account_id`, as the BE facts in the spec say); a later application clears it |
+| CN/DN must reference the original invoice (inv:267 open question) | assumption: standalone is allowed (the BE create route needs only vendor, dates and lines); cases that need a reference say so |
 | Whether other expense is used in the money cases | not used, except in one equation case |
 | BU decimals source | not in app-config on dev today; read from the API once per run when found, else 2 |
 
@@ -115,3 +117,10 @@ All use the plan's Global Constraints rule; each case writes `assumption:` in `e
 Not triggered: AP and GL answer 200 on TEST BU, the three license features are active, `expired_features` is empty.
 The blockers for the money path are data, not gating (no GL period, no `gl_setting`, no bank account, no WHT profile,
 no accounting workflow), all within Task 1 scope.
+
+## 6. Availability of Deposit / DN / CN (check in Task 1/2)
+
+inv:9 says Deposit, Debit Note and Credit Note are opened "per release decision", so they may not be enabled on dev.
+Task 1/2 must check each type: POST a draft with `doc_type` = deposit | debit_note | credit_note, record whether it is
+accepted, and delete the draft afterwards. This preflight did not do it (read-only). If a type is refused, report it;
+do not skip silently.
