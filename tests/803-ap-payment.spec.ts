@@ -86,6 +86,11 @@ async function expectWhtPaymentPosted(paymentId: string, invoiceId: string, f: {
   expect(pay.doc_status).toBe("posted");
   expect(Number(pay.total_applied_amount)).toBe(f.total);
   expect(Number(pay.total_wht_amount)).toBe(f.wht);
+  const whtRows = pay.tb_ap_payment_wht as Record<string, any>[];
+  expect(whtRows).toHaveLength(1);
+  expect(Number(whtRows[0].base_amount)).toBe(f.base);
+  expect(Number(whtRows[0].wht_rate)).toBe(WHT_RATE);
+  expect(Number(whtRows[0].wht_amount)).toBe(f.wht);
   expect(Number(pay.net_paid_amount)).toBe(f.cash);
   const jv = await jvOfSource("ap_payment", paymentId);
   expectBalanced(jv);

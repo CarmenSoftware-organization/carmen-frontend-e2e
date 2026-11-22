@@ -116,7 +116,7 @@ test.describe("AP payment approvals (804)", () => {
         { type: "steps", description: "1. เปิด /accounting/accounts-payable/payment-approvals\n2. ค้นหาเลขที่ PV ของใบที่รอ Budget\n3. ดูว่ามีแถวหรือไม่" },
         {
           type: "expected",
-          description: "ไม่มีแถวของใบนี้ในคิวของ Requestor (คิวอนุมัติคือใบที่ผู้ใช้ต้องดำเนินการเอง; pay:225 'submitted assigned items'). pinned: backend ส่งใบ in_review ทุกใบให้ทุกผู้ใช้ จึงมีแถวขึ้น (ดู bug list)",
+          description: "ไม่มีแถวของใบนี้ในคิวของ Requestor (คิวอนุมัติคือใบที่ผู้ใช้ต้องดำเนินการเอง; pay:225 'submitted assigned items'). pinned (needs product decision): backend ส่งใบ in_review ทุกใบให้ทุกผู้ใช้ จึงมีแถวขึ้น; คำถามที่เปิดอยู่คือคิวเป็น worklist ร่วมหรือเฉพาะผู้อนุมัติที่ถูกมอบหมาย (ดู bug list ส่วน 2)",
         },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Authorization" },
@@ -132,7 +132,7 @@ test.describe("AP payment approvals (804)", () => {
       await settled(page);
       requestorTest.fail(
         true,
-        `suspected bug: the Payment Approvals queue lists every in_review voucher to every user, including a view-only Requestor who is not assigned to the approval stage (the list filter is doc_status in_review only; only the batch-approve checkbox is gated by user_action.execute). See ${BUG_LIST}`,
+        `needs product decision: should the Payment Approvals queue be a shared worklist (every user sees every in_review voucher, as today) or scoped to the assigned approver? Today it lists every in_review voucher to a view-only Requestor who is not assigned (the list filter is doc_status in_review only; only the batch-approve checkbox is gated by user_action.execute). Pinned to the assignee-scoped reading (pay:225) until the owner rules. See ${BUG_LIST} section 2`,
       );
       await expect(pp.row(p.no)).toHaveCount(0);
     },

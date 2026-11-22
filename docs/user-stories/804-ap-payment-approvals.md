@@ -62,7 +62,7 @@ Requestor login (view-only accounting, ไม่ได้อยู่ในข�
 
 **Expected**
 
-ไม่มีแถวของใบนี้ในคิวของ Requestor (คิวอนุมัติคือใบที่ผู้ใช้ต้องดำเนินการเอง; pay:225 'submitted assigned items'). pinned: backend ส่งใบ in_review ทุกใบให้ทุกผู้ใช้ จึงมีแถวขึ้น (ดู bug list)
+ไม่มีแถวของใบนี้ในคิวของ Requestor (คิวอนุมัติคือใบที่ผู้ใช้ต้องดำเนินการเอง; pay:225 'submitted assigned items'). pinned (needs product decision): backend ส่งใบ in_review ทุกใบให้ทุกผู้ใช้ จึงมีแถวขึ้น; คำถามที่เปิดอยู่คือคิวเป็น worklist ร่วมหรือเฉพาะผู้อนุมัติที่ถูกมอบหมาย (ดู bug list ส่วน 2)
 
 ---
 
@@ -175,4 +175,4 @@ Approve ถูกปฏิเสธ 403 และใบยัง in_review ไ�
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 45df177</sub>
+<sub>Last regenerated: 2026-11-22 · git 8d980fa</sub>
