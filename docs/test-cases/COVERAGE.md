@@ -8,8 +8,8 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 
 | Status | Meaning | Modules |
 | --- | --- | --- |
-| ✅ spec | an automated Playwright spec drives this module | 49 |
-| 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
+| ✅ spec | an automated Playwright spec drives this module | 50 |
+| 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 39 |
 | ❌ none | neither — this is the coverage gap | 34 |
 
 ## *
@@ -223,7 +223,7 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
 | `/system-admin` | 1 | — | `1204-section-landing.md` | 📄 catalog |
-| `/system-admin/activity-log` | 1 | — | `1109-activity-log.md` | 📄 catalog |
+| `/system-admin/activity-log` | 1 | `900-period-end.spec.ts` | `1109-activity-log.md` | ✅ spec |
 | `/system-admin/ask-ai` | 1 | — | — | ❌ none |
 | `/system-admin/business-setting` | 1 _(redirect → `/system-admin/company-profile`)_ | — | `1114-company-profile.md` | 📄 catalog |
 | `/system-admin/company-profile` | 1 | — | `1114-company-profile.md` | 📄 catalog |

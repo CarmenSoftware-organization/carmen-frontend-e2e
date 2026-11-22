@@ -5,6 +5,7 @@ import {
   BU,
   requireScenario,
   irreversibleAllowed,
+  irreversibleSkip,
   shot,
   record,
   currentPeriod,
@@ -70,7 +71,7 @@ test(
     ],
   },
   async ({ page }) => {
-    test.skip(!irreversibleAllowed(PERIOD), "ต้องตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<period> ก่อน");
+    test.skip(!irreversibleAllowed(PERIOD), irreversibleSkip("Start Period Close opens the count round"));
     expect(await currentPeriod(BU)).toBe(PERIOD);
     const before = await review(BU);
     if (before.physical_count_period?.status === "counting") {

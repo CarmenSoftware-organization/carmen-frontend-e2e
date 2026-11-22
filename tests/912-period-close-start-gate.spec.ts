@@ -13,7 +13,7 @@ import {
   review,
   getDoc,
   putDoc,
-  sql,
+  sql, gatePhase
 } from "./helpers/period-close/context";
 import { btn, field } from "./helpers/movement/ui";
 import {
@@ -166,6 +166,7 @@ async function runBlockerCase(page: Page, id: string, title: string, blockers: B
 }
 
 test.beforeAll(() => requireScenario());
+gatePhase({ dates: true });
 test.beforeAll(async () => {
   expect(await currentPeriod(BU)).toBe(PERIOD);
   const r = await review(BU);

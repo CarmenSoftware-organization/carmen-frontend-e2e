@@ -14,8 +14,9 @@ import {
   getDoc,
   putDoc,
   layers,
-  sql,
+  sql, gatePhase
 } from "./helpers/period-close/context";
+import { apiGet } from "./helpers/movement/api";
 import { pickSelect, pickLookup, lastToast, btn, toasts } from "./helpers/movement/ui";
 import { createGrn, commitGrn, grnById, deleteGrnDraft, createAdjustment, adjustmentUrl } from "./helpers/period-close/docs";
 import { L, SCN, PERIOD } from "./helpers/period-close/scenarios";
@@ -42,6 +43,8 @@ const ADMIN = MOVEMENT_USERS.admin;
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(() => requireScenario());
+// 400001/400003 อ่าน SQL (E2E_DB_URL); 400003 ลงวันที่เอกสารในงวดผ่านฟอร์ม — 400002/400004 ตั้งค่า BU เท่านั้น ไม่ต้องใช้
+gatePhase({ db: true, dates: true }, /TC-PE-400001|TC-PE-400003/);
 test.beforeAll(async () => {
   expect(await currentPeriod(BU), `งวดปัจจุบันของ ${BU} ต้องเป็น ${PERIOD}`).toBe(PERIOD);
 });
@@ -124,7 +127,7 @@ test(
       { type: "expected", description: "GET /api/<BU>/user-locations มีรหัสคลัง L และหน้า view ของผู้ใช้แสดงแถวคลัง L" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
-      { type: "note", description: "เดิม 0.1 (_movement_play specs/00-prestep) · idempotent: ผูกไว้แล้วจะไม่กด Edit/Save ซ้ำ" },
+      { type: "note", description: "ผูกคลังเป็นการตั้งค่าเริ่มต้นของ suite โดยตั้งใจ ไม่ถูกย้อนคืนหลังรัน · เดิม 0.1 (_movement_play specs/00-prestep) · idempotent: ผูกไว้แล้วจะไม่กด Edit/Save ซ้ำ" },
     ],
   },
   async ({ page }) => {
@@ -253,9 +256,8 @@ test(
     const before = await buConfig(BU, "si.cost-from");
     // หน้า Default Setting อ่าน/เขียน BU ตั้งต้นของบัญชี ไม่ใช่ BU ที่ fixture ปักหมุดไว้ใน browser
     // (ผู้ใช้จริงสลับ BU บน header = เปลี่ยน BU ตั้งต้นไปด้วย สองอย่างจึงตรงกันเสมอ — เป็นเรื่องของ harness เท่านั้น)
-    const [def] = sql<{ code: string }>(`select b.code from "CARMEN_SYSTEM".tb_user_tb_business_unit ub
-      join "CARMEN_SYSTEM".tb_business_unit b on b.id = ub.business_unit_id
-      join "CARMEN_SYSTEM".tb_user u on u.id = ub.user_id where u.email = '${ADMIN.email}' and ub.is_default and ub.deleted_at is null`);
+    const profile = await apiGet("/api/user/profile");
+    const def = (profile.body.data.business_unit as { code: string; is_default: boolean }[]).find((b) => b.is_default);
     await gotoInBu(page, "/system-admin/default-setting");
     const images: string[] = [];
     let saveNote = "";
@@ -263,7 +265,8 @@ test(
     let saveOk: boolean | undefined;
     if (before !== want.value) {
       // PATCH api/business-units ไม่มี bu_code — หลังบ้านเขียนลง BU ตั้งต้นของบัญชี ไม่ใช่ BU ที่จอโชว์ (เคยเขียนผิดไป CARMEN-AVG 2026-09-30)
-      expect(def?.code, `BU ตั้งต้นของ ${ADMIN.email} คือ ${def?.code} — กด Save ตอนนี้จะเขียนผิด BU ให้ตั้ง ${want.value} ของ ${BU} เองก่อน`).toBe(BU);
+      // ข้อมูล/สภาพแวดล้อม: หน้านี้เขียนลง BU ตั้งต้นของบัญชี — ถ้าไม่ใช่ BU ของ scenario ต้องไม่กด Save (จะเขียนผิด BU) และไม่สลับ BU ตั้งต้นของบัญชี admin ที่ใช้ร่วมกัน
+      test.skip(def?.code !== BU, `si.cost-from ของ ${BU} คือ ${before} ไม่ใช่ ${want.value} และ BU ตั้งต้นของ ${ADMIN.email} คือ ${def?.code} — Default Setting เขียนลง BU ตั้งต้น จึงตั้งค่าให้ ${BU} ไม่ได้โดยไม่สลับ BU ตั้งต้นของบัญชี (ตั้งเองก่อนรัน)`);
       await btn(page, "Edit").click();
       const trigger = page.getByLabel("Default price for added items");
       // FE main เปลี่ยน Select หลายช่องเป็น lookup แบบ lazy — รองรับทั้งสองแบบ

@@ -1,4 +1,5 @@
-import { test, expect, BU, requireScenario, sql, SCHEMA, record } from "./helpers/period-close/context";
+import { srIssueWorkflowName } from "./helpers/movement/doc-flow";
+import { test, expect, BU, requireScenario, sql, SCHEMA, record, gatePhase } from "./helpers/period-close/context";
 import { apiSend } from "./helpers/movement/api";
 import { createCreditNote } from "./helpers/period-close/docs";
 
@@ -81,6 +82,7 @@ const layerPeriodsOf = (docId: string) =>
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toISOString().slice(0, 10) : "(ว่าง)");
 
 test.beforeAll(() => requireScenario());
+gatePhase({ db: true });
 
 test(
   "TC-PE-490001 ยอดคงเหลือที่หลังบ้านคืนต้องเป็นยอดของงวด active",
@@ -140,7 +142,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่ในงวดที่สร้างล่วงหน้า (นอกงวด active) — FIFO ข้าม; workflow \"SR Test Flow v2 (with Issue)\"; คลัง TEST-MOVE / TEST-CONSUME ผูก T-01-A; บัญชี requestor@carmen.com และ hod@carmen.com",
+          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่ในงวดที่สร้างล่วงหน้า (นอกงวด active) — FIFO ข้าม; workflow SR ที่ขั้น create>approve>issue>approve (srIssueWorkflowName — ชื่อเดิม 'SR Test Flow v2 (with Issue)' ถูกเปลี่ยนบน dev); คลัง TEST-MOVE / TEST-CONSUME ผูก T-01-A; บัญชี requestor@carmen.com และ hod@carmen.com",
       },
       {
         type: "steps",
@@ -175,7 +177,7 @@ test(
         expected_date: now,
         description: "E2E A4 today pattern",
         requestor_id: requestor,
-        workflow_id: idOf("tb_workflow", `name = 'SR Test Flow v2 (with Issue)' and deleted_at is null`),
+        workflow_id: idOf("tb_workflow", `name = '${await srIssueWorkflowName(BU)}' and deleted_at is null`),
         from_location_id: idOf("tb_location", `code = 'TEST-MOVE'`),
         to_location_id: idOf("tb_location", `code = 'TEST-CONSUME'`),
         store_requisition_detail: { add: [{ product_id: idOf("tb_product", `code = 'T-01-A'`), requested_qty: 1 }] },

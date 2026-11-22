@@ -1,4 +1,4 @@
-import { test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, record, shot } from "./helpers/period-close/context";
+import { test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, record, shot, gatePhase } from "./helpers/period-close/context";
 import { apiGet } from "./helpers/movement/api";
 import { createAdjustment } from "./helpers/period-close/docs";
 import { currentPeriod, expectedIssueCost, voidedLotCosts } from "./helpers/period-close/estimate";
@@ -35,6 +35,8 @@ const PRODUCTS = [P.P1, P.P2, P.P3, P.P4];
 const PROBE_QTY = 3;
 
 test.beforeAll(() => requireScenario());
+// ทุกเคสอ่าน cost layer / ledger ผ่าน SQL (E2E_DB_URL)
+gatePhase({ db: true });
 
 test(
   "TC-PE-530001 ราคาที่ฟอร์ม Stock In และ Stock Out เติมให้ (CostProbe) ตรงกับราคาที่การโพสต์ใบจ่ายจะคิด",

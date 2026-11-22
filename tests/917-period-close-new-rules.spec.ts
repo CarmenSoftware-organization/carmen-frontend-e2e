@@ -1,4 +1,5 @@
-import { test, expect, BU, requireScenario, sql, SCHEMA, record, getDoc, putDoc, currentPeriod } from "./helpers/period-close/context";
+import { srIssueWorkflowName } from "./helpers/movement/doc-flow";
+import { test, expect, BU, requireScenario, sql, SCHEMA, record, getDoc, putDoc, currentPeriod, gatePhase } from "./helpers/period-close/context";
 import { apiSend } from "./helpers/movement/api";
 import { L, PX, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
 
@@ -44,6 +45,7 @@ function docLayerCount(docId: string): number {
 const idOf = (table: string, where: string) => sql<{ id: string }>(`select id from ${SCHEMA}.${table} where ${where} limit 1`)[0]?.id;
 
 test.beforeAll(() => requireScenario());
+gatePhase({ db: true });
 
 test.beforeAll(async () => {
   expect(await currentPeriod(BU)).toBe(PERIOD);
@@ -247,7 +249,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = งวดของ scenario และวันนี้อยู่ในงวด open/locked อื่นที่ใหม่กว่า (ไม่งั้นข้าม); workflow \"SR Test Flow v2 (with Issue)\" ตั้งไว้แล้ว; คลัง TEST-MOVE / TEST-CONSUME ผูกสินค้า T-01-A (AVG) หรือ T-01-F (FIFO); บัญชี requestor@carmen.com และ hod@carmen.com มีอยู่",
+          "E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = งวดของ scenario และวันนี้อยู่ในงวด open/locked อื่นที่ใหม่กว่า (ไม่งั้นข้าม); workflow SR ที่ขั้น create>approve>issue>approve (หาจาก stage ด้วย srIssueWorkflowName — เดิมชื่อ 'SR Test Flow v2 (with Issue)' แต่ถูกเปลี่ยนชื่อบน dev); คลัง TEST-MOVE / TEST-CONSUME ผูกสินค้า T-01-A (AVG) หรือ T-01-F (FIFO); บัญชี requestor@carmen.com และ hod@carmen.com มีอยู่",
       },
       {
         type: "steps",
@@ -288,7 +290,7 @@ test(
           expected_date: now,
           description: `E2E ${PERIOD} 5.4 #718`,
           requestor_id: requestor,
-          workflow_id: idOf("tb_workflow", `name = 'SR Test Flow v2 (with Issue)' and deleted_at is null`),
+          workflow_id: idOf("tb_workflow", `name = '${await srIssueWorkflowName(BU)}' and deleted_at is null`),
           // คู่คลัง/สินค้าที่ผูกกันไว้แล้ว (ชุดเดียวกับสคริปต์ใบเบิกเดิม) — 1AG01 ไม่มีสินค้าร่วมกับคลังอื่นบน FIFO
           from_location_id: idOf("tb_location", `code = 'TEST-MOVE'`),
           to_location_id: idOf("tb_location", `code = 'TEST-CONSUME'`),

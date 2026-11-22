@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  test, expect, gotoInBu, BU, SCHEMA, requireScenario, irreversibleAllowed, sql, shot, record, EVIDENCE_DIR, currentPeriod, review, getDoc,
+  test, expect, gotoInBu, BU, SCHEMA, requireScenario, irreversibleAllowed, irreversibleSkip, sql, shot, record, EVIDENCE_DIR, currentPeriod, review, getDoc,
 } from "./helpers/period-close/context";
 import { toasts } from "./helpers/movement/ui";
 import { L, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
@@ -127,7 +127,7 @@ test(
     ],
   },
   async ({ page }) => {
-    test.skip(!irreversibleAllowed(PERIOD), "ต้องตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ก่อน — ปิดงวดย้อนกลับไม่ได้");
+    test.skip(!irreversibleAllowed(PERIOD), irreversibleSkip("Close Period locks the period"));
     const images: string[] = [];
     let closeStatus = "(ปิดไว้แล้วจากรอบก่อน)";
 
@@ -245,7 +245,7 @@ test(
   },
   async () => {
     test.skip(SCN.method !== "average", "เฉพาะต้นทุนเฉลี่ย");
-    test.skip((await currentPeriod(BU)) !== NEXT, "ยังไม่ได้ปิดงวด");
+    test.skip((await currentPeriod(BU)) !== NEXT, irreversibleSkip("the period is not closed yet, so there is nothing carried forward to check"));
     const held = [getDoc(SCN.keys.nextGrn), getDoc("siNextHeld")].filter(Boolean) as { id: string; no: string }[];
     const [{ opened }] = sql<{ opened: string }>(`select max(cl.created_at)::text opened from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
       where cl.deleted_at is null and cl.at_period = '${NEXT}' and cl.transaction_type::text = 'open_period'`);

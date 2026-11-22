@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { test as movementTest, expect, gotoBu, pinBusinessUnit } from "../../fixtures/movement.fixture";
 import { apiGet } from "../movement/api";
-import { sql as rawSql } from "../movement/db";
+import { hasDb, sql as rawSql } from "../movement/db";
 import { DocState, type DocRef } from "../movement/state";
 import { SCENARIO, SCENARIO_SET, SCN } from "./scenarios";
 
@@ -51,6 +51,45 @@ export function requireScenario(): void {
 
 /** Gate for the irreversible steps (Start Period Close, Close Period): E2E_ALLOW_IRREVERSIBLE=<BU>:<period>. */
 export const irreversibleAllowed = (period: string): boolean => process.env.E2E_ALLOW_IRREVERSIBLE === `${BU}:${period}`;
+
+/** Skip reason of a step that cannot be undone — the catch-up rounds never set the gate (user decision 2026-11-22). */
+export const irreversibleSkip = (what: string): string =>
+  `irreversible: ${what} — needs E2E_ALLOW_IRREVERSIBLE=${BU}:<period>, not run in catch-up per user 2026-11-22`;
+
+/**
+ * Environment gates of a phase, checked before every case (beforeEach) so a gap is a skip with the reason on the report
+ * instead of a failure deep inside a step — E2E_MOVEMENT_STRICT=1 turns the gap into a failure for a CI that must not lose cases.
+ *  - db: the phase verifies through SQL (E2E_DB_URL) — the catch-up environment has none.
+ *  - dates: the phase fills a document date inside the scenario's period through the UI; the FE caps it at min(period end, today)
+ *    (FE 90018c6d), so it needs a period that already contains today.
+ *  - counting: the phase works on an open count round, which only the irreversible Start Period Close opens.
+ * `only` narrows the gate to cases whose title matches.
+ */
+export function gatePhase(needs: { db?: boolean; dates?: boolean; counting?: boolean }, only?: RegExp): void {
+  let cache: Promise<string | null> | null = null;
+  const reason = (): Promise<string | null> =>
+    (cache ??= (async () => {
+      if (needs.db && !hasDb()) return "needs E2E_DB_URL (read-only SQL against the tenant DB) — not set in this environment, so this phase is not verified here";
+      const r = needs.dates || needs.counting ? await review(BU) : null;
+      if (needs.dates && r) {
+        const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+        const [a, b] = [r.start_date, r.end_date].map((d) => String(d).slice(0, 10));
+        if (today < a || today > b) {
+          return `period ${SCN.period} (${a}..${b}) does not contain today ${today} — the FE caps document dates at min(period end, today) (FE 90018c6d), so nothing can be dated inside it through the UI`;
+        }
+      }
+      if (needs.counting && r?.physical_count_period?.status !== "counting") {
+        return `count round of ${SCN.period} is ${r?.physical_count_period?.status ?? "absent"}, not counting — opening it is the irreversible Start Period Close (E2E_ALLOW_IRREVERSIBLE=${BU}:${SCN.period}, not run in catch-up per user 2026-11-22)`;
+      }
+      return null;
+    })());
+  test.beforeEach(async () => {
+    if (only && !only.test(test.info().title)) return;
+    const why = await reason();
+    if (why && process.env.E2E_MOVEMENT_STRICT === "1") throw new Error(`precondition not met: ${why}`);
+    test.skip(why !== null, why ?? "");
+  });
+}
 
 // ── SQL / API ────────────────────────────────────────────────────────────────────
 

@@ -1,5 +1,5 @@
 import {
-  test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, shot, record, prevRecord, currentPeriod, review, getDoc, putDoc,
+  test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, shot, record, prevRecord, currentPeriod, review, getDoc, putDoc, gatePhase
 } from "./helpers/period-close/context";
 import { adjustmentUrl, voidGrn, deleteGrnDraft, deleteAdjustment, grnById, adjustmentById, commitGrn } from "./helpers/period-close/docs";
 import { L, SCN, PERIOD } from "./helpers/period-close/scenarios";
@@ -36,6 +36,7 @@ const CASE = "Case 2 · นับ + ชดเชย";
 const DESC = `Physical Count Adjustment - Period ${SCN.descPeriod}`;
 
 test.beforeAll(() => requireScenario());
+gatePhase({ counting: true, db: true });
 test.beforeAll(async () => {
   expect(await currentPeriod(BU)).toBe(PERIOD);
 });

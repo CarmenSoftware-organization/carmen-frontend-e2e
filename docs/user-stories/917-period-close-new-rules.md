@@ -102,7 +102,7 @@ E2E_PERIOD_SCENARIO=<scenario> (AVG หรือ FIFO); งวดปัจจุ
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = งวดของ scenario และวันนี้อยู่ในงวด open/locked อื่นที่ใหม่กว่า (ไม่งั้นข้าม); workflow "SR Test Flow v2 (with Issue)" ตั้งไว้แล้ว; คลัง TEST-MOVE / TEST-CONSUME ผูกสินค้า T-01-A (AVG) หรือ T-01-F (FIFO); บัญชี requestor@carmen.com และ hod@carmen.com มีอยู่
+E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = งวดของ scenario และวันนี้อยู่ในงวด open/locked อื่นที่ใหม่กว่า (ไม่งั้นข้าม); workflow SR ที่ขั้น create>approve>issue>approve (หาจาก stage ด้วย srIssueWorkflowName — เดิมชื่อ 'SR Test Flow v2 (with Issue)' แต่ถูกเปลี่ยนชื่อบน dev); คลัง TEST-MOVE / TEST-CONSUME ผูกสินค้า T-01-A (AVG) หรือ T-01-F (FIFO); บัญชี requestor@carmen.com และ hod@carmen.com มีอยู่
 
 **Steps**
 
@@ -122,4 +122,4 @@ E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = 
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-22 · git 3f6f1b0</sub>

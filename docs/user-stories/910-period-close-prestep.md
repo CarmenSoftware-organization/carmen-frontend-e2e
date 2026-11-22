@@ -64,7 +64,7 @@ Login เป็น admin@carmen.com (movement-setup); BU ของ scenario; ค
 
 GET /api/<BU>/user-locations มีรหัสคลัง L และหน้า view ของผู้ใช้แสดงแถวคลัง L
 
-> _Note: เดิม 0.1 (_movement_play specs/00-prestep) · idempotent: ผูกไว้แล้วจะไม่กด Edit/Save ซ้ำ_
+> _Note: ผูกคลังเป็นการตั้งค่าเริ่มต้นของ suite โดยตั้งใจ ไม่ถูกย้อนคืนหลังรัน · เดิม 0.1 (_movement_play specs/00-prestep) · idempotent: ผูกไว้แล้วจะไม่กด Edit/Save ซ้ำ_
 
 ---
 
@@ -120,4 +120,4 @@ bu_config si.cost-from ของ BU ของ scenario = ค่าที่ scen
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-22 · git ed69a2f</sub>
