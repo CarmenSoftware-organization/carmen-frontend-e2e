@@ -61,8 +61,9 @@ _Generated from `tests/310-pr-template.spec.ts` annotations. Edit annotations, n
 1. ไปที่ /procurement/purchase-request-template
 2. คลิก 'Add Purchase Request Template'
 3. เลือก Workflow และกรอก Name
-4. คลิก 'Add Item' เลือก Location และ Product แล้วกรอก Qty 3
-5. คลิก 'Create'
+4. คลิก 'Add Item' เลือก Location และ Product แล้วรอให้ช่อง Unit โหลดหน่วยเสร็จ
+5. กรอก Qty 3
+6. คลิก 'Create'
 
 **Expected**
 
@@ -375,8 +376,9 @@ template ถูกลบโดยคนอื่น (ผ่าน API) หลั
 1. เปิด template → Edit
 2. คลิก 'Add Item'
 3. เลือก Location และ Product (ตัวที่ยังไม่อยู่ใน template)
-4. กรอก Qty 7
-5. Save
+4. รอให้ช่อง Unit โหลดหน่วยของสินค้าเสร็จ
+5. กรอก Qty 7
+6. Save
 
 **Expected**
 
@@ -443,7 +445,8 @@ Login เป็น FC (view อย่างเดียว); มี template 'ST
 
 1. เปิด template → Edit → Add Item
 2. เลือก Location, Product และคง Qty = 0 (ค่าเริ่มต้น)
-3. Save
+3. รอให้ช่อง Unit โหลดหน่วยของสินค้าเสร็จ
+4. Save
 
 **Expected**
 
@@ -742,4 +745,4 @@ list กลับมาแสดง template ทั้งหมด (มี 'STD 
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 941704b</sub>
+<sub>Last regenerated: 2026-11-22 · git ce2b00b</sub>

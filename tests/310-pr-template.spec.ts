@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect, type Locator } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { PRTemplatePage, LIST_PATH } from "./pages/pr-template.page";
 import { BU_CODE } from "./test-users";
@@ -9,6 +9,18 @@ import { createTemplate, deleteTemplate, deleteTemplatesByPrefix, getTemplate, l
 import { addRow, button, confirmDialog, lastToast, pickLookup, pickSelectIn, typeInto } from "./helpers/movement/ui";
 import { uid } from "./helpers/test-data";
 import { expectSaved, expectSilentlyBlocked } from "./helpers/settle";
+
+/**
+ * After a product is picked the row's Unit select fetches the product's order units (spinner, disabled) and fills
+ * itself. Save clicked during that window fails client-side with no message (bug-list §1b "Save during Unit load"),
+ * so wait for the select to settle first, as a user watching the row would.
+ */
+async function settleUnit(row: Locator): Promise<void> {
+  const unit = row.locator("[data-slot=select-trigger]");
+  await expect(unit.locator(".animate-spin")).toHaveCount(0);
+  await expect(unit).toBeEnabled();
+  await expect(unit).not.toHaveText("");
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // Roles (profile permissions checked against /api/user/profile, TEST BU):
@@ -73,7 +85,7 @@ purchaseTest.describe("PR Template — Create", () => {
         {
           type: "steps",
           description:
-            "1. ไปที่ /procurement/purchase-request-template\n2. คลิก 'Add Purchase Request Template'\n3. เลือก Workflow และกรอก Name\n4. คลิก 'Add Item' เลือก Location และ Product แล้วกรอก Qty 3\n5. คลิก 'Create'",
+            "1. ไปที่ /procurement/purchase-request-template\n2. คลิก 'Add Purchase Request Template'\n3. เลือก Workflow และกรอก Name\n4. คลิก 'Add Item' เลือก Location และ Product แล้วรอให้ช่อง Unit โหลดหน่วยเสร็จ\n5. กรอก Qty 3\n6. คลิก 'Create'",
         },
         { type: "expected", description: "toast 'created successfully'; URL เปลี่ยนเป็น /procurement/purchase-request-template/<id>; หน้า detail แสดงชื่อ template และ product ที่เลือก; backend มี template นั้นพร้อม 1 รายการ qty 3" },
         { type: "priority", description: "High" },
@@ -92,6 +104,7 @@ purchaseTest.describe("PR Template — Create", () => {
       const row = page.locator("table tbody tr").first();
       await pickLookup(page, row.getByRole("button", { name: "Select Location" }));
       const product = await pickLookup(page, row.getByRole("button", { name: "Select Product" }));
+      await settleUnit(row);
       await typeInto(row.locator(QTY(0)), 3);
       await button(page, /^create$/i).click();
 
@@ -460,7 +473,7 @@ purchaseTest.describe("PR Template — Add Item", () => {
     {
       annotation: [
         { type: "preconditions", description: "มี template ของ test (2 รายการ); มีสินค้าอื่นให้เลือก" },
-        { type: "steps", description: "1. เปิด template → Edit\n2. คลิก 'Add Item'\n3. เลือก Location และ Product (ตัวที่ยังไม่อยู่ใน template)\n4. กรอก Qty 7\n5. Save" },
+        { type: "steps", description: "1. เปิด template → Edit\n2. คลิก 'Add Item'\n3. เลือก Location และ Product (ตัวที่ยังไม่อยู่ใน template)\n4. รอให้ช่อง Unit โหลดหน่วยของสินค้าเสร็จ\n5. กรอก Qty 7\n6. Save" },
         { type: "expected", description: "toast 'updated successfully'; หน้า detail แสดง Items 3; backend มีรายการที่ qty 7 รวมเป็น 3 บรรทัด" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
@@ -474,6 +487,7 @@ purchaseTest.describe("PR Template — Add Item", () => {
       // the new row is prepended and inherits the previous first row's location
       const row = await addRow(page);
       await pickLookup(page, row.getByRole("button", { name: "Select Product" }), "", /^(?!.*1111000[12])/s);
+      await settleUnit(row);
       await typeInto(row.locator(QTY(0)), 7);
       await button(page, "Save").click();
       expect(await lastToast(page)).toMatch(/updated successfully/i);
@@ -500,7 +514,7 @@ purchaseTest.describe("PR Template — Add Item", () => {
       await tpl.gotoDetail(t.id);
       await button(page, "Edit").click();
       await addRow(page);
-      await expectSilentlyBlocked(page, /purchase-request-template/, () => button(page, "Save").click(), "FE shows no validation message for a row without product / an empty item list (no aria-invalid on the Select Product button)");
+      await expectSilentlyBlocked(page, /purchase-request-template/, () => button(page, "Save").click(), "bug-list §1b \"PR template Save with no product / no items gives no feedback\": FE shows no toast, no aria-invalid and sends no request, so there is no signal to await");
       await expect(page.getByRole("button", { name: "Select Product" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated successfully/i })).toHaveCount(0);
@@ -513,7 +527,7 @@ purchaseTest.describe("PR Template — Add Item", () => {
     {
       annotation: [
         { type: "preconditions", description: "มี template ของ test (2 รายการ)" },
-        { type: "steps", description: "1. เปิด template → Edit → Add Item\n2. เลือก Location, Product และคง Qty = 0 (ค่าเริ่มต้น)\n3. Save" },
+        { type: "steps", description: "1. เปิด template → Edit → Add Item\n2. เลือก Location, Product และคง Qty = 0 (ค่าเริ่มต้น)\n3. รอให้ช่อง Unit โหลดหน่วยของสินค้าเสร็จ\n4. Save" },
         { type: "expected", description: "บันทึกได้ (แม่แบบเก็บ 'ชุดสินค้า' จำนวนจริงกรอกตอนทำ PR — FE 447079d1 ตั้ง qty เริ่มต้น 0 โดยตั้งใจ); backend มีบรรทัด qty 0" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
@@ -527,6 +541,7 @@ purchaseTest.describe("PR Template — Add Item", () => {
       // the new row is prepended and inherits the previous first row's location
       const row = await addRow(page);
       await pickLookup(page, row.getByRole("button", { name: "Select Product" }), "", /^(?!.*1111000[12])/s);
+      await settleUnit(row);
       await expect(row.locator(QTY(0))).toHaveValue("0");
       await button(page, "Save").click();
       expect(await lastToast(page)).toMatch(/updated successfully/i);
@@ -682,7 +697,7 @@ purchaseTest.describe("PR Template — Add Item", () => {
         await confirmDialog(page, /remove|delete|confirm/i);
       }
       await expect(page.getByText("No Items Yet")).toBeVisible();
-      await expectSilentlyBlocked(page, /purchase-request-template/, () => button(page, "Save").click(), "FE shows no validation message for a row without product / an empty item list (no aria-invalid on the Select Product button)");
+      await expectSilentlyBlocked(page, /purchase-request-template/, () => button(page, "Save").click(), "bug-list §1b \"PR template Save with no product / no items gives no feedback\": FE shows no toast, no aria-invalid and sends no request, so there is no signal to await");
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated successfully/i })).toHaveCount(0);
       expect((await getTemplate(t.id)).data!.purchase_request_template_detail).toHaveLength(2);
