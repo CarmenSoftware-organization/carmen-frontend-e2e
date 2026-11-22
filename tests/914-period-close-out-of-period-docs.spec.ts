@@ -12,7 +12,7 @@ import {
   review,
   getDoc,
   putDoc,
-  layers,
+  layers, gatePhase
 } from "./helpers/period-close/context";
 import { field, btn, pickDate } from "./helpers/movement/ui";
 import { createGrn, grnById, createCreditNote, cnById, type CreatedDoc } from "./helpers/period-close/docs";
@@ -45,6 +45,7 @@ const record = (row: CaseRow) => recordRow(AFTER_START ? { ...row, actual: row.a
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(() => requireScenario());
+gatePhase({ dates: true });
 test.beforeAll(async () => {
   expect(await currentPeriod(BU)).toBe(PERIOD);
   if (!AFTER_START) expect((await review(BU)).physical_count_period?.status).not.toBe("counting");

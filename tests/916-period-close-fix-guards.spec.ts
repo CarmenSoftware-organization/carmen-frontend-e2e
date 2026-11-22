@@ -8,7 +8,7 @@ import {
   record,
   shot,
   getDoc,
-  putDoc,
+  putDoc, gatePhase
 } from "./helpers/period-close/context";
 import { L, P, SCN } from "./helpers/period-close/scenarios";
 import {
@@ -57,6 +57,7 @@ const CASE = "Case 4 · พิสูจน์ PR #712 / #713";
 test.skip(SCN.method !== "average", "เฉพาะ BU แบบ average");
 
 test.beforeAll(() => requireScenario());
+gatePhase({ dates: true });
 
 const DATE = SCN.case1Date;
 const prodId = (code: string) => `(select id from ${SCHEMA}.tb_product where code = '${code}')`;

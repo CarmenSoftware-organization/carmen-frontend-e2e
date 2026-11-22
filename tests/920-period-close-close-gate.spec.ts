@@ -1,4 +1,4 @@
-import { test, expect, gotoInBu, BU, requireScenario, shot, record, currentPeriod, review, getDoc, putDoc } from "./helpers/period-close/context";
+import { test, expect, gotoInBu, BU, requireScenario, shot, record, currentPeriod, review, getDoc, putDoc, gatePhase } from "./helpers/period-close/context";
 import { createGrn, grnById, createAdjustment, adjustmentById, adjustmentUrl, type CreatedDoc } from "./helpers/period-close/docs";
 import { SCN, PERIOD, type CloseGateDoc } from "./helpers/period-close/scenarios";
 
@@ -30,9 +30,9 @@ import { SCN, PERIOD, type CloseGateDoc } from "./helpers/period-close/scenarios
 const CASE = "Case 1 · ด่าน Close";
 
 test.beforeAll(() => requireScenario());
+gatePhase({ counting: true, dates: true });
 test.beforeAll(async () => {
   expect(await currentPeriod(BU)).toBe(PERIOD);
-  expect((await review(BU)).physical_count_period?.status, "ต้องอยู่ในช่วงนับแล้ว").toBe("counting");
 });
 
 async function once(key: string, create: (onCreated: (d: CreatedDoc) => void) => Promise<unknown>, fresh: (id: string) => Promise<CreatedDoc>) {

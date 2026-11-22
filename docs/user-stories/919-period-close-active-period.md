@@ -59,7 +59,7 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG (งวด active
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่ในงวดที่สร้างล่วงหน้า (นอกงวด active) — FIFO ข้าม; workflow "SR Test Flow v2 (with Issue)"; คลัง TEST-MOVE / TEST-CONSUME ผูก T-01-A; บัญชี requestor@carmen.com และ hod@carmen.com
+E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่ในงวดที่สร้างล่วงหน้า (นอกงวด active) — FIFO ข้าม; workflow SR ที่ขั้น create>approve>issue>approve (srIssueWorkflowName — ชื่อเดิม 'SR Test Flow v2 (with Issue)' ถูกเปลี่ยนบน dev); คลัง TEST-MOVE / TEST-CONSUME ผูก T-01-A; บัญชี requestor@carmen.com และ hod@carmen.com
 
 **Steps**
 
@@ -303,4 +303,4 @@ view คืนอย่างน้อย 1 แถว และทุกแถ�
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-22 · git 3f6f1b0</sub>

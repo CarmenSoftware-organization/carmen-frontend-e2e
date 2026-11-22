@@ -1,4 +1,4 @@
-import { test, expect, BU, requireScenario, irreversibleAllowed, record, currentPeriod, review } from "./helpers/period-close/context";
+import { test, expect, BU, requireScenario, gatePhase, irreversibleAllowed, irreversibleSkip, record, currentPeriod, review } from "./helpers/period-close/context";
 import { countLocation, reviewOnHand, countDetails } from "./helpers/period-close/count";
 import { L, P, PERIOD } from "./helpers/period-close/scenarios";
 
@@ -33,9 +33,9 @@ const CASE = "Case 2 · นับ + ชดเชย";
 const ONLY = process.env.E2E_PERIOD_LOC?.split(",").map((s) => s.trim()).filter(Boolean);
 
 test.beforeAll(() => requireScenario());
+gatePhase({ counting: true });
 test.beforeAll(async () => {
   expect(await currentPeriod(BU)).toBe(PERIOD);
-  expect((await review(BU)).physical_count_period?.status).toBe("counting");
 });
 
 /**
@@ -79,7 +79,7 @@ test(
     ],
   },
   async ({ page }) => {
-    test.skip(!irreversibleAllowed(PERIOD), "ต้องตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ก่อน — submit ใบนับย้อนกลับไม่ได้");
+    test.skip(!irreversibleAllowed(PERIOD), irreversibleSkip("a submitted count sheet cannot be reopened"));
     const LOCATIONS = await countTargets();
     expect(LOCATIONS.length, `ไม่มีคลังให้นับ${ONLY ? ` (E2E_PERIOD_LOC=${ONLY.join(",")} ไม่ตรงคลังไหนเลย)` : ""}`).toBeGreaterThan(0);
     if (!ONLY) expect(LOCATIONS, "คลังทดสอบราคาต้องอยู่ในรอบนับ").toContain(L.code);
