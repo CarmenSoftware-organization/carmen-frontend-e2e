@@ -24,10 +24,15 @@ export interface RoutingRule {
 export interface WorkflowTemplate {
   order: number;
   name: string;
-  workflow_type: "purchase_request" | "purchase_order" | "store_requisition";
+  workflow_type: "purchase_request" | "purchase_order" | "store_requisition" | "ap_payment" | "gl_jv";
   description: string | null;
   is_active: boolean;
-  data: { stages: TemplateStage[]; routing_rules: RoutingRule[] };
+  data: {
+    stages: TemplateStage[];
+    routing_rules: RoutingRule[];
+    /** gl_jv only: which vouchers the workflow covers (empty = any). */
+    jv_scope?: { prefix_ids: string[]; sources: string[] };
+  };
 }
 
 export interface WorkflowFixture {

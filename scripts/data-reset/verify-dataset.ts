@@ -4,6 +4,7 @@
 // ขั้น 3: นับเอกสารทั้ง BU เทียบกับตาราง แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้
 import type { ApiClient } from "../seed-master/api-client";
 import type { ResetConfig } from "./config";
+import { READ_SET, listAll } from "./docs/accounting";
 import type { RowLedger } from "./docs/row-ledger";
 import type { Sessions } from "./sessions";
 
@@ -81,6 +82,33 @@ async function verifyBuBase(admin: ApiClient, cfg: ResetConfig): Promise<string[
   return problems;
 }
 
+/**
+ * Read back every accounting read-set key the seed says it created: it must exist and be in the state
+ * the table promises. A key that was refused or failed is not expected here (its step already says so).
+ */
+async function verifyAccountingSet(
+  admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<RowLedger["rows"]>,
+): Promise<{ lines: string[]; short: string[] }> {
+  const lines: string[] = [];
+  const short: string[] = [];
+  const expected = READ_SET.filter((k) => (seeded[`acct.${k.key}`]?.docNos.length ?? 0) > 0);
+  if (expected.length === 0) return { lines, short };
+  const bu = cfg.buCode;
+  const rows = {
+    ap: new Map((await listAll(admin, `/api/${bu}/ap-invoice`)).map((d) => [String(d.vendor_invoice_no), d])),
+    jv: new Map((await listAll(admin, `/api/${bu}/gl-jv`)).map((d) => [String(d.description), d])),
+    template: new Map((await listAll(admin, `/api/${bu}/gl-jv-templates`)).map((d) => [String(d.code), d])),
+  };
+  for (const k of expected) {
+    const doc = rows[k.kind].get(k.key);
+    const status = k.kind === "ap" ? doc?.doc_status : k.kind === "jv" ? doc?.jv_status : undefined;
+    const found = doc && (!k.state || status === k.state) ? 1 : 0;
+    lines.push(`${k.key.padEnd(22)}${String(1).padStart(5)}${String(found).padStart(7)}${found < 1 ? "  ✗" : ""}`);
+    if (found < 1) short.push(`${k.key}: expected ${k.state ?? "present"}, found ${doc ? status : "none"}`);
+  }
+  return { lines, short };
+}
+
 export async function verifyDataset(
   sessions: Sessions, cfg: ResetConfig, ledger: RowLedger,
 ): Promise<{ short: string[]; table: string }> {
@@ -105,5 +133,8 @@ export async function verifyDataset(
       short.push(`${r.row}: expected ≥ ${r.min}, found ${found} (seeded: ${docs.length ? docs.join(", ") : "none"})`);
     }
   }
+  const accounting = await verifyAccountingSet(admin, cfg, seeded);
+  lines.push(...accounting.lines);
+  short.push(...accounting.short);
   return { short, table: lines.join("\n") };
 }

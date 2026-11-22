@@ -54,7 +54,7 @@ function emptyAccounts(): AccountingAccounts {
 
 const note = (res: { status: number; body?: { message?: unknown } }) => `${res.status} ${JSON.stringify(res.body?.message ?? "")}`;
 
-async function resolveAccounts(admin: ApiClient, base: string, result: StepResult): Promise<AccountingAccounts | null> {
+export async function resolveAccounts(admin: ApiClient, base: string, result: StepResult): Promise<AccountingAccounts | null> {
   const list = await admin.get(`${base}/chart-of-accounts?perpage=100`);
   if (!list.ok) {
     result.failed.push(`GET ${base}/chart-of-accounts → ${list.status}`);

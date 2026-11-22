@@ -51,6 +51,17 @@ function routes(over: Record<string, unknown> = {}) {
       data: ["Accounting", "Approval", "HOD", "Purchase", "Requestor"].map((name) => ({ id: `r-${name}`, name })),
     },
     [`GET ${base}/user-application-roles`]: { data: [] },
+    // The accounting roles read permission ids from the BU's "Accounting" role.
+    [`GET ${base}/application-roles/r-Accounting`]: {
+      data: {
+        id: "r-Accounting",
+        permissions: [
+          "accounting.view", "accounting.ap.view", "accounting.gl.view", "accounting.gl.jv_template.view",
+          "accounting.ap.void", "accounting.gl.void", "accounting.gl.post", "accounting.gl.reverse",
+        ].map((k) => ({ permission_id: `perm-${k}`, resource: k.slice(0, k.lastIndexOf(".")), action: k.slice(k.lastIndexOf(".") + 1), is_granted: false })),
+      },
+    },
+    [`POST ${base}/application-roles`]: (b: unknown) => ({ data: { id: `new-${(b as { application_role_name: string }).application_role_name}` } }),
     "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 1, default_currency_id: null } },
     [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
     [`GET ${base}/workflows`]: { data: [] },
@@ -123,6 +134,7 @@ describe("runDataReset", () => {
       `PATCH ${base}/departments/`,
       `PUT ${base}/locations-users/`,
       `POST ${base}/user-application-roles`,
+      `POST ${base}/application-roles`,
       `POST ${base}/workflows`,
       "POST /api/GR2VYNKQ/inventory-periods",
     ].map((p) => firstWrite(writes, p));
@@ -136,7 +148,7 @@ describe("runDataReset", () => {
     expect(backend.writes()).toEqual([]);
     expect(seedCalls).toEqual([true]);
     expect(out).toContain("accounting: would");
-    for (const step of ["reset", "master", "accounting", "mappings", "access", "workflows", "period"]) expect(out).toContain(step);
+    for (const step of ["reset", "master", "accounting", "mappings", "access", "accounting-roles", "workflows", "period"]) expect(out).toContain(step);
   });
 
   it("refuses a live run against a remote backend without --yes", async () => {
@@ -235,7 +247,7 @@ describe("runDataReset", () => {
   it("dry run does not seed documents but prints the document plan", async () => {
     const { documentCalls, out } = await run({}, { dryRun: true, yes: false });
     expect(documentCalls).toEqual([]);
-    expect(out).toMatch(/documents: would create .*41 PR/);
+    expect(out).toMatch(/documents: would create .*41 PR.*accounting read set/);
   });
 
   it("does not seed documents after a failed earlier step", async () => {
