@@ -1023,6 +1023,8 @@ withReason("CN — Validation & amounts (revived)", () => {
       const g = await createDraftCn("badamt");
       await gotoCn(page, g.id);
       await button(page, "Edit").click();
+      // the cap (GRN received qty) is filled in once the GRN loads — typing before that leaves the cap unset
+      await page.waitForLoadState("networkidle");
       await typeInto(quantity(page), 6);
       await button(page, "Save").click();
       await expect(page.locator('[aria-invalid="true"]').first()).toBeVisible({ timeout: 10_000 });
