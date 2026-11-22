@@ -578,6 +578,43 @@ purchaseTest.describe("PR Template — Add Item", () => {
   );
 
   purchaseTest(
+    "TC-PRT-070006 Save while the new row's Unit is still loading gives feedback",
+    {
+      annotation: [
+        { type: "preconditions", description: "มี template ของ test (2 รายการ); คำขอ units/order/product/:id ถูกหน่วงไว้ในเบราว์เซอร์ (page.route) เพื่อให้ช่อง Unit ค้างสถานะโหลด" },
+        { type: "steps", description: "1. เปิด template → Edit → Add Item\n2. เลือก Product (ช่อง Unit แสดง spinner และถูกปิดใช้งาน)\n3. คลิก Save ทันทีขณะที่คำตอบหน่วยยังไม่มา" },
+        { type: "expected", description: "ผู้ใช้เห็นผลของการกด Save: มี toast (บันทึกสำเร็จ หรือข้อความตรวจสอบ) — ไม่เงียบ; ปัจจุบันเงียบ (ไม่มี toast ไม่ส่ง request) จึงปักเป็นบั๊ก" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const t = await createTemplate(nm("unitrace"));
+      const tpl = new PRTemplatePage(page);
+      await tpl.gotoDetail(t.id);
+      await button(page, "Edit").click();
+      let release!: () => void;
+      const gate = new Promise<void>((done) => (release = done));
+      await page.route(/units\/order\/product\//, async (route) => {
+        await gate;
+        await route.continue();
+      });
+      try {
+        const row = await addRow(page);
+        await pickLookup(page, row.getByRole("button", { name: "Select Product" }), "", /^(?!.*1111000[12])/s);
+        // setup check: the Unit select is held in its loading state
+        await expect(row.locator("[data-slot=select-trigger] .animate-spin")).toBeVisible();
+        await button(page, "Save").click();
+        // bug site: Save during the Unit load is silently refused (no request, no toast, stale aria-invalid on Unit) - bug-list §1b "Save clicked while the new row's Unit select is still loading"
+        purchaseTest.fail(true, "suspected bug: Save clicked while the Unit select is loading does nothing - no toast, no request (bug-list §1b, Unit-load race)");
+        await expect(page.locator("[data-sonner-toast]").first(), "Save gave no visible feedback").toBeVisible({ timeout: 4_000 });
+      } finally {
+        release();
+      }
+    },
+  );
+
+  purchaseTest(
     "TC-PRT-080001 Edit existing template item successfully",
     {
       annotation: [

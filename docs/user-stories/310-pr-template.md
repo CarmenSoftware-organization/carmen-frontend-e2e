@@ -5,7 +5,7 @@ _Generated from `tests/310-pr-template.spec.ts` annotations. Edit annotations, n
 **Module:** Purchase Request Template
 **Spec:** `tests/310-pr-template.spec.ts`
 **Default role:** Budget
-**Total test cases:** 31 (20 High / 8 Medium / 3 Low)
+**Total test cases:** 32 (20 High / 9 Medium / 3 Low)
 
 ## Test Cases at a Glance
 
@@ -30,6 +30,7 @@ _Generated from `tests/310-pr-template.spec.ts` annotations. Edit annotations, n
 | TC-PRT-070003 | Add item with no permission | High | Authorization |
 | TC-PRT-070004 | Add item with zero quantity | Medium | Edge Case |
 | TC-PRT-070005 | Add item with very large quantity | Low | Edge Case |
+| TC-PRT-070006 | Save while the new row's Unit is still loading gives feedback | Medium | Edge Case |
 | TC-PRT-080001 | Edit existing template item successfully | High | Happy Path |
 | TC-PRT-080002 | Attempt to edit template without permission | High | Authorization |
 | TC-PRT-080003 | Edit template item with invalid quantity | Medium | Negative |
@@ -477,6 +478,29 @@ Login เป็น FC (view อย่างเดียว); มี template 'ST
 
 ---
 
+## TC-PRT-070006 — Save while the new row's Unit is still loading gives feedback
+
+> **As a** Budget user, **I want** this Purchase Request Template behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Medium · **Test Type:** Edge Case
+
+**Preconditions**
+
+มี template ของ test (2 รายการ); คำขอ units/order/product/:id ถูกหน่วงไว้ในเบราว์เซอร์ (page.route) เพื่อให้ช่อง Unit ค้างสถานะโหลด
+
+**Steps**
+
+1. เปิด template → Edit → Add Item
+2. เลือก Product (ช่อง Unit แสดง spinner และถูกปิดใช้งาน)
+3. คลิก Save ทันทีขณะที่คำตอบหน่วยยังไม่มา
+
+**Expected**
+
+ผู้ใช้เห็นผลของการกด Save: มี toast (บันทึกสำเร็จ หรือข้อความตรวจสอบ) — ไม่เงียบ; ปัจจุบันเงียบ (ไม่มี toast ไม่ส่ง request) จึงปักเป็นบั๊ก
+
+---
+
 ## TC-PRT-080001 — Edit existing template item successfully
 
 > **As a** Budget user, **I want** this Purchase Request Template behavior verified, **so that** the feature works as expected.
@@ -745,4 +769,4 @@ list กลับมาแสดง template ทั้งหมด (มี 'STD 
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git ce2b00b</sub>
+<sub>Last regenerated: 2026-11-22 · git 3ed771c</sub>

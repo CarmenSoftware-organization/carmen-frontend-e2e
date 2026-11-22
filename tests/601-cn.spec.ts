@@ -8,7 +8,7 @@ import { CreditNotePage } from "./pages/credit-note.page";
 import { createDraftCn, deleteE2eCns, deleteReason, ensureReason, getCn, listCns, seededCn } from "./helpers/cn-api";
 import { button, confirmDialog, lastToast, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
 import { uid } from "./helpers/test-data";
-import { expectBlocked, expectRefused } from "./helpers/settle";
+import { expectBlocked, expectRefused, expectSilentlyBlocked } from "./helpers/settle";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Roles (permissions read from /api/user/profile of the TEST BU):
@@ -321,7 +321,9 @@ withReason("CN — Create from GRN", () => {
       await fillHeader(page, taxNo);
       await addFromGrn(page, 1);
       await typeInto(rowsOf(page).first().locator('input[name$=".quantity"]'), 10);
-      await expectBlocked(page, /credit-note/, () => button(page, "Create").click(), page.locator('input[name$=".quantity"][aria-invalid="true"]'));
+      // the form validates on change: the over-quantity field is already flagged before Create is clicked (the only feedback)
+      await expect(page.locator('input[name$=".quantity"][aria-invalid="true"]')).toBeVisible();
+      await expectSilentlyBlocked(page, /credit-note/, () => button(page, "Create").click(), 'bug-list §1b "CN Create with an over-quantity line gives no feedback on submit": Create adds no toast and no new signal, the live aria-invalid is all there is');
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       await expect(page).toHaveURL(/credit-note\/new/);
       for (const c of await listCns()) expect((await getCn(c.id)).data!.tax_invoice_no).not.toBe(taxNo);
