@@ -88,7 +88,7 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 **Expected**
 
-ผู้ใช้ถูก redirect ไปยังหน้า permission denied
+แสดง Permission Denied ทับหน้า (ไม่ redirect) และไม่มีปุ่ม Start Period Close
 
 ---
 
@@ -105,11 +105,12 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 **Steps**
 
-1. ไปที่ /inventory-management/period-end
+1. จำลองหลังบ้านตอบรายการ period history ว่าง (page.route)
+2. ไปที่ /inventory-management/period-end
 
 **Expected**
 
-ตาราง period history ว่างเปล่า แต่ current period card ยังคง visible
+ส่วน History แสดง 'No closed periods yet.' และ current period card ยังคง visible
 
 ---
 
@@ -126,11 +127,12 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 **Steps**
 
-1. ไปที่ /inventory-management/period-end
+1. จำลองหลังบ้านตอบ /period-ends/current เป็น 404 (page.route)
+2. ไปที่ /inventory-management/period-end
 
 **Expected**
 
-แสดงเฉพาะ period history และ current period card ไม่แสดง
+แสดงข้อความ 'No current period end found.' ไม่มี current period card และไม่มีปุ่ม Start Period Close ส่วน History ยังแสดง
 
 ---
 
@@ -147,11 +149,12 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 **Steps**
 
-1. ไปที่ /inventory-management/period-end
+1. จำลองหลังบ้านตอบ current period สถานะ closed (page.route)
+2. ไปที่ /inventory-management/period-end
 
 **Expected**
 
-Current period card แสดงสถานะ closed และไม่สามารถปิดได้อีก
+Current period card แสดงสถานะ Closed และปุ่ม Start Period Close ถูก disable
 
 ---
 
@@ -864,4 +867,4 @@ Activity log entry ถูกสร้างพร้อมรายละเอ�
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-22 · git bd94ede</sub>

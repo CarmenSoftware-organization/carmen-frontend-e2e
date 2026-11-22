@@ -16,10 +16,17 @@ const SKIP_NOTE_BACKEND =
   "Cannot be exercised reliably through the UI in E2E. Verify with API/integration tests.";
 
 const SKIP_NOTE_NOT_IMPLEMENTED =
-  "Sub-route / workflow not yet implemented in the frontend " +
+  "Sub-route / workflow not in the frontend: the module only has /inventory-management/period-end and " +
+  "/period-end/review (routes/router.tsx); closing is Start Period Close + the review page, exercised by phases 910-924. " +
   "(no /[id], /close/[id], /period-close, /period-close-checklist, /procurement/close-workflow, " +
   "/period-closure/active-period, /procurement/validation routes found). " +
   "Re-enable once the UI ships.";
+
+const emptyHistory = () => ({
+  status: 200,
+  contentType: "application/json",
+  body: JSON.stringify({ data: [], status: 200, success: true, message: "Success", paginate: { total: 0, page: 1, perpage: 10, pages: 1 } }),
+});
 
 // ═════════════════════════════════════════════════════════════════════════
 // TC-PE-900001 — View Period List (UI runnable)
@@ -42,14 +49,15 @@ purchaseTest.describe("Period End — List page", () => {
     },
     async ({ page }) => {
       const pe = new PeriodEndPage(page);
+      const current = page.waitForResponse((r) => /\/period-ends\/current$/.test(r.url()) && r.status() === 200);
       await pe.gotoList();
-      await expect(page).toHaveURL(/period-end/);
-      const view = pe.viewDetailsButton();
-      if ((await view.count()) === 0) {
-        purchaseTest.skip(true, "View Details button not exposed — period detail UI may not be implemented");
-        return;
-      }
-      await view.click().catch(() => {});
+      const period = (await (await current).json()).data;
+      // หน้า list เป็นหน้าเดียวของโมดูล (ไม่มีปุ่ม View Details / route รายละเอียด — routes/router.tsx มีแค่ period-end กับ period-end/review)
+      // การ์ด "Current Period" ต้องแสดงงวดจริงจากหลังบ้าน พร้อมสถานะ
+      await expect(page.getByRole("heading", { level: 2, name: period.period })).toBeVisible();
+      await expect(page.getByText("Current Period", { exact: true })).toBeVisible();
+      await expect(pe.statusBadge()).toHaveText(new RegExp(`^${period.status}$`, "i"));
+      await expect(pe.startPeriodCloseButton()).toBeVisible();
     },
   );
 
@@ -58,16 +66,20 @@ purchaseTest.describe("Period End — List page", () => {
     {
       annotation: [
         { type: "preconditions", description: "ผู้ใช้มี period view permission และไม่มี periods ใน history" },
-        { type: "steps", description: "1. ไปที่ /inventory-management/period-end" },
-        { type: "expected", description: "ตาราง period history ว่างเปล่า แต่ current period card ยังคง visible" },
+        { type: "steps", description: "1. จำลองหลังบ้านตอบรายการ period history ว่าง (page.route)\n2. ไปที่ /inventory-management/period-end" },
+        { type: "expected", description: "ส่วน History แสดง 'No closed periods yet.' และ current period card ยังคง visible" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
       const pe = new PeriodEndPage(page);
+      // จำลองเฉพาะรายการประวัติ — ไม่แตะ /current กับ /review (path ลงท้าย period-ends ตรง ๆ)
+      await page.route(/\/period-ends(\?.*)?$/, (route) => route.fulfill(emptyHistory()));
       await pe.gotoList();
-      await expect(page).toHaveURL(/period-end/);
+      await expect(page.getByText("No closed periods yet.")).toBeVisible();
+      await expect(page.locator("#pe-current-period")).toBeVisible();
+      await expect(pe.startPeriodCloseButton()).toBeVisible();
     },
   );
 
@@ -76,47 +88,47 @@ purchaseTest.describe("Period End — List page", () => {
     {
       annotation: [
         { type: "preconditions", description: "ผู้ใช้มี period view permission และไม่มี current period" },
-        { type: "steps", description: "1. ไปที่ /inventory-management/period-end" },
-        { type: "expected", description: "แสดงเฉพาะ period history และ current period card ไม่แสดง" },
+        { type: "steps", description: "1. จำลองหลังบ้านตอบ /period-ends/current เป็น 404 (page.route)\n2. ไปที่ /inventory-management/period-end" },
+        { type: "expected", description: "แสดงข้อความ 'No current period end found.' ไม่มี current period card และไม่มีปุ่ม Start Period Close ส่วน History ยังแสดง" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       const pe = new PeriodEndPage(page);
+      await page.route(/\/period-ends\/current$/, (route) =>
+        route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ status: 404, success: false, message: "Not found" }) }),
+      );
       await pe.gotoList();
-      await expect(page).toHaveURL(/period-end/);
+      await expect(page.getByText("No current period end found.")).toBeVisible();
+      await expect(page.locator("#pe-current-period")).toHaveCount(0);
+      await expect(pe.startPeriodCloseButton()).toHaveCount(0);
+      // ส่วน History ยังโหลดแยกจาก current — หัวข้อต้องยังอยู่
+      await expect(page.getByRole("heading", { level: 2, name: "History" })).toBeVisible();
     },
   );
 
-  // The test never establishes its own precondition. It asserts that "Start
-  // period close" is disabled *when the current period is already closed*, but
-  // does nothing to close it — against an open period an enabled button is the
-  // correct behaviour, so this can only pass by luck. It previously passed every
-  // time because the assertion sat inside .catch(() => {}) (and the other branch
-  // was `expect(true).toBe(true)`). Give it a real fixture, or read the period's
-  // state first and assert the matching expectation, before re-enabling.
-  purchaseTest.fixme(
+  purchaseTest(
     "TC-PE-010005 Edge Case - Closed Current Period",
     {
       annotation: [
         { type: "preconditions", description: "ผู้ใช้มี period view permission และ current period ถูกปิดแล้ว" },
-        { type: "steps", description: "1. ไปที่ /inventory-management/period-end" },
-        { type: "expected", description: "Current period card แสดงสถานะ closed และไม่สามารถปิดได้อีก" },
+        { type: "steps", description: "1. จำลองหลังบ้านตอบ current period สถานะ closed (page.route)\n2. ไปที่ /inventory-management/period-end" },
+        { type: "expected", description: "Current period card แสดงสถานะ Closed และปุ่ม Start Period Close ถูก disable" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
       const pe = new PeriodEndPage(page);
+      // fixture: งวดปัจจุบันที่ปิดแล้ว (หลังบ้านจริงของ TEST BU ไม่มีงวดปิด และห้ามปิดงวดจริงในเทสต์นี้)
+      await page.route(/\/period-ends\/current$/, async (route) => {
+        const real = await (await route.fetch()).json();
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...real, data: { ...real.data, status: "closed" } }) });
+      });
       await pe.gotoList();
-      const startClose = pe.startPeriodCloseButton();
-      // Either button is hidden (correct) or disabled
-      if ((await startClose.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(startClose).toBeDisabled({ timeout: 5_000 });
-      }
+      await expect(pe.statusBadge()).toHaveText("Closed");
+      await expect(pe.startPeriodCloseButton()).toBeDisabled();
     },
   );
 });
@@ -128,18 +140,17 @@ requestorTest.describe("Period End — List page — Permission denial", () => {
       annotation: [
         { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่มี period view permission" },
         { type: "steps", description: "1. ไปที่ /inventory-management/period-end" },
-        { type: "expected", description: "ผู้ใช้ถูก redirect ไปยังหน้า permission denied" },
+        { type: "expected", description: "แสดง Permission Denied ทับหน้า (ไม่ redirect) และไม่มีปุ่ม Start Period Close" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       await page.goto(LIST_PATH);
-      // Either we land on the page (read access) or we get redirected
-      const url = page.url();
-      const onListPage = /period-end/.test(url);
-      const onUnauthorized = /unauthorized|denied|403|login/i.test(url);
-      expect(onListPage || onUnauthorized).toBeTruthy();
+      // FE ไม่ redirect — แสดงกล่อง Permission Denied ทับหน้า และต้องไม่มีปุ่มเริ่มปิดงวด
+      await expect(page.getByText("Permission Denied")).toBeVisible();
+      await expect(page.getByText("You don't have permission to view this page.")).toBeVisible();
+      await expect(new PeriodEndPage(page).startPeriodCloseButton()).toHaveCount(0);
     },
   );
 });
