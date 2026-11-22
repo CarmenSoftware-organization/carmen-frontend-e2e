@@ -103,7 +103,7 @@ All use the plan's Global Constraints rule; each case writes `assumption:` in `e
 | Rounding per line vs per document | not a gap: fixed by accounting-foundation.md:103,120 (see 4.2) |
 | VAT on a discounted line | 7% on `line_net` (after discount) |
 | WHT rate per service | take from the seeded WHT tax profile (Task 1), not from the doc |
-| WHT rounding | half-up to the BU decimals on the WHT total per payment (the doc says only "aggregate per certificate rule", pay:92) |
+| WHT rounding | HALF_UP (mode from foundation:103) at the BU decimals, applied to the WHT total per payment (the doc says only "aggregate per certificate rule", pay:92) |
 | WHT base on Inc-VAT lines | the backed-out pre-VAT base (inv:103), then the rate |
 | Credit / debit note sign in API | positive amounts; credit note reduces the vendor's open balance, debit note increases it. The doc fixes no sign (inv:106) |
 | Deposit application ordering / allocation across invoices | oldest invoice first; the doc only says a "configured allocation rule" (pay:134) |
