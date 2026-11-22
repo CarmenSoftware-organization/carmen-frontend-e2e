@@ -8,7 +8,7 @@ import { CreditNotePage } from "./pages/credit-note.page";
 import { createDraftCn, deleteE2eCns, deleteReason, ensureReason, getCn, listCns, seededCn } from "./helpers/cn-api";
 import { button, confirmDialog, lastToast, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
 import { uid } from "./helpers/test-data";
-import { settleAfter } from "./helpers/settle";
+import { expectBlocked, expectRefused } from "./helpers/settle";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Roles (permissions read from /api/user/profile of the TEST BU):
@@ -40,6 +40,8 @@ fcTest.describe.configure({ timeout: 60_000 });
 const LIST = "/procurement/credit-note";
 const today = () => new Date().toLocaleDateString("sv");
 const rowsOf = (page: Page) => page.locator("table tbody tr");
+
+const toastWith = (page: Page, re: RegExp) => page.locator("[data-sonner-toast]").filter({ hasText: re });
 
 /** Remove the first item; the app either asks to confirm or removes it at once. Waits for one of the two. */
 async function removeFirstItem(page: Page) {
@@ -295,8 +297,8 @@ withReason("CN — Create from GRN", () => {
     },
     async ({ page }) => {
       await page.goto(`${LIST}/new`);
-      // with no GRN chosen the app may open an empty picker or not open one at all; let the click settle, then assert no line is offered
-      await settleAfter(page, /credit-note/, () => button(page, "Add Item").click());
+      // no vendor/GRN yet: the app refuses to open the picker and says why
+      await expectBlocked(page, /credit-note/, () => button(page, "Add Item").click(), toastWith(page, /Select a vendor first/i));
       await expect(page.locator("[role=dialog]:visible").getByRole("checkbox")).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(page.getByText("No Items Yet")).toBeVisible();
@@ -319,7 +321,7 @@ withReason("CN — Create from GRN", () => {
       await fillHeader(page, taxNo);
       await addFromGrn(page, 1);
       await typeInto(rowsOf(page).first().locator('input[name$=".quantity"]'), 10);
-      await settleAfter(page, /credit-note/, () => button(page, "Create").click());
+      await expectBlocked(page, /credit-note/, () => button(page, "Create").click(), page.locator('input[name$=".quantity"][aria-invalid="true"]'));
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       await expect(page).toHaveURL(/credit-note\/new/);
       for (const c of await listCns()) expect((await getCn(c.id)).data!.tax_invoice_no).not.toBe(taxNo);
@@ -345,7 +347,7 @@ withReason("CN — Create validation", () => {
     async ({ page }) => {
       const before = (await listCns()).length;
       await page.goto(`${LIST}/new`);
-      await settleAfter(page, /credit-note/, () => button(page, "Create").click());
+      await expectRefused(page, /credit-note/, () => button(page, "Create").click(), toastWith(page, /Check these fields again/i));
       await expect(page).toHaveURL(/credit-note\/new/);
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       expect((await listCns()).length).toBe(before);
@@ -367,7 +369,7 @@ withReason("CN — Create validation", () => {
       const before = (await listCns()).length;
       await page.goto(`${LIST}/new`);
       await pickLookup(page, page.getByRole("button", { name: "Select Vendor" }));
-      await settleAfter(page, /credit-note/, () => button(page, "Create").click());
+      await expectRefused(page, /credit-note/, () => button(page, "Create").click(), toastWith(page, /Check these fields again/i));
       await expect(page.getByRole("button", { name: "Select GRN" })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       expect((await listCns()).length).toBe(before);
@@ -392,7 +394,7 @@ withReason("CN — Create validation", () => {
       await pickLookup(page, page.getByRole("button", { name: "Select GRN" }), "GRN261100002");
       await page.locator("#cn-tax-invoice-no").fill(taxNo);
       await addFromGrn(page, 1);
-      await settleAfter(page, /credit-note/, () => button(page, "Create").click());
+      await expectRefused(page, /credit-note/, () => button(page, "Create").click(), toastWith(page, /aren't filled in correctly|Check these fields again/i));
       await expect(page.getByRole("button", { name: "Select CN Reason" })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       for (const c of await listCns()) expect((await getCn(c.id)).data!.tax_invoice_no).not.toBe(taxNo);
@@ -536,7 +538,7 @@ withReason("CN — Edit", () => {
       await save(page);
       expect(Number((await getCn(g.id)).data!.credit_note_detail[0].return_qty)).toBe(0);
       await button(page, "Submit").click();
-      await settleAfter(page, /credit-note/, () => confirmDialog(page, /submit|confirm|yes/i));
+      await expectBlocked(page, /credit-note/, () => confirmDialog(page, /submit|confirm|yes/i), toastWith(page, /still incomplete|details are missing/i));
       expect((await getCn(g.id)).data!.doc_status).toBe("draft");
       await expect(page.locator("main")).toContainText(/draft/i);
     },
@@ -562,7 +564,7 @@ withReason("CN — Edit", () => {
       await save(page);
       expect((await getCn(g.id)).data!.credit_note_detail).toHaveLength(0);
       await button(page, "Submit").click();
-      await settleAfter(page, /credit-note/, () => confirmDialog(page, /submit|confirm|yes/i));
+      await expectBlocked(page, /credit-note/, () => confirmDialog(page, /submit|confirm|yes/i), toastWith(page, /still incomplete|details are missing/i));
       expect((await getCn(g.id)).data!.doc_status).toBe("draft");
     },
   );
@@ -677,7 +679,7 @@ withReason("CN — Edit", () => {
       await tab.click();
       await expect(tab).toHaveAttribute("aria-selected", "true");
       await expect(page.getByRole("tabpanel")).toBeVisible();
-      await settleAfter(page, /stock-movements/, async () => {});
+      await expect(page.getByText(/Stock movement shows after this credit note is completed/i)).toBeVisible();
       await expect(page.getByText("Something went wrong")).toHaveCount(0);
       await expect(page.locator("table tbody tr").filter({ hasText: "Ground Beef" })).toHaveCount(0);
     },

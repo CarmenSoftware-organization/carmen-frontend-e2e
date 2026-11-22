@@ -8,7 +8,7 @@ import { buSend } from "./helpers/bu-api";
 import { createTemplate, deleteTemplate, deleteTemplatesByPrefix, getTemplate, listTemplates, seededTemplate } from "./helpers/prt-api";
 import { addRow, button, confirmDialog, lastToast, pickLookup, pickSelectIn, typeInto } from "./helpers/movement/ui";
 import { uid } from "./helpers/test-data";
-import { settleAfter } from "./helpers/settle";
+import { expectSaved, expectSilentlyBlocked } from "./helpers/settle";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Roles (profile permissions checked against /api/user/profile, TEST BU):
@@ -500,7 +500,7 @@ purchaseTest.describe("PR Template — Add Item", () => {
       await tpl.gotoDetail(t.id);
       await button(page, "Edit").click();
       await addRow(page);
-      await settleAfter(page, /purchase-request-template/, () => button(page, "Save").click());
+      await expectSilentlyBlocked(page, /purchase-request-template/, () => button(page, "Save").click(), "FE shows no validation message for a row without product / an empty item list (no aria-invalid on the Select Product button)");
       await expect(page.getByRole("button", { name: "Select Product" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated successfully/i })).toHaveCount(0);
@@ -553,10 +553,8 @@ purchaseTest.describe("PR Template — Add Item", () => {
       await tpl.gotoDetail(t.id);
       await button(page, "Edit").click();
       await typeInto(page.locator(QTY(0)), "999999999999999");
-      // the form accepts the value, so a PUT/PATCH goes out: wait for its response
-      const saved = page.waitForResponse((r) => /purchase-request-template/.test(r.url()) && /^(PUT|PATCH)$/.test(r.request().method()), { timeout: 10_000 }).catch(() => null);
-      await button(page, "Save").click();
-      await saved;
+      // the form accepts the value: the write goes out, succeeds and the app says so (the pinned bug is that it should not)
+      await expectSaved(page, /purchase-request-template/, () => button(page, "Save").click(), page.locator("[data-sonner-toast]").filter({ hasText: /updated successfully/i }));
       // bug site: the form and backend accept 999,999,999,999,999 (toast 'updated successfully', value persisted)
       purchaseTest.fail(true, "suspected bug: no upper bound on requested_qty - 999999999999999 is accepted and saved (FE schema only has min(0), BE stores it)");
       const qtys = (await getTemplate(t.id)).data!.purchase_request_template_detail.map((d) => Number(d.requested_qty));
@@ -684,7 +682,7 @@ purchaseTest.describe("PR Template — Add Item", () => {
         await confirmDialog(page, /remove|delete|confirm/i);
       }
       await expect(page.getByText("No Items Yet")).toBeVisible();
-      await settleAfter(page, /purchase-request-template/, () => button(page, "Save").click());
+      await expectSilentlyBlocked(page, /purchase-request-template/, () => button(page, "Save").click(), "FE shows no validation message for a row without product / an empty item list (no aria-invalid on the Select Product button)");
       await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated successfully/i })).toHaveCount(0);
       expect((await getTemplate(t.id)).data!.purchase_request_template_detail).toHaveLength(2);
