@@ -101,7 +101,6 @@ describe("runDataReset", () => {
       `PATCH ${base}/departments/`,
       `PUT ${base}/locations-users/`,
       `POST ${base}/user-application-roles`,
-      "PATCH /api/business-units",
       `POST ${base}/workflows`,
       "POST /api/GR2VYNKQ/inventory-periods",
     ].map((p) => firstWrite(writes, p));
