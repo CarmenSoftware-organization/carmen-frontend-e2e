@@ -8,9 +8,9 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 
 | Status | Meaning | Modules |
 | --- | --- | --- |
-| ✅ spec | an automated Playwright spec drives this module | 47 |
+| ✅ spec | an automated Playwright spec drives this module | 49 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 40 |
-| ❌ none | neither — this is the coverage gap | 36 |
+| ❌ none | neither — this is the coverage gap | 34 |
 
 ## *
 
@@ -153,14 +153,14 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
 | `/procurement` | 1 | `002-spa-smoke.spec.ts` | `1204-section-landing.md` | ✅ spec |
-| `/procurement/approval` | 1 _(redirect → `/procurement/my-approval`)_ | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`303-pr-approver-journey.spec.ts`<br>`403-po-approver-journey.spec.ts` | — | ✅ spec |
+| `/procurement/approval` | 1 _(redirect → `/procurement/my-approval`)_ | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`301-pr.spec.ts`<br>`302-pr-creator-journey.spec.ts`<br>_+4 more_ | — | ✅ spec |
 | `/procurement/credit-note` | 3 | `002-spa-smoke.spec.ts`<br>`601-cn.spec.ts`<br>`603-cn-doc-flow.spec.ts` | — | ✅ spec |
 | `/procurement/goods-receive-note` | 3 | `002-spa-smoke.spec.ts`<br>`501-grn.spec.ts`<br>`710-wastage-reporting.spec.ts` | — | ✅ spec |
 | `/procurement/goods-receive-note/from-po` | 1 | — | — | ❌ none |
-| `/procurement/my-approval` | 1 | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`303-pr-approver-journey.spec.ts`<br>`403-po-approver-journey.spec.ts` | — | ✅ spec |
-| `/procurement/purchase-order` | 3 | `002-spa-smoke.spec.ts`<br>`401-po.spec.ts`<br>`402-po-purchaser-journey.spec.ts`<br>`403-po-approver-journey.spec.ts`<br>_+3 more_ | — | ✅ spec |
-| `/procurement/purchase-order/from-pr` | 1 | — | — | ❌ none |
-| `/procurement/purchase-order/from-price-list` | 1 | — | — | ❌ none |
+| `/procurement/my-approval` | 1 | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`301-pr.spec.ts`<br>`302-pr-creator-journey.spec.ts`<br>_+4 more_ | — | ✅ spec |
+| `/procurement/purchase-order` | 3 | `002-spa-smoke.spec.ts`<br>`401-po.spec.ts`<br>`402-po-purchaser-journey.spec.ts`<br>`403-po-approver-journey.spec.ts`<br>_+2 more_ | — | ✅ spec |
+| `/procurement/purchase-order/from-pr` | 1 | `401-po.spec.ts`<br>`402-po-purchaser-journey.spec.ts`<br>`403-po-approver-journey.spec.ts` | — | ✅ spec |
+| `/procurement/purchase-order/from-price-list` | 1 | `402-po-purchaser-journey.spec.ts` | — | ✅ spec |
 | `/procurement/purchase-request` | 3 | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`301-pr.spec.ts`<br>`302-pr-creator-journey.spec.ts`<br>_+6 more_ | — | ✅ spec |
 | `/procurement/purchase-request-template` | 3 | `002-spa-smoke.spec.ts`<br>`310-pr-template.spec.ts` | — | ✅ spec |
 | `/procurement/purchase-request/from-template` | 1 | — | — | ❌ none |

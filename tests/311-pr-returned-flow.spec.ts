@@ -1,4 +1,4 @@
-import { test as baseTest, expect } from "@playwright/test";
+import { test as baseTest, expect, type Browser } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { PurchaseRequestPage, LIST_PATH } from "./pages/purchase-request.page";
 import {
@@ -7,6 +7,7 @@ import {
   gotoPRDetail,
 } from "./pages/pr-approver.helpers";
 import { BU_CODE } from "./test-users";
+import { buGet } from "./helpers/bu-api";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
 
@@ -18,10 +19,32 @@ import { BuSwitcherPage } from "./pages/bu-switcher.page";
 // sweep.
 baseTest.describe.configure({ timeout: 180_000 });
 
+// "Returned" is not a status: when the HOD sends a PR back it stays IN PROGRESS, its workflow
+// stage moves back to "Create Request" and the list row carries a send-back hint (tooltip with
+// the reason). The creator gets Edit + Submit again; Delete is offered on Draft documents only
+// (FE pr-header.tsx `pr_status === PR_STATUS.DRAFT ? onDelete`). The earlier fixmes on
+// 080702/080704 expected a RETURNED badge and no Edit button - both wrong for the current app.
+//
 // Cross-persona spec — Creator's Step 7 (Returned PR flow). Runs alongside
 // 302/303/304. Source docs: docs/persona-doc/Purchase Request/Creator/
 // step-07-returned-pr.md.
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
+
+const SEED_REASON = "Please revise — returned for review";
+
+/** Requestor submits a 1-line PR, HOD sends it back (first stage offered = Create Request). Returns the id. */
+async function seedReturned(browser: Browser, tag: string): Promise<string> {
+  const created = await submitPRAsRequestor(browser, { items: 1, description: `${tag} returned` });
+  await sendForReviewAsHOD(browser, created.ref, SEED_REASON);
+  return created.ref;
+}
+
+/** The PR number (PRyymmnnnn) the list and the detail header show - `ref` is the id. */
+async function prNo(id: string): Promise<string> {
+  const r = await buGet("Requestor", `/purchase-requests/${id}`);
+  expect(r.status, "read the seeded PR").toBe(200);
+  return r.body.data.pr_no as string;
+}
 
 requestorTest.describe("7a — View Returned PR", () => {
   // Transaction-module rollout: pin the creator session's active BU to BLAVG
@@ -51,117 +74,93 @@ requestorTest.describe("7a — View Returned PR", () => {
     "TC-PR-080701 Returned PR appears in Creator's list with RETURNED status badge",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor; มี PR ที่ถูกส่งคืนอยู่ (seeded ผ่าน submitPRAsRequestor + sendForReviewAsHOD)" },
-        { type: "steps", description: "1. เปิด PR list\n2. หาแถว PR ที่ seeded\n3. ตรวจสอบว่า status badge แสดง Returned (หรือเทียบเท่า)" },
-        { type: "expected", description: "แถว PR visible ใน list และ status badge ตรงกับ /returned|sent back/i สำหรับแถวนั้น" },
+        { type: "preconditions", description: "Login เป็น Requestor; PR ที่ HOD ส่งกลับ (seed ผ่าน submitPRAsRequestor + sendForReviewAsHOD)" },
+        { type: "steps", description: "1. เปิด PR list มุมมอง All Documents\n2. หาแถวของ PR ที่ seed\n3. ดูสถานะ/สเตจและ hover ป้ายส่งกลับ" },
+        { type: "expected", description: "แถวแสดงสถานะ 'In progress' ที่สเตจ 'Create Request' (ไม่มีสถานะ Returned) และป้ายส่งกลับแสดงเหตุผล 'Please revise' เมื่อ hover" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser);
-      await sendForReviewAsHOD(browser, created.ref);
-      await pr.gotoList();
-      const row = pr.prRow(created.ref);
-      if ((await row.count()) === 0) {
-        requestorTest.skip(true, "Returned PR not visible in Creator's list — backend may filter differently");
-        return;
-      }
-      await expect(row).toBeVisible({ timeout: 10_000 });
-      await expect(row).toContainText(/returned|sent back/i);
-    },
-  );
-
-  // App behaviour, not a test bug — measured, not assumed.
-  // The return journey now runs end to end (HOD marks the rows "Send for Review",
-  // then the document-level **Send Back** with its stage + reason dialog, which
-  // completes without error). What it does *not* produce is a RETURNED document:
-  // the status stays **IN PROGRESS** and the creator is shown no Edit button.
-  // PO behaves the same way — status is the document state, while the workflow
-  // *stage* is what moves. Settle whether a returned PR should read RETURNED and
-  // be editable by its creator, then assert whichever answer is right.
-  requestorTest.fixme(
-    "TC-PR-080702 Open Returned PR detail loads with status=Returned",
-    {
-      annotation: [
-        { type: "preconditions", description: "มี PR ที่ถูกส่งคืนอยู่" },
-        { type: "steps", description: "1. ไปที่หน้า Returned PR detail\n2. ตรวจสอบ URL\n3. ตรวจสอบ status badge" },
-        { type: "expected", description: "URL คือ /procurement/purchase-request/<ref>; text ของ status badge ตรงกับ /returned|sent back/i" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Smoke" },
-      ],
-    },
-    async ({ page, browser }) => {
-      const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser);
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
-      await expect(
-        page
-          .locator("[data-slot='status'], [data-slot='badge'], [class*='badge']")
-          .filter({ hasText: /returned|sent back/i })
-          .first(),
-      ).toBeVisible({ timeout: 10_000 });
+      const ref = await seedReturned(browser, "TC-PR-080701");
+      await pr.gotoAllDocuments();
+      const row = pr.prRow(await prNo(ref));
+      await expect(row).toBeVisible({ timeout: 15_000 });
+      await expect(row).toContainText(/in progress/i);
+      await expect(row).toContainText(/create request/i);
+      await row.locator("[data-slot=tooltip-trigger]").first().hover();
+      await expect(page.getByText(/please revise/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
   requestorTest(
-    "TC-PR-080703 Workflow History tab shows the return reason from HOD",
+    "TC-PR-080702 Open Returned PR detail loads with status In progress",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า Returned PR detail" },
-        { type: "steps", description: "1. คลิกแท็บ Workflow History\n2. หาข้อความเหตุผลการส่งคืนจาก HOD" },
-        { type: "expected", description: "แผง Workflow History มีเหตุผลการส่งคืนที่ seeded ไว้ว่า 'Please revise — returned for review' (หรือ partial match)" },
+        { type: "preconditions", description: "มี PR ที่ HOD ส่งกลับ" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ PR ที่ถูกส่งกลับ\n2. ตรวจ URL และ status chip" },
+        { type: "expected", description: "URL คือ /procurement/purchase-request/<id>; status chip เป็น 'In progress' (ไม่ใช่ Returned); stepper อยู่ที่สเตจ 'Create Request'" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Smoke" },
+      ],
+    },
+    async ({ page, browser }) => {
+      const pr = new PurchaseRequestPage(page);
+      const ref = await seedReturned(browser, "TC-PR-080702");
+      await gotoPRDetail(page, ref);
+      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/[0-9a-f-]{36}`));
+      await expect(page.locator("main")).toContainText(await prNo(ref));
+      await expect(pr.statusBadge()).toContainText(/in.progress/i);
+      await expect(page.locator("main")).toContainText(/create request/i);
+      await expect(pr.statusBadge()).not.toContainText(/returned/i);
+    },
+  );
+
+  requestorTest(
+    "TC-PR-080703 Workflow History shows the send-back transition made by HOD",
+    {
+      annotation: [
+        { type: "preconditions", description: "หน้า detail ของ PR ที่ถูกส่งกลับ" },
+        { type: "steps", description: "1. คลิก stepper (See who has handled this document) เพื่อเปิด Workflow History\n2. ดูรายการเปลี่ยนสเตจ" },
+        { type: "expected", description: "แผง Workflow History แสดงรายการ 'HOD Approval → Create Request' โดย hod และ 'Create Request → HOD Approval' โดย requestor (timeline แสดงเฉพาะการย้ายสเตจ ไม่มีเหตุผล — เหตุผลอยู่ที่ hint ของแถวใน list, ดู TC-PR-080701)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser);
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      const wh = pr.tabWorkflowHistory();
-      if ((await wh.count()) === 0) {
-        requestorTest.skip(true, "Workflow History tab not present in this build");
-        return;
-      }
-      await wh.click();
-      await expect(
-        page.getByText(/please revise|returned for review|revise/i).first(),
-      ).toBeVisible({ timeout: 10_000 });
+      const ref = await seedReturned(browser, "TC-PR-080703");
+      await gotoPRDetail(page, ref);
+      await pr.tabWorkflowHistory().click();
+      const sheet = pr.workflowHistorySheet();
+      await expect(sheet).toContainText(/HOD Approval\s*→\s*Create Request/, { timeout: 10_000 });
+      await expect(sheet).toContainText(/hod carmensoftware/i);
+      await expect(sheet).toContainText(/Create Request\s*→\s*HOD Approval/);
     },
   );
+
 });
 
 requestorTest.describe("7b — Edit Returned PR", () => {
-  // App behaviour, not a test bug — measured, not assumed.
-  // The return journey now runs end to end (HOD marks the rows "Send for Review",
-  // then the document-level **Send Back** with its stage + reason dialog, which
-  // completes without error). What it does *not* produce is a RETURNED document:
-  // the status stays **IN PROGRESS** and the creator is shown no Edit button.
-  // PO behaves the same way — status is the document state, while the workflow
-  // *stage* is what moves. Settle whether a returned PR should read RETURNED and
-  // be editable by its creator, then assert whichever answer is right.
-  requestorTest.fixme(
+  requestorTest(
     "TC-PR-080704 Edit button visible on Returned PR (Creator can re-edit)",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า Returned PR detail" },
-        { type: "steps", description: "1. ตรวจสอบ action toolbar" },
-        { type: "expected", description: "ปุ่ม Edit visible (Creator สามารถเข้า Edit Mode เพื่อแก้ไขได้)" },
+        { type: "preconditions", description: "หน้า detail ของ PR ที่ถูกส่งกลับ (Requestor เป็นเจ้าของ)" },
+        { type: "steps", description: "1. ดู action toolbar" },
+        { type: "expected", description: "ปุ่ม Edit แสดงและกดได้ (Creator เข้า Edit Mode เพื่อแก้ไขได้); กดแล้วมีปุ่ม Save" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Functional" },
+        { type: "testType", description: "Smoke" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser);
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
+      const ref = await seedReturned(browser, "TC-PR-080704");
+      await gotoPRDetail(page, ref);
+      await expect(pr.editModeButton()).toBeEnabled({ timeout: 10_000 });
+      await pr.enterEditMode();
+      await expect(pr.saveDraftButton()).toBeVisible();
     },
   );
 
@@ -169,26 +168,24 @@ requestorTest.describe("7b — Edit Returned PR", () => {
     "TC-PR-080705 Modify line item quantity → Save → URL stays on detail",
     {
       annotation: [
-        { type: "preconditions", description: "หน้า Returned PR detail เปิดอยู่พร้อมอย่างน้อยหนึ่ง line item" },
-        { type: "steps", description: "1. คลิก Edit\n2. แก้ไข quantity แถวแรกเป็น 7\n3. คลิก Save Draft" },
-        { type: "expected", description: "หลังจากบันทึก URL ของหน้ายังคงอยู่ที่ /procurement/purchase-request/<ref>" },
+        { type: "preconditions", description: "หน้า detail ของ PR ที่ถูกส่งกลับพร้อม 1 รายการ" },
+        { type: "steps", description: "1. คลิก Edit\n2. แก้ Qty แถวแรกเป็น 7\n3. คลิก Save" },
+        { type: "expected", description: "บันทึกสำเร็จ (toast updated) URL ยังอยู่ที่ /procurement/purchase-request/<id>; หน้า detail แสดง Requested 7.00" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "CRUD" },
+        { type: "testType", description: "Functional" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser, { items: 1 });
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Returned PR");
-        return;
-      }
+      const ref = await seedReturned(browser, "TC-PR-080705");
+      await gotoPRDetail(page, ref);
+      const detailUrl = page.url();
       await pr.enterEditMode();
-      await pr.editLineItem(0, { quantity: 7 }).catch(() => {});
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await pr.editLineItem(0, { quantity: 7 });
+      requestorTest.fail(true, "suspected bug: PR detail save returns 400 when a line carries both pricelist_detail_id:null and is_tax_included (message \"Unknown argument `product_id`\" on update, \"Argument `is_tax_included` is missing\" on add) - FE main payload (FE 76ec45e4 adds is_tax_included) vs dev BE f529576a9; bisected by replaying PATCH .../save: dropping either key makes it 200");
+      await pr.saveEditMode();
+      await expect(page).toHaveURL(detailUrl);
+      await expect(page.locator("main")).toContainText(/7\.00/);
     },
   );
 
@@ -196,28 +193,29 @@ requestorTest.describe("7b — Edit Returned PR", () => {
     "TC-PR-080706 Add new line item to Returned PR → Save",
     {
       annotation: [
-        { type: "preconditions", description: "หน้า Returned PR detail เปิดอยู่" },
-        { type: "steps", description: "1. คลิก Edit\n2. เพิ่ม line item ใหม่ (product, qty, uom, price)\n3. คลิก Save Draft" },
-        { type: "expected", description: "หลังจากบันทึก URL ของหน้ายังคงอยู่ที่ /procurement/purchase-request/<ref>" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "CRUD" },
+        { type: "preconditions", description: "หน้า detail ของ PR ที่ถูกส่งกลับพร้อม 1 รายการ" },
+        { type: "steps", description: "1. คลิก Edit\n2. คลิก Add Item แล้วเลือก Product/Unit กรอก Qty\n3. คลิก Save" },
+        { type: "expected", description: "บันทึกสำเร็จ; URL ยังอยู่ที่หน้า detail; ตารางมี 2 รายการ" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser, { items: 1 });
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Returned PR");
-        return;
-      }
+      const ref = await seedReturned(browser, "TC-PR-080706");
+      await gotoPRDetail(page, ref);
+      const detailUrl = page.url();
       await pr.enterEditMode();
+      await expect(pr.requestedQtyInputs()).toHaveCount(1);
       await pr.addLineItem({ product: "Added in Returned", quantity: 2, uom: "ea", unitPrice: 75 });
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      requestorTest.fail(true, "suspected bug: PR detail save returns 400 when a line carries both pricelist_detail_id:null and is_tax_included (message \"Unknown argument `product_id`\" on update, \"Argument `is_tax_included` is missing\" on add) - FE main payload (FE 76ec45e4 adds is_tax_included) vs dev BE f529576a9; bisected by replaying PATCH .../save: dropping either key makes it 200");
+      await pr.saveEditMode();
+      await expect(page).toHaveURL(detailUrl);
+      await expect(pr.requestedQtyInputs().or(page.locator("tbody tr").filter({ hasText: /\d/ }))).not.toHaveCount(0);
+      await expect(page.locator("main")).toContainText(/2\.00/);
     },
   );
+
 });
 
 requestorTest.describe("7c — Resubmit", () => {
@@ -225,59 +223,50 @@ requestorTest.describe("7c — Resubmit", () => {
     "TC-PR-080707 Submit confirmation dialog appears for Returned PR",
     {
       annotation: [
-        { type: "preconditions", description: "หน้า Returned PR detail เปิดอยู่" },
-        { type: "steps", description: "1. คลิก Submit บน Returned PR" },
-        { type: "expected", description: "dialog ยืนยัน (resubmit) ปรากฏขึ้น visible" },
+        { type: "preconditions", description: "หน้า detail ของ PR ที่ถูกส่งกลับ" },
+        { type: "steps", description: "1. คลิก Submit" },
+        { type: "expected", description: "dialog ยืนยัน (alertdialog) ปรากฏขึ้นพร้อมปุ่มยืนยัน" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Smoke" },
+        { type: "testType", description: "Functional" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser, { items: 1 });
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      const submit = pr.submitButton();
-      if ((await submit.count()) === 0) {
-        requestorTest.skip(true, "Submit button not present on Returned PR detail");
-        return;
-      }
-      await submit.click({ timeout: 5_000 });
+      const ref = await seedReturned(browser, "TC-PR-080707");
+      await gotoPRDetail(page, ref);
+      await expect(pr.submitButton()).toBeVisible({ timeout: 10_000 });
+      await pr.submitButton().click();
       await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 10_000 });
+      await expect(pr.confirmDialogButton(/confirm|submit|resubmit|ok|yes/i)).toBeVisible();
     },
   );
 
   requestorTest(
-    "TC-PR-080708 Confirm submit → status moves Returned → In Progress",
+    "TC-PR-080708 Confirm submit → PR goes back to the approver",
     {
       annotation: [
-        { type: "preconditions", description: "dialog ยืนยัน Submit เปิดอยู่บน Returned PR" },
-        { type: "steps", description: "1. คลิก Submit\n2. Confirm dialog\n3. รอ status badge อัปเดต" },
-        { type: "expected", description: "text ของ status badge ตรงกับ /in.progress/i หลังจาก confirm" },
+        { type: "preconditions", description: "dialog ยืนยัน Submit เปิดอยู่บน PR ที่ถูกส่งกลับ" },
+        { type: "steps", description: "1. คลิก Submit\n2. กด confirm ใน dialog\n3. รอผล" },
+        { type: "expected", description: "backend รับ submit (2xx); PR ออกจากสเตจ Create Request — creator ไม่มีปุ่ม Submit/Edit อีก; status ยังเป็น In progress ที่สเตจ HOD Approval" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "CRUD" },
+        { type: "testType", description: "Functional" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser, { items: 1 });
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      const submit = pr.submitButton();
-      if ((await submit.count()) === 0) {
-        requestorTest.skip(true, "Submit button not present on Returned PR detail");
-        return;
-      }
-      await submit.click({ timeout: 5_000 });
-      await pr.confirmDialogButton(/confirm|submit|resubmit|ok|yes/i).click({ timeout: 5_000 });
-      await expect(
-        page
-          .locator("[data-slot='status'], [data-slot='badge'], [class*='badge']")
-          .filter({ hasText: /in.progress/i })
-          .first(),
-      ).toBeVisible({ timeout: 15_000 });
+      const ref = await seedReturned(browser, "TC-PR-080708");
+      await gotoPRDetail(page, ref);
+      const submitted = page.waitForResponse((r) => /\/purchase-requests\/[^/?]+\/submit/.test(r.url()) && r.request().method() === "PATCH", { timeout: 20_000 });
+      await pr.submitButton().click();
+      await pr.confirmDialogButton(/confirm|submit|resubmit|ok|yes/i).click();
+      expect((await submitted).ok(), "resubmit was refused").toBe(true);
+      await gotoPRDetail(page, ref);
+      await expect(pr.statusBadge()).toContainText(/in.progress/i);
+      await expect(pr.submitButton()).toHaveCount(0);
+      await expect(pr.editModeButton()).toHaveCount(0);
     },
   );
+
 });
 
 requestorTest.describe("7d — Edge cases", () => {
@@ -285,119 +274,82 @@ requestorTest.describe("7d — Edge cases", () => {
     "TC-PR-080709 Cancel submit on Returned PR → URL stays on detail (still Returned)",
     {
       annotation: [
-        { type: "preconditions", description: "dialog ยืนยัน Submit เปิดอยู่บน Returned PR" },
+        { type: "preconditions", description: "dialog ยืนยัน Submit เปิดอยู่บน PR ที่ถูกส่งกลับ" },
         { type: "steps", description: "1. คลิก Submit\n2. คลิก Cancel ใน dialog" },
-        { type: "expected", description: "dialog ปิด; URL ยังคงอยู่ที่หน้า PR detail" },
+        { type: "expected", description: "dialog ปิด; URL ยังอยู่ที่หน้า detail; ปุ่ม Submit ยังอยู่ (PR ยังอยู่ที่สเตจ Create Request)" },
         { type: "priority", description: "Medium" },
-        { type: "testType", description: "Functional" },
+        { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser, { items: 1 });
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      const submit = pr.submitButton();
-      if ((await submit.count()) === 0) {
-        requestorTest.skip(true, "Submit button not present on Returned PR detail");
-        return;
-      }
-      await submit.click({ timeout: 5_000 });
-      const cancel = page.getByRole("alertdialog").getByRole("button", { name: /cancel|no/i }).first();
-      if ((await cancel.count()) === 0) {
-        requestorTest.skip(true, "Cancel button not present in submit dialog");
-        return;
-      }
-      await cancel.click({ timeout: 5_000 });
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      const ref = await seedReturned(browser, "TC-PR-080709");
+      await gotoPRDetail(page, ref);
+      const detailUrl = page.url();
+      await pr.submitButton().click();
+      const dialog = page.getByRole("alertdialog");
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("button", { name: /cancel|no/i }).first().click();
+      await expect(dialog).toHaveCount(0);
+      await expect(page).toHaveURL(detailUrl);
+      await expect(pr.submitButton()).toBeVisible();
+      await expect(page.locator("main")).toContainText(/create request/i);
     },
   );
 
   requestorTest(
-    "TC-PR-080710 Delete Returned PR is allowed for Creator",
+    "TC-PR-080710 Delete is not offered on a Returned PR",
     {
       annotation: [
-        { type: "preconditions", description: "หน้า Returned PR detail เปิดอยู่" },
-        { type: "steps", description: "1. ตรวจสอบการมีอยู่ของปุ่ม Delete\n2. ถ้ามีอยู่ ให้คลิกและ confirm\n3. ตรวจสอบ URL ของ list" },
-        { type: "expected", description: "ปุ่ม Delete visible; การ confirm ลบนำทางกลับไปที่ PR list URL ข้ามเมื่อ Delete ไม่ได้รับอนุญาตใน configuration นี้" },
+        { type: "preconditions", description: "หน้า detail ของ PR ที่ถูกส่งกลับ (In progress ไม่ใช่ Draft)" },
+        { type: "steps", description: "1. ดู action toolbar ของ Creator" },
+        { type: "expected", description: "ไม่มีปุ่ม Delete — FE ให้ลบได้เฉพาะเอกสาร Draft (pr-header.tsx: onDelete เมื่อ pr_status = draft); PR ที่เข้า workflow แล้วลบไม่ได้" },
         { type: "priority", description: "Medium" },
-        { type: "testType", description: "Authorization" },
+        { type: "testType", description: "Negative" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser);
-      await sendForReviewAsHOD(browser, created.ref);
-      await gotoPRDetail(page, created.ref);
-      const del = pr.deleteButton();
-      if ((await del.count()) === 0) {
-        requestorTest.skip(true, "Delete button not visible on Returned PR — feature gated by configuration");
-        return;
-      }
-      await del.click({ timeout: 5_000 });
-      await pr.confirmDialogButton(/confirm|delete|yes/i).click({ timeout: 5_000 });
-      await expect(page).toHaveURL(/\/procurement\/purchase-request($|\?)/, { timeout: 10_000 });
+      const ref = await seedReturned(browser, "TC-PR-080710");
+      await gotoPRDetail(page, ref);
+      await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
+      await expect(pr.deleteButton()).toHaveCount(0);
     },
   );
+
 });
 
 requestorTest.describe.serial("Golden Journey", () => {
   requestorTest(
-    "TC-PR-080902 Full returned-flow: HOD returns → Creator views reason → edits qty → resubmits → status In Progress",
+    "TC-PR-080902 Full returned-flow: HOD returns → Creator views history → resubmits → PR back at HOD",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Requestor; PR ใหม่ถูก seed ไว้ในสถานะ Returned ผ่าน submitPRAsRequestor + sendForReviewAsHOD" },
-        { type: "steps", description: "1. เปิดหน้า Returned PR detail\n2. คลิกแท็บ Workflow History และตรวจสอบว่าเหตุผลถูกแสดง\n3. คลิก Edit\n4. แก้ไข quantity ของ line item แรก\n5. Save Draft\n6. คลิก Submit และ Confirm\n7. รอ status แสดงเป็น In Progress" },
-        { type: "expected", description: "Status badge เปลี่ยนเป็น In Progress หลังจากการ confirm resubmit" },
+        { type: "preconditions", description: "Login เป็น Requestor; PR ใหม่ถูก seed และ HOD ส่งกลับ" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ PR ที่ถูกส่งกลับ\n2. เปิด Workflow History ตรวจการส่งกลับ\n3. Submit + confirm" },
+        { type: "expected", description: "เห็นการส่งกลับ HOD Approval → Create Request ใน Workflow History; หลัง resubmit PR ยังเป็น In progress ที่สเตจ HOD Approval และ Creator ไม่มี Submit/Edit (การแก้ Qty ก่อนส่งใหม่ทดสอบที่ 080705 ซึ่งติด BE 400)" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Smoke" },
+        { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
+      const ref = await seedReturned(browser, "TC-PR-080902");
+      await gotoPRDetail(page, ref);
+      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/[0-9a-f-]{36}`));
 
-      // Seed: Requestor submits → HOD sends back
-      const created = await submitPRAsRequestor(browser, { items: 1, description: "TC-PR-080902 returned golden" });
-      await sendForReviewAsHOD(browser, created.ref);
+      await pr.tabWorkflowHistory().click();
+      await expect(pr.workflowHistorySheet()).toContainText(/HOD Approval\s*→\s*Create Request/, { timeout: 10_000 });
+      await page.keyboard.press("Escape");
 
-      // Step 1: Open detail
-      await gotoPRDetail(page, created.ref);
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
-
-      // Step 2: Verify reason in Workflow History
-      const wh = pr.tabWorkflowHistory();
-      if ((await wh.count()) > 0) {
-        await wh.click();
-        await expect(
-          page.getByText(/please revise|returned for review|revise/i).first(),
-        ).toBeVisible({ timeout: 10_000 }).catch(() => {});
-      }
-
-      // Step 3-5: Edit quantity, save
-      if ((await pr.editModeButton().count()) === 0) {
-        requestorTest.skip(true, "Edit button not present on Returned PR");
-        return;
-      }
-      await pr.enterEditMode();
-      await pr.editLineItem(0, { quantity: 9 }).catch(() => {});
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
-
-      // Step 6: Submit + confirm
-      const submit = pr.submitButton();
-      if ((await submit.count()) === 0) {
-        requestorTest.skip(true, "Submit button not present after save");
-        return;
-      }
-      await submit.click({ timeout: 5_000 });
-      await pr.confirmDialogButton(/confirm|submit|resubmit|ok|yes/i).click({ timeout: 5_000 });
-
-      // Step 7: Status In Progress
-      await expect(
-        page
-          .locator("[data-slot='status'], [data-slot='badge'], [class*='badge']")
-          .filter({ hasText: /in.progress/i })
-          .first(),
-      ).toBeVisible({ timeout: 15_000 });
+      const submitted = page.waitForResponse((r) => /\/purchase-requests\/[^/?]+\/submit/.test(r.url()) && r.request().method() === "PATCH", { timeout: 20_000 });
+      await pr.submitButton().click();
+      await pr.confirmDialogButton(/confirm|submit|resubmit|ok|yes/i).click();
+      expect((await submitted).ok(), "resubmit was refused").toBe(true);
+      await gotoPRDetail(page, ref);
+      await expect(pr.statusBadge()).toContainText(/in.progress/i);
+      await expect(page.locator("main")).toContainText(/hod approval/i);
+      await expect(pr.submitButton()).toHaveCount(0);
     },
   );
+
 });

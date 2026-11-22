@@ -8,6 +8,7 @@ import {
   bulkReject,
   bulkSendForReview,
   gotoPRDetail,
+  splitFirstItem,
 } from "./pages/pr-approver.helpers";
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
@@ -20,6 +21,11 @@ const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 const REJECT_REASON = "Vendor pricing exceeds budget";
 const REVIEW_REASON = "Please confirm vendor selection";
 const REVIEW_STAGE = "HOD";
+
+// Cases seed their PR through second/third browser contexts (requestor create+submit,
+// HOD approve). That takes well over the default 30s on the dev backend, and the timeout
+// used to fire inside seeding as a bogus "browserContext.close: Target page ... closed".
+purchaseTest.describe.configure({ timeout: 180_000 });
 
 purchaseTest.describe("Step 1 — PR List (Purchaser View)", () => {
   // Transaction-module rollout: pin the purchaser session's active BU to BLAVG
@@ -51,7 +57,7 @@ purchaseTest.describe("Step 1 — PR List (Purchaser View)", () => {
       annotation: [
         { type: "preconditions", description: "Login เป็น Purchaser (carmensoftware.dev+purchase@gmail.com)" },
         { type: "steps", description: "1. ไปที่ /procurement/purchase-request\n2. ตรวจสอบ URL และแท็บ My Pending" },
-        { type: "expected", description: "URL อยู่ที่หน้า PR list; แท็บ My Pending ถูกเลือกเมื่อมีอยู่" },
+        { type: "expected", description: "URL อยู่ที่หน้า PR list; ปุ่ม My Pending แสดงและเป็นมุมมองเริ่มต้น (ไม่มี view=all-document)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -61,9 +67,9 @@ purchaseTest.describe("Step 1 — PR List (Purchaser View)", () => {
       await pr.gotoList();
       await expect(page).toHaveURL(new RegExp(LIST_PATH));
       // Redesigned list uses a viewMode <Button> toggle (no aria-selected).
-      const tab = pr.tabMyPending();
-      if ((await tab.count()) === 0) return;
-      await expect(tab).toBeVisible({ timeout: 5_000 });
+      await expect(pr.tabMyPending(), "My Pending toggle missing on the PR list").toBeVisible({ timeout: 5_000 });
+      // My Pending is the default view: ?view= is absent or my-pending, never all-document.
+      await expect(page).not.toHaveURL(/view=all-document/);
     },
   );
 
@@ -73,7 +79,7 @@ purchaseTest.describe("Step 1 — PR List (Purchaser View)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list" },
         { type: "steps", description: "1. คลิกแท็บ All Documents" },
-        { type: "expected", description: "แท็บ All Documents ถูกเลือก" },
+        { type: "expected", description: "หลังคลิก All Documents URL มี ?view=all-document" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -82,13 +88,10 @@ purchaseTest.describe("Step 1 — PR List (Purchaser View)", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
       const tab = pr.tabAllDocuments();
-      if ((await tab.count()) === 0) {
-        purchaseTest.skip(true, "All Documents toggle not present in this build");
-        return;
-      }
+      await expect(tab, "All Documents toggle missing on the PR list").toBeVisible({ timeout: 10_000 });
       await tab.click();
-      // viewMode <Button> toggle has no aria-selected — assert we stayed on the list.
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 5_000 });
+      // The viewMode toggle has no aria-selected; its state lives in the URL (?view=).
+      await expect(page).toHaveURL(/view=all-document/, { timeout: 5_000 });
     },
   );
 
@@ -134,8 +137,8 @@ purchaseTest.describe("Step 1 — PR List (Purchaser View)", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list" },
-        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือก status\n3. Apply" },
-        { type: "expected", description: "URL ยังคงอยู่ที่หน้า PR list หลังจากใช้ filter" },
+        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือกฟิลด์ Status แล้วติ๊ก In progress (ไม่มีปุ่ม Apply)" },
+        { type: "expected", description: "หลังติ๊ก In progress ทุกแถวที่แสดงมีสถานะ In progress" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -143,13 +146,10 @@ purchaseTest.describe("Step 1 — PR List (Purchaser View)", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const fb = pr.filterButton();
-      if ((await fb.count()) === 0) {
-        purchaseTest.skip(true, "Filter button not present in this build");
-        return;
-      }
-      await pr.applyFilter({ status: "In Progress" });
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 10_000 });
+      await expect(pr.filterButton(), "Filter button missing on the PR list").toBeVisible({ timeout: 10_000 });
+      await pr.gotoAllDocuments();
+      await pr.applyFilter("In progress");
+      await pr.expectEveryRowStatus(/in progress/i);
     },
   );
 
@@ -167,11 +167,7 @@ purchaseTest.describe("Step 1 — PR List (Purchaser View)", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const input = pr.searchInput();
-      if ((await input.count()) === 0) {
-        purchaseTest.skip(true, "Search input not present in this build");
-        return;
-      }
+      await expect(pr.searchInput(), "Search input missing on the PR list").toBeVisible({ timeout: 10_000 });
       await pr.searchFor("PR");
       await expect(page).toHaveURL(new RegExp(LIST_PATH));
     },
@@ -185,7 +181,7 @@ purchaseTest.describe("Step 2 — PR Detail (Read-only)", () => {
       annotation: [
         { type: "preconditions", description: "PR มีอยู่ที่ขั้นตอน Purchase (seeded ผ่าน submitPRAsRequestor + approveAsHOD)" },
         { type: "steps", description: "1. เปิดหน้า PR detail\n2. ตรวจสอบว่าแท็บ Items เป็นค่าเริ่มต้น" },
-        { type: "expected", description: "URL เป็น detail URL; แท็บ Items ถูกเลือกเมื่อมีอยู่" },
+        { type: "expected", description: "URL เป็น detail URL; ตารางรายการสินค้า (คอลัมน์ Product + แถวรายการที่ seed) แสดงเป็นค่าเริ่มต้น" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -196,9 +192,8 @@ purchaseTest.describe("Step 2 — PR Detail (Read-only)", () => {
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
-      const items = pr.tabItems();
-      if ((await items.count()) === 0) return;
-      await expect(items).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      await expect(page.getByRole("columnheader", { name: /product/i }).first(), "item table is not shown by default").toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("button", { name: /^expand row$/i }).first(), "seeded line item is not listed").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -208,7 +203,7 @@ purchaseTest.describe("Step 2 — PR Detail (Read-only)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR detail ขั้นตอน Purchase" },
         { type: "steps", description: "1. คลิกแท็บ Workflow History" },
-        { type: "expected", description: "แท็บ Workflow History ถูกเลือก" },
+        { type: "expected", description: "หลังคลิกตัวเปิดประวัติ (stepper) แสดง sheet Workflow History ที่มีรายการของ requestor" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -219,12 +214,11 @@ purchaseTest.describe("Step 2 — PR Detail (Read-only)", () => {
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
       const wh = pr.tabWorkflowHistory();
-      if ((await wh.count()) === 0) {
-        purchaseTest.skip(true, "Workflow History tab not present in this build");
-        return;
-      }
+      await expect(wh, "Workflow History control missing on PR detail").toBeVisible({ timeout: 10_000 });
       await wh.click();
-      await expect(wh).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      const sheet = pr.workflowHistorySheet();
+      await expect(sheet, "Workflow History sheet did not open").toBeVisible({ timeout: 10_000 });
+      await expect(sheet.getByText(/requestor carmensoftware/i).first(), "history shows no entry by the requestor").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -244,11 +238,7 @@ purchaseTest.describe("Step 2 — PR Detail (Read-only)", () => {
       const created = await submitPRAsRequestor(browser);
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present — cannot verify read-only header state");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — cannot verify read-only header state").toBeVisible({ timeout: 10_000 });
       await expect(pr.approveButton()).toHaveCount(0);
       await expect(pr.rejectButton()).toHaveCount(0);
       await expect(pr.sendBackButton()).toHaveCount(0);
@@ -272,14 +262,8 @@ purchaseTest.describe("Step 2 — PR Detail (Read-only)", () => {
       const created = await submitPRAsRequestor(browser);
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      // The Purchaser only gets an Edit button once the PR is at a Purchase
-      // stage assigned to them. If the seeded PR's workflow ("General PR") does
-      // not route to such a stage, skip rather than fail — this is an
-      // environment/workflow-routing gap, not a UI regression.
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Purchaser has no Edit button — seeded PR did not reach an editable Purchase stage");
-        return;
-      }
+      // The Purchaser only gets an Edit button once the PR is at the Purchase stage; a missing
+      // button is a routing/seed failure and must show as one.
       await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -302,10 +286,7 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser);
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       // Edit mode shows BOTH Save and Cancel — take .first() to avoid a
       // strict-mode violation on the combined locator.
@@ -329,17 +310,12 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
+      await pr.expandItem(0);
       const vendor = pr.vendorInput(0);
-      if ((await vendor.count()) === 0) {
-        purchaseTest.skip(true, "Vendor input not present in edit mode");
-        return;
-      }
-      await expect(vendor).toBeEditable();
+      await expect(vendor, "Vendor lookup missing for the purchaser (it is plain text for approvers)").toBeVisible({ timeout: 10_000 });
+      await expect(vendor).toBeEnabled();
     },
   );
 
@@ -359,19 +335,14 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
+      await pr.expandItem(0);
       const price = pr.unitPriceInput(0);
-      if ((await price.count()) === 0) {
-        purchaseTest.skip(true, "Unit Price input not present");
-        return;
-      }
+      await expect(price, "Unit Price input missing for the purchaser").toBeVisible({ timeout: 10_000 });
       await expect(price).toBeEditable();
-      await price.fill("125");
-      await expect(price).toHaveValue("125");
+      await pr.setAmount(price, 125);
+      await expect(price).toHaveValue(/^125(\.0+)?$/);
     },
   );
 
@@ -391,17 +362,14 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
+      await pr.expandItem(0);
       const discount = pr.discountInput(0);
-      if ((await discount.count()) === 0) {
-        purchaseTest.skip(true, "Discount input not present");
-        return;
-      }
+      await expect(discount, "Discount input missing for the purchaser").toBeVisible({ timeout: 10_000 });
       await expect(discount).toBeEditable();
+      await discount.fill("5");
+      await expect(discount).toHaveValue("5");
     },
   );
 
@@ -421,19 +389,12 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
+      await pr.expandItem(0);
       const tax = pr.taxProfileSelect(0);
-      if ((await tax.count()) === 0) {
-        purchaseTest.skip(true, "Tax Profile select not present");
-        return;
-      }
-      const disabled = await tax.isDisabled().catch(() => false);
-      const ariaDisabled = (await tax.getAttribute("aria-disabled").catch(() => null)) === "true";
-      expect(disabled || ariaDisabled).toBeFalsy();
+      await expect(tax, "Tax Profile lookup missing for the purchaser").toBeVisible({ timeout: 10_000 });
+      await expect(tax).toBeEnabled();
     },
   );
 
@@ -453,21 +414,15 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      const cell = pr.approvedQtyReadOnlyCell(0);
-      if ((await cell.count()) === 0) {
-        purchaseTest.skip(true, "Approved Qty cell not present");
-        return;
-      }
-      const disabled = await cell.isDisabled().catch(() => false);
-      const ariaDisabled = (await cell.getAttribute("aria-disabled").catch(() => null)) === "true";
-      const tagName = await cell.evaluate((el) => el.tagName.toLowerCase()).catch(() => "");
-      const isInput = tagName === "input" || tagName === "textarea";
-      expect(disabled || ariaDisabled || !isInput).toBeTruthy();
+      await expect(page.getByRole("columnheader", { name: /approved/i }).first()).toBeVisible();
+      // Spec (FR-PR-011A): the purchaser cannot change the approved quantity the HOD set. The FE renders
+      // it as an editable input at the Purchase stage too (pr-item-cells/approved-cell.tsx gets the same
+      // isDisabled as for the approver; only the Requested column is locked outside the Create stage,
+      // use-pr-item-table.tsx:136). Measured 2026-11-21: input[name="items.0.approved_qty"] is enabled.
+      purchaseTest.fail(true, "suspected bug: Approved Qty is an editable input for the purchaser stage (spec says read-only)");
+      await expect(pr.approvedQtyReadOnlyCell(0), "Approved Qty is editable for the purchaser").toHaveCount(0);
     },
   );
 
@@ -477,7 +432,7 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       annotation: [
         { type: "preconditions", description: "Edit mode active อยู่บน PR ขั้นตอน Purchase ที่มีอย่างน้อยหนึ่งรายการ" },
         { type: "steps", description: "1. เข้า edit mode\n2. คลิก Auto Allocate" },
-        { type: "expected", description: "URL ยังคงอยู่ที่หน้า detail หลังจากคลิก (allocation ทำงาน)" },
+        { type: "expected", description: "หลังคลิก Auto Allocate แอปแจ้งผลการจัดสรร (toast)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -487,18 +442,16 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       const auto = pr.autoAllocateButton();
-      if ((await auto.count()) === 0) {
-        purchaseTest.skip(true, "Auto Allocate button not present in this build");
-        return;
-      }
+      await expect(auto, "Auto Allocate button missing for the purchaser").toBeVisible({ timeout: 10_000 });
       await auto.click({ timeout: 5_000 });
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      // Allocation reports its outcome in a toast (assigned, or nothing priced for the product).
+      await expect(
+        page.locator('[data-sonner-toast]').first(),
+        "Auto Allocate gave no feedback",
+      ).toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -516,33 +469,20 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
     async ({ page, browser }) => {
       purchaseTest.slow(); // cross-context seed (submit + HOD approve) is slow
       const pr = new PurchaseRequestPage(page);
-      // Multi-item seed: createDraftPR currently fills only row 0 reliably, so a
-      // 2-item draft may fail to save. Treat a seed failure as a skip (known
-      // multi-item limitation tracked for Phase 4) rather than a hard failure.
-      let created;
-      try {
-        created = await submitPRAsRequestor(browser, { items: 2 });
-      } catch {
-        purchaseTest.skip(true, "Multi-item seed unsupported (createDraftPR fills row 0 only)");
-        return;
-      }
+      const created = await submitPRAsRequestor(browser, { items: 2 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
+      await page.getByRole("button", { name: /^expand all$/i }).click();
       const price0 = pr.unitPriceInput(0);
       const price1 = pr.unitPriceInput(1);
-      if ((await price0.count()) === 0 || (await price1.count()) === 0) {
-        purchaseTest.skip(true, "Unit Price inputs not present on both rows");
-        return;
-      }
-      await price0.fill("100");
-      await price1.fill("200");
-      await expect(price0).toHaveValue("100");
-      await expect(price1).toHaveValue("200");
+      await expect(price0, "Unit Price input missing on row 1").toBeVisible({ timeout: 10_000 });
+      await expect(price1, "Unit Price input missing on row 2").toBeVisible({ timeout: 10_000 });
+      await pr.setAmount(price0, 100);
+      await pr.setAmount(price1, 200);
+      await expect(price0).toHaveValue(/^100(\.0+)?$/);
+      await expect(price1).toHaveValue(/^200(\.0+)?$/);
     },
   );
 
@@ -562,15 +502,18 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
+      await pr.expandItem(0);
       const price = pr.unitPriceInput(0);
-      if ((await price.count()) > 0) await price.fill("150");
-      await pr.saveDraftButton().click({ timeout: 5_000 }).catch(() => {});
+      await expect(price).toBeVisible({ timeout: 10_000 });
+      await pr.setAmount(price, 150);
+      await pr.saveEditMode();
       await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
+      // Persisted: a fresh load shows the saved price in the expanded panel.
+      await gotoPRDetail(page, created.ref);
+      await pr.expandItem(0);
+      await expect(pr.expandedPanel().getByText(/150\.00/).first(), "saved unit price was not persisted").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -590,15 +533,17 @@ purchaseTest.describe("Step 3 — Edit Mode (Vendor & Pricing)", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
+      await pr.expandItem(0);
       const price = pr.unitPriceInput(0);
-      if ((await price.count()) > 0) await price.fill("999");
+      await expect(price).toBeVisible({ timeout: 10_000 });
+      await pr.setAmount(price, 999);
       await pr.cancelEditMode();
       await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
+      // Discarded: the panel shows the original price, not 999.
+      await pr.expandItem(0);
+      await expect(pr.expandedPanel().getByText(/999/)).toHaveCount(0);
     },
   );
 });
@@ -702,7 +647,7 @@ purchaseTest.describe.serial("Step 3b — Price Comparison dialog", () => {
       const pr = new PurchaseRequestPage(page);
       await gotoPRDetail(page, ref);
       const rows = await openComparisonWithData(page, pr);
-      purchaseTest.skip(rows.length === 0, "สินค้าในรายการแรกไม่มี price list ใน BU นี้");
+      expect(rows.length, "สินค้าในรายการแรกไม่มี price list ใน BU นี้ — data:reset ต้อง seed price list ให้สินค้านั้น").toBeGreaterThan(0);
       const { incVat } = await headerIndexes(pr);
       const bodyRows = pr.priceComparisonDialog().locator("tbody tr");
       for (const [i, entry] of rows.entries()) {
@@ -732,7 +677,7 @@ purchaseTest.describe.serial("Step 3b — Price Comparison dialog", () => {
       const pr = new PurchaseRequestPage(page);
       await gotoPRDetail(page, ref);
       const rows = await openComparisonWithData(page, pr);
-      purchaseTest.skip(rows.length === 0, "สินค้าในรายการแรกไม่มี price list ใน BU นี้");
+      expect(rows.length, "สินค้าในรายการแรกไม่มี price list ใน BU นี้ — data:reset ต้อง seed price list ให้สินค้านั้น").toBeGreaterThan(0);
       const { price, net } = await headerIndexes(pr);
       const positive = rows.map(netPriceOf).filter((p) => p > 0);
       const minNet = positive.length ? Math.min(...positive) : 0;
@@ -785,10 +730,10 @@ purchaseTest.describe.serial("Step 3b — Price Comparison dialog", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await gotoPRDetail(page, ref);
-      purchaseTest.skip((await pr.editModeButton().count()) === 0, "Edit button not present");
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       const rows = await openComparisonWithData(page, pr);
-      purchaseTest.skip(rows.length === 0, "สินค้าในรายการแรกไม่มี price list ใน BU นี้");
+      expect(rows.length, "สินค้าในรายการแรกไม่มี price list ใน BU นี้ — data:reset ต้อง seed price list ให้สินค้านั้น").toBeGreaterThan(0);
       const target = rows[rows.length - 1];
       const dialog = pr.priceComparisonDialog();
       await dialog.locator("tbody tr").nth(rows.length - 1).getByRole("button", { name: /^assign$/i }).click();
@@ -807,7 +752,7 @@ purchaseTest.describe("Step 4 — Workflow Actions", () => {
       annotation: [
         { type: "preconditions", description: "Edit mode active อยู่บน PR ขั้นตอน Purchase" },
         { type: "steps", description: "1. เข้า edit mode\n2. เลือกทุกแถว\n3. คลิก Approve ใน bulk toolbar\n4. Confirm" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PR ref (status เลื่อนไปขั้นตอนถัดไป)" },
+        { type: "expected", description: "ใส่ vendor/ราคา/tax แล้ว PATCH .../approve สำเร็จ และ PR ที่เปิดใหม่ไม่มีปุ่ม Edit สำหรับ Purchaser (เลื่อนไปขั้นตอนถัดไป)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -817,18 +762,13 @@ purchaseTest.describe("Step 4 — Workflow Actions", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.selectAllInEditMode();
-      if ((await pr.bulkApproveInEditMode().count()) === 0) {
-        purchaseTest.skip(true, "Bulk Approve button not present in toolbar");
-        return;
-      }
-      await bulkApprove(page);
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      // Purchase Approve demands vendor + price + tax profile on every item.
+      await pr.allocateVendorPriceTax(0, 125);
+      await bulkApprove(page, /purchase approve|^approve$/i);
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.editModeButton(), "PR is still editable by the purchaser after Approve").toHaveCount(0, { timeout: 10_000 });
     },
   );
 
@@ -838,7 +778,7 @@ purchaseTest.describe("Step 4 — Workflow Actions", () => {
       annotation: [
         { type: "preconditions", description: "Edit mode active อยู่บน PR ขั้นตอน Purchase" },
         { type: "steps", description: "1. เข้า edit mode\n2. เลือกทุกแถว\n3. คลิก Reject\n4. กรอกเหตุผล\n5. Confirm" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PR ref หลังจาก reject" },
+        { type: "expected", description: "PATCH .../reject สำเร็จ (Reject ที่รายการแล้วต้องกด Reject ระดับเอกสารอีกครั้ง) และ PR ที่เปิดใหม่มีสถานะ Voided" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -848,18 +788,11 @@ purchaseTest.describe("Step 4 — Workflow Actions", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.selectAllInEditMode();
-      if ((await pr.bulkRejectInEditMode().count()) === 0) {
-        purchaseTest.skip(true, "Bulk Reject button not present");
-        return;
-      }
       await bulkReject(page, REJECT_REASON);
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.statusBadge(), "rejected PR is not Voided").toContainText(/voided/i, { timeout: 10_000 });
     },
   );
 
@@ -869,7 +802,7 @@ purchaseTest.describe("Step 4 — Workflow Actions", () => {
       annotation: [
         { type: "preconditions", description: "Edit mode active อยู่บน PR ขั้นตอน Purchase" },
         { type: "steps", description: "1. เข้า edit mode\n2. เลือกทุกแถว\n3. คลิก Send for Review\n4. กรอกเหตุผล + stage\n5. Confirm" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PR ref หลังจาก send for review" },
+        { type: "expected", description: "PATCH .../review สำเร็จ และ PR ที่เปิดใหม่ไม่มีปุ่ม Edit สำหรับ Purchaser (เอกสารถูกส่งกลับ HOD)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -879,18 +812,12 @@ purchaseTest.describe("Step 4 — Workflow Actions", () => {
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.selectAllInEditMode();
-      if ((await pr.bulkSendForReviewInEditMode().count()) === 0) {
-        purchaseTest.skip(true, "Bulk Send for Review button not present");
-        return;
-      }
       await bulkSendForReview(page, REVIEW_REASON, REVIEW_STAGE);
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await page.waitForURL(/\/procurement\/purchase-request(\?|$)/, { timeout: 15_000 });
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.editModeButton(), "PR is still editable by the purchaser after Send Back").toHaveCount(0, { timeout: 10_000 });
     },
   );
 
@@ -899,30 +826,21 @@ purchaseTest.describe("Step 4 — Workflow Actions", () => {
     {
       annotation: [
         { type: "preconditions", description: "Edit mode active อยู่บน PR ขั้นตอน Purchase" },
-        { type: "steps", description: "1. เข้า edit mode\n2. เลือกทุกแถว\n3. คลิก Split" },
-        { type: "expected", description: "Split UI ปรากฏขึ้น (dialog หรือ inline) — ตรวจสอบโดย URL ยังคงอยู่ที่หน้า detail" },
+        { type: "steps", description: "1. เข้า edit mode บน PR ที่มี 2 รายการ\n2. ติ๊กแถวแรกแถวเดียว\n3. คลิก Split" },
+        { type: "expected", description: "POST .../split สำเร็จ (200) — รายการที่ติ๊กถูกย้ายไป PR ใหม่" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser, { items: 1 });
+      const created = await submitPRAsRequestor(browser, { items: 2 });
       await approveAsHOD(browser, created.ref);
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.selectAllInEditMode();
-      const split = pr.bulkSplitInEditMode();
-      if ((await split.count()) === 0) {
-        purchaseTest.skip(true, "Bulk Split button not present");
-        return;
-      }
-      await split.click({ timeout: 5_000 });
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      const res = await splitFirstItem(page);
+      expect(res.ok(), `POST .../split was refused (${res.status()})`).toBe(true);
     },
   );
 
@@ -942,21 +860,12 @@ purchaseTest.describe("Step 4 — Workflow Actions", () => {
       // Seed PR at HOD stage only — DO NOT call approveAsHOD
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      const editBtn = pr.editModeButton();
-      const editCount = await editBtn.count();
-      if (editCount === 0) {
-        await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
-        return;
-      }
-      await editBtn.click({ timeout: 5_000 }).catch(() => {});
-      const vendor = pr.vendorInput(0);
-      if ((await vendor.count()) === 0) {
-        await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
-        return;
-      }
-      const disabled = await vendor.isDisabled().catch(() => false);
-      const ariaDisabled = (await vendor.getAttribute("aria-disabled").catch(() => null)) === "true";
-      expect(disabled || ariaDisabled).toBeTruthy();
+      // At the HOD stage the purchaser owns nothing on this document: no Edit, so no way into
+      // the vendor/pricing controls.
+      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
+      await expect(pr.editModeButton(), "purchaser got an Edit button on a PR still at the HOD stage").toHaveCount(0, { timeout: 10_000 });
+      await pr.expandItem(0);
+      await expect(pr.vendorInput(0)).toHaveCount(0);
     },
   );
 });
@@ -968,7 +877,7 @@ purchaseTest.describe.serial("Golden Journey", () => {
       annotation: [
         { type: "preconditions", description: "Login เป็น Purchaser; PR ใหม่ถูก seed ที่ขั้นตอน Purchase ผ่าน submitPRAsRequestor + approveAsHOD" },
         { type: "steps", description: "1. เปิด PR list\n2. เปิด PR detail\n3. คลิก Edit\n4. กำหนด unit price ในแถวแรก\n5. เลือกทั้งหมด + Bulk Approve + Confirm" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PR ref หลังจาก bulk approve; journey เสร็จสมบูรณ์ตั้งแต่ต้นจนจบ" },
+        { type: "expected", description: "ใส่ vendor/ราคา/tax แล้ว bulk approve สำเร็จ และ Purchaser ไม่มีปุ่ม Edit บน PR นั้นอีก (journey เสร็จสมบูรณ์)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -989,25 +898,18 @@ purchaseTest.describe.serial("Golden Journey", () => {
       await gotoPRDetail(page, created.ref);
 
       // Step 3: Enter Edit Mode
-      if ((await pr.editModeButton().count()) === 0) {
-        purchaseTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR did not reach an editable Purchase stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
 
-      // Step 4: Set Unit Price on first row
-      const price = pr.unitPriceInput(0);
-      if ((await price.count()) > 0) await price.fill("175");
+      // Step 4: allocate vendor + price + tax on the first row
+      await pr.allocateVendorPriceTax(0, 175);
 
       // Step 5: Bulk Approve
-      await pr.selectAllInEditMode();
-      if ((await pr.bulkApproveInEditMode().count()) === 0) {
-        purchaseTest.skip(true, "Bulk Approve button not present");
-        return;
-      }
-      await bulkApprove(page);
+      await bulkApprove(page, /purchase approve|^approve$/i);
 
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      // Next stage: the purchaser no longer owns the document.
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.editModeButton(), "PR is still editable by the purchaser after Approve").toHaveCount(0, { timeout: 10_000 });
     },
   );
 });

@@ -8,7 +8,9 @@ import {
   bulkReject,
   bulkSendForReview,
   gotoPRDetail,
+  splitFirstItem,
 } from "./pages/pr-approver.helpers";
+import { openRecordFromRow } from "./helpers/list-row";
 import { BU_CODE } from "./test-users";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
@@ -21,7 +23,15 @@ const fcTest = createAuthTest("carmensoftware.dev+fc@gmail.com");
 
 const REJECT_REASON = "Items discontinued in catalogue";
 const REVIEW_REASON = "Please verify quantity";
-const REVIEW_STAGE = "Purchase";
+// An HOD can only return the document to a stage before its own: the dialog offers "Create Request".
+const REVIEW_STAGE = "Create Request";
+
+// Cases seed their PR through a second browser context (requestor: create draft ->
+// add line -> save -> submit). That alone takes 30-60s on the dev backend, so the
+// default 30s budget expired inside seeding and surfaced as a bogus
+// "browserContext.close: Target page, context or browser has been closed".
+hodTest.describe.configure({ timeout: 120_000 });
+fcTest.describe.configure({ timeout: 120_000 });
 
 hodTest.describe("Step 1 — My Approval Dashboard", () => {
   // Transaction-module rollout: pin the approver session's active BU to BLAVG
@@ -79,13 +89,10 @@ hodTest.describe("Step 1 — My Approval Dashboard", () => {
     async ({ page, browser }) => {
       const created = await submitPRAsRequestor(browser);
       const ma = new MyApprovalsPage(page);
-      await ma.gotoList();
+      await ma.gotoListAll();
       const row = ma.documentRow(created.ref);
-      if ((await row.count()) === 0) {
-        hodTest.skip(true, "Seeded PR not visible in HOD's pending list");
-        return;
-      }
-      await row.click();
+      await expect(row, "Seeded PR is not in the HOD's My Approvals list").toBeVisible({ timeout: 15_000 });
+      await openRecordFromRow(row);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
     },
   );
@@ -95,8 +102,8 @@ hodTest.describe("Step 1 — My Approval Dashboard", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ใน My Approvals dashboard" },
-        { type: "steps", description: "1. อ่านค่า badge pending\n2. นับแถว PR ที่แสดงผล" },
-        { type: "expected", description: "ค่า badge เท่ากับจำนวนแถวที่แสดงผล (หรือทั้งคู่เป็นศูนย์)" },
+        { type: "steps", description: "1. อ่านค่า badge pending\n2. อ่านยอดรวมจาก label pagination" },
+        { type: "expected", description: "ค่า badge Total Pending เท่ากับยอดรวมใน label 'Showing 1–N of TOTAL' ของ pagination" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -110,25 +117,21 @@ hodTest.describe("Step 1 — My Approval Dashboard", () => {
       // The list is paginated ("Showing 1–10 of 22"), so the visible row count
       // need not equal the badge. Compare the badge to the pagination total when
       // present; otherwise fall back to comparing against the rendered rows.
-      const totalText = (await ma.paginationTotal().textContent().catch(() => "")) ?? "";
+      await expect(ma.paginationTotal(), "My Approvals shows no 'Showing 1-N of TOTAL' label").toBeVisible({ timeout: 10_000 });
+      const totalText = (await ma.paginationTotal().textContent()) ?? "";
       const totalMatch = totalText.match(/of\s+(\d+)/i);
-      if (totalMatch) {
-        expect(badgeNum).toBe(parseInt(totalMatch[1], 10));
-      } else {
-        const rowCount = await page.getByRole("row").count();
-        const dataRowCount = Math.max(0, rowCount - (rowCount > 0 ? 1 : 0));
-        expect(Math.abs(badgeNum - dataRowCount)).toBeLessThanOrEqual(1);
-      }
+      expect(totalMatch, `pagination label has no total: "${totalText}"`).not.toBeNull();
+      expect(badgeNum).toBe(parseInt(totalMatch![1], 10));
     },
   );
 
   hodTest(
-    "TC-PR-060104 Filter tabs render and filter when present",
+    "TC-PR-060104 Category filter chips render and the PR chip becomes active",
     {
       annotation: [
         { type: "preconditions", description: "อยู่ใน My Approvals dashboard" },
-        { type: "steps", description: "1. หา category filter tabs (PO/PR/SR)\n2. คลิก tab PR ถ้ามี" },
-        { type: "expected", description: "tab PR ถูกเลือก (ข้ามหาก dashboard ไม่มี tabs)" },
+        { type: "steps", description: "1. หา category chip (PO/PR/SR)\n2. คลิก chip Purchase Request" },
+        { type: "expected", description: "chip Purchase Request แสดงผลและเปลี่ยนเป็น aria-pressed=true หลังคลิก" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -139,11 +142,8 @@ hodTest.describe("Step 1 — My Approval Dashboard", () => {
       // Redesigned dashboard exposes category filters as summary <button> cards
       // ("Purchase Request 22"), not role=tab. Click the PR card and assert it
       // becomes the active (pressed) filter.
-      const card = page.getByRole("button", { name: /purchase request/i }).first();
-      if ((await card.count()) === 0) {
-        hodTest.skip(true, "Category filter cards not present on My Approvals dashboard");
-        return;
-      }
+      const card = ma.docTypeChip("pr");
+      await expect(card, "Purchase Request category chip missing on My Approvals").toBeVisible({ timeout: 10_000 });
       await card.click();
       await expect(card).toHaveAttribute("aria-pressed", /true/i, { timeout: 5_000 });
     },
@@ -168,9 +168,9 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
       await expect(page).toHaveURL(new RegExp(LIST_PATH));
       // Redesigned list uses a viewMode <Button> toggle (no aria-selected) —
       // assert the My Pending toggle is present (it is the default view).
-      const tab = pr.tabMyPending();
-      if ((await tab.count()) === 0) return;
-      await expect(tab).toBeVisible({ timeout: 5_000 });
+      await expect(pr.tabMyPending(), "My Pending toggle missing on the PR list").toBeVisible({ timeout: 5_000 });
+      // My Pending is the default view: the ?view= param is absent or my-pending, never all-document.
+      await expect(page).not.toHaveURL(/view=all-document/);
     },
   );
 
@@ -180,7 +180,7 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list" },
         { type: "steps", description: "1. คลิก tab All Documents" },
-        { type: "expected", description: "tab All Documents ถูกเลือก" },
+        { type: "expected", description: "หลังคลิก All Documents URL มี ?view=all-document (ขอบเขตกว้างขึ้นจาก My Pending)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -189,14 +189,10 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
       const tab = pr.tabAllDocuments();
-      if ((await tab.count()) === 0) {
-        hodTest.skip(true, "All Documents tab not present in this build");
-        return;
-      }
+      await expect(tab, "All Documents toggle missing on the PR list").toBeVisible({ timeout: 10_000 });
       await tab.click();
-      // viewMode <Button> toggle has no aria-selected — assert the click kept us
-      // on the list (scope broadened) without error.
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 5_000 });
+      // The viewMode toggle has no aria-selected; its state lives in the URL (?view=).
+      await expect(page).toHaveURL(/view=all-document/, { timeout: 5_000 });
     },
   );
 
@@ -242,8 +238,8 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
     {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้า PR list" },
-        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือก status\n3. Apply" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ PR list หลัง apply filter" },
+        { type: "steps", description: "1. เปิดแผง Filter\n2. เลือกฟิลด์ Status แล้วติ๊ก In progress (ไม่มีปุ่ม Apply)" },
+        { type: "expected", description: "หลังติ๊ก In progress ทุกแถวที่แสดงมีสถานะ In progress" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -251,13 +247,10 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const fb = pr.filterButton();
-      if ((await fb.count()) === 0) {
-        hodTest.skip(true, "Filter button not present in this build");
-        return;
-      }
-      await pr.applyFilter({ status: "In Progress" });
-      await expect(page).toHaveURL(new RegExp(LIST_PATH), { timeout: 10_000 });
+      await expect(pr.filterButton(), "Filter button missing on the PR list").toBeVisible({ timeout: 10_000 });
+      await pr.gotoAllDocuments();
+      await pr.applyFilter("In progress");
+      await pr.expectEveryRowStatus(/in progress/i);
     },
   );
 
@@ -275,11 +268,7 @@ hodTest.describe("Step 2 — PR List (Approver View)", () => {
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
       await pr.gotoList();
-      const input = pr.searchInput();
-      if ((await input.count()) === 0) {
-        hodTest.skip(true, "Search input not present in this build");
-        return;
-      }
+      await expect(pr.searchInput(), "Search input missing on the PR list").toBeVisible({ timeout: 10_000 });
       await pr.searchFor("PR");
       await expect(page).toHaveURL(new RegExp(LIST_PATH));
     },
@@ -293,7 +282,7 @@ hodTest.describe("Step 3 — PR Detail (Read-only)", () => {
       annotation: [
         { type: "preconditions", description: "มี PR ที่ pending (In Progress, HOD stage) อยู่; สร้างผ่าน submitPRAsRequestor" },
         { type: "steps", description: "1. เปิดหน้ารายละเอียด PR\n2. ตรวจสอบว่า Items tab เป็นค่าเริ่มต้น" },
-        { type: "expected", description: "URL เป็น detail URL; Items tab ถูกเลือกเมื่อมี" },
+        { type: "expected", description: "URL เป็น detail URL; ตารางรายการสินค้า (คอลัมน์ Product + แถวรายการที่ seed) แสดงเป็นค่าเริ่มต้น" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -303,9 +292,9 @@ hodTest.describe("Step 3 — PR Detail (Read-only)", () => {
       const created = await submitPRAsRequestor(browser);
       await gotoPRDetail(page, created.ref);
       await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`));
-      const items = pr.tabItems();
-      if ((await items.count()) === 0) return;
-      await expect(items).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      // The item table is the page's default content: its columns render without picking a tab.
+      await expect(page.getByRole("columnheader", { name: /product/i }).first(), "item table is not shown by default").toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("button", { name: /^expand row$/i }).first(), "seeded line item is not listed").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -315,7 +304,7 @@ hodTest.describe("Step 3 — PR Detail (Read-only)", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ที่หน้ารายละเอียด PR ที่ pending" },
         { type: "steps", description: "1. คลิก tab Workflow History" },
-        { type: "expected", description: "tab Workflow History ถูกเลือก" },
+        { type: "expected", description: "หลังคลิกตัวเปิดประวัติ (stepper) แสดง sheet Workflow History ที่มีรายการของ requestor" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -325,12 +314,12 @@ hodTest.describe("Step 3 — PR Detail (Read-only)", () => {
       const created = await submitPRAsRequestor(browser);
       await gotoPRDetail(page, created.ref);
       const wh = pr.tabWorkflowHistory();
-      if ((await wh.count()) === 0) {
-        hodTest.skip(true, "Workflow History tab not present in this build");
-        return;
-      }
+      await expect(wh, "Workflow History control missing on PR detail").toBeVisible({ timeout: 10_000 });
       await wh.click();
-      await expect(wh).toHaveAttribute("aria-selected", /true/i, { timeout: 5_000 });
+      // The history lists who did what; the requestor's submit is always the first entry.
+      const sheet = pr.workflowHistorySheet();
+      await expect(sheet, "Workflow History sheet did not open").toBeVisible({ timeout: 10_000 });
+      await expect(sheet.getByText(/requestor carmensoftware/i).first(), "history shows no entry by the requestor").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -349,11 +338,7 @@ hodTest.describe("Step 3 — PR Detail (Read-only)", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser);
       await gotoPRDetail(page, created.ref);
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        hodTest.skip(true, "Edit button not present — cannot verify read-only header state");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — cannot verify read-only header state").toBeVisible({ timeout: 10_000 });
       await expect(pr.approveButton()).toHaveCount(0);
       await expect(pr.rejectButton()).toHaveCount(0);
       await expect(pr.sendBackButton()).toHaveCount(0);
@@ -396,11 +381,7 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser);
       await gotoPRDetail(page, created.ref);
-      const editBtn = pr.editModeButton();
-      if ((await editBtn.count()) === 0) {
-        hodTest.skip(true, "Edit button not present in this build");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       // Edit mode shows BOTH Save and Cancel — take .first() to avoid a
       // strict-mode violation on the combined locator.
@@ -423,16 +404,10 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       const qty = pr.approvedQtyInput(0);
-      if ((await qty.count()) === 0) {
-        hodTest.skip(true, "Approved Qty input not present in edit mode");
-        return;
-      }
+      await expect(qty, "Approved Qty input missing in edit mode").toBeVisible({ timeout: 10_000 });
       await expect(qty).toBeEditable();
       await qty.fill("3");
       await expect(qty).toHaveValue("3");
@@ -454,16 +429,10 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       const note = pr.itemNoteInput(0);
-      if ((await note.count()) === 0) {
-        hodTest.skip(true, "Item Note input not present");
-        return;
-      }
+      await expect(note, "Item Note input missing in edit mode").toBeVisible({ timeout: 10_000 });
       await note.fill("HOD note");
       await expect(note).toHaveValue("HOD note");
     },
@@ -484,17 +453,13 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       const dp = pr.deliveryPointInput(0);
-      if ((await dp.count()) === 0) {
-        hodTest.skip(true, "Delivery Point input not present");
-        return;
-      }
-      await expect(dp).toBeEditable();
+      await expect(dp, "Delivery Point lookup is not editable in edit mode").toBeVisible({ timeout: 10_000 });
+      await expect(dp).toBeEnabled();
+      await dp.click();
+      await expect(page.getByRole("dialog").or(page.getByRole("listbox")).first(), "Delivery Point lookup opened no list").toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -513,21 +478,12 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      const vendor = pr.vendorReadOnlyCell(0);
-      if ((await vendor.count()) === 0) {
-        hodTest.skip(true, "Vendor cell not present");
-        return;
-      }
-      const disabled = await vendor.isDisabled().catch(() => false);
-      const ariaDisabled = (await vendor.getAttribute("aria-disabled").catch(() => null)) === "true";
-      const tagName = await vendor.evaluate((el) => el.tagName.toLowerCase()).catch(() => "");
-      const isInput = tagName === "input" || tagName === "textarea";
-      expect(disabled || ariaDisabled || !isInput).toBeTruthy();
+      await pr.expandItem(0);
+      // Read-only = the label is shown with its value as plain text and no lookup control exists.
+      await expect(pr.expandedPanel().getByText(/^vendor$/i).first()).toBeVisible();
+      await expect(pr.vendorReadOnlyCell(0)).toHaveCount(0);
     },
   );
 
@@ -546,26 +502,16 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      const cell = pr.unitPriceReadOnlyCell(0);
-      if ((await cell.count()) === 0) {
-        hodTest.skip(true, "Unit Price cell not present");
-        return;
-      }
-      const disabled = await cell.isDisabled().catch(() => false);
-      const ariaDisabled = (await cell.getAttribute("aria-disabled").catch(() => null)) === "true";
-      const tagName = await cell.evaluate((el) => el.tagName.toLowerCase()).catch(() => "");
-      const isInput = tagName === "input" || tagName === "textarea";
-      expect(disabled || ariaDisabled || !isInput).toBeTruthy();
+      await pr.expandItem(0);
+      await expect(pr.expandedPanel().getByText(/^unit price$/i).first()).toBeVisible();
+      await expect(pr.unitPriceReadOnlyCell(0)).toHaveCount(0);
     },
   );
 
   hodTest(
-    "TC-PR-060407 Discount / Tax / FOC Qty are read-only",
+    "TC-PR-060407 Discount / Tax / FOC Qty are read-only (FOC pinned: editable today)",
     {
       annotation: [
         { type: "preconditions", description: "โหมดแก้ไขเปิดใช้งานบน PR ที่ pending และมีรายการสินค้าอย่างน้อยหนึ่งรายการ" },
@@ -579,25 +525,17 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      const cells = [pr.discountReadOnlyCell(0), pr.taxReadOnlyCell(0), pr.focQtyReadOnlyCell(0)];
-      let assertedAtLeastOne = false;
-      for (const cell of cells) {
-        if ((await cell.count()) === 0) continue;
-        const disabled = await cell.isDisabled().catch(() => false);
-        const ariaDisabled = (await cell.getAttribute("aria-disabled").catch(() => null)) === "true";
-        const tagName = await cell.evaluate((el) => el.tagName.toLowerCase()).catch(() => "");
-        const isInput = tagName === "input" || tagName === "textarea";
-        expect(disabled || ariaDisabled || !isInput).toBeTruthy();
-        assertedAtLeastOne = true;
-      }
-      if (!assertedAtLeastOne) {
-        hodTest.skip(true, "None of Discount / Tax / FOC Qty cells are present");
-      }
+      await pr.expandItem(0);
+      await expect(pr.expandedPanel().getByText(/^discount$/i).first()).toBeVisible();
+      await expect(pr.discountReadOnlyCell(0), "Discount is editable for the approver").toHaveCount(0);
+      await expect(pr.taxReadOnlyCell(0), "Tax is editable for the approver").toHaveCount(0);
+      // FOC Qty: the spec (FR-PR-011A / FR-PR-024) says read-only, but the FE renders it as an
+      // editable input for the approver stage (pr-item-cells/foc-cell.tsx shares isQtyDisabled with
+      // Approved Qty). Pinned below the Discount/Tax assertions so a regression there still fails.
+      hodTest.fail(true, "suspected bug: FOC Qty is an editable input for the approver stage (spec says read-only)");
+      await expect(pr.focQtyReadOnlyCell(0), "FOC Qty is editable for the approver").toHaveCount(0);
     },
   );
 
@@ -607,7 +545,7 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       annotation: [
         { type: "preconditions", description: "โหมดแก้ไขเปิดใช้งานบน PR ที่ pending" },
         { type: "steps", description: "1. เข้าโหมดแก้ไข\n2. เลือกทุกแถว\n3. คลิก Approve ใน bulk toolbar\n4. Confirm" },
-        { type: "expected", description: "สถานะเปลี่ยนออกจาก In Progress (toast / ขั้นตอนถัดไป / reload state)" },
+        { type: "expected", description: "PATCH .../approve สำเร็จและกลับหน้า list; เปิด PR ใหม่แล้ว HOD ไม่มีปุ่ม Edit (เอกสารไปขั้นตอนถัดไปแล้ว)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -616,20 +554,12 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      if ((await pr.bulkActionToolbar().count()) === 0) {
-        await pr.selectAllInEditMode();
-      }
-      if ((await pr.bulkApproveInEditMode().count()) === 0) {
-        hodTest.skip(true, "Bulk Approve button not present in toolbar");
-        return;
-      }
       await bulkApprove(page);
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      // The document left the HOD stage: reopening it, the HOD no longer gets an Edit button.
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.editModeButton(), "PR is still editable by the HOD after Approve").toHaveCount(0, { timeout: 10_000 });
     },
   );
 
@@ -638,8 +568,8 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
     {
       annotation: [
         { type: "preconditions", description: "โหมดแก้ไขเปิดใช้งานบน PR ที่ pending" },
-        { type: "steps", description: "1. เข้าโหมดแก้ไข\n2. เลือกทุกแถว\n3. คลิก Reject\n4. กรอกเหตุผล\n5. Confirm" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ ref ของ PR หลัง reject (badge สถานะอัปเดต)" },
+        { type: "steps", description: "1. เข้าโหมดแก้ไข\n2. เลือกทุกแถว\n3. คลิก Reject ใน bulk toolbar\n4. กรอกเหตุผล + Reject ใน dialog\n5. กด Reject ระดับเอกสารที่ footer + ยืนยัน" },
+        { type: "expected", description: "PATCH .../reject สำเร็จ (ต้องกด Reject ที่รายการแล้วกด Reject ระดับเอกสารอีกครั้ง) และ PR ที่เปิดใหม่มีสถานะ Voided" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -648,18 +578,11 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.selectAllInEditMode();
-      if ((await pr.bulkRejectInEditMode().count()) === 0) {
-        hodTest.skip(true, "Bulk Reject button not present in toolbar");
-        return;
-      }
       await bulkReject(page, REJECT_REASON);
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.statusBadge(), "rejected PR is not Voided").toContainText(/voided/i, { timeout: 10_000 });
     },
   );
 
@@ -669,7 +592,7 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       annotation: [
         { type: "preconditions", description: "โหมดแก้ไขเปิดใช้งานบน PR ที่ pending" },
         { type: "steps", description: "1. เข้าโหมดแก้ไข\n2. เลือกทุกแถว\n3. คลิก Send for Review\n4. กรอกเหตุผล + stage\n5. Confirm" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ ref ของ PR หลัง send for review" },
+        { type: "expected", description: "PATCH .../review สำเร็จ กลับหน้า list และเปิด PR ใหม่แล้ว HOD ไม่มีปุ่ม Edit (เอกสารถูกส่งกลับไป Create Request)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -678,18 +601,12 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.selectAllInEditMode();
-      if ((await pr.bulkSendForReviewInEditMode().count()) === 0) {
-        hodTest.skip(true, "Bulk Send for Review button not present");
-        return;
-      }
       await bulkSendForReview(page, REVIEW_REASON, REVIEW_STAGE);
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      await page.waitForURL(/\/procurement\/purchase-request(\?|$)/, { timeout: 15_000 });
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.editModeButton(), "PR is still editable by the HOD after Send Back").toHaveCount(0, { timeout: 10_000 });
     },
   );
 
@@ -698,29 +615,21 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
     {
       annotation: [
         { type: "preconditions", description: "โหมดแก้ไขเปิดใช้งานบน PR ที่ pending" },
-        { type: "steps", description: "1. เข้าโหมดแก้ไข\n2. เลือกทุกแถว\n3. คลิก Split" },
-        { type: "expected", description: "UI ของ Split ปรากฏ (dialog หรือ inline) — ยืนยันโดย URL ยังคงอยู่ที่หน้ารายละเอียด" },
+        { type: "steps", description: "1. เข้าโหมดแก้ไขบน PR ที่มี 2 รายการ\n2. ติ๊กแถวแรกแถวเดียว\n3. คลิก Split" },
+        { type: "expected", description: "POST .../split สำเร็จ (200) — รายการที่ติ๊กถูกย้ายไป PR ใหม่" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page, browser }) => {
       const pr = new PurchaseRequestPage(page);
-      const created = await submitPRAsRequestor(browser, { items: 1 });
+      // Split needs two lines: it moves the ticked line(s) to a new PR and keeps the rest.
+      const created = await submitPRAsRequestor(browser, { items: 2 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
-      await pr.selectAllInEditMode();
-      const split = pr.bulkSplitInEditMode();
-      if ((await split.count()) === 0) {
-        hodTest.skip(true, "Bulk Split button not present");
-        return;
-      }
-      await split.click({ timeout: 5_000 });
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      const res = await splitFirstItem(page);
+      expect(res.ok(), `POST .../split was refused (${res.status()})`).toBe(true);
     },
   );
 
@@ -739,15 +648,15 @@ hodTest.describe("Step 4 — Edit Mode + Bulk Actions", () => {
       const pr = new PurchaseRequestPage(page);
       const created = await submitPRAsRequestor(browser, { items: 1 });
       await gotoPRDetail(page, created.ref);
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
       const qty = pr.approvedQtyInput(0);
-      if ((await qty.count()) > 0) await qty.fill("99");
+      await expect(qty).toBeVisible({ timeout: 10_000 });
+      await qty.fill("99");
       await pr.cancelEditMode();
       await expect(pr.editModeButton()).toBeVisible({ timeout: 10_000 });
+      // Discarded: the approved quantity is back to what the requestor asked for.
+      await expect(page.getByText("99.00")).toHaveCount(0);
     },
   );
 });
@@ -759,38 +668,22 @@ fcTest.describe("Scope Contrast (FC)", () => {
       annotation: [
         { type: "preconditions", description: "Login เป็น FC (carmensoftware.dev+fc@gmail.com); มี PR ที่ pending ในฐานข้อมูลจากหลายแผนก" },
         { type: "steps", description: "1. ไปที่ PR list ในฐานะ FC\n2. เปิด tab All Documents\n3. อ่านค่าคอลัมน์ department จากแถว" },
-        { type: "expected", description: "มีค่า department อย่างน้อย 2 ค่าที่แตกต่างกันปรากฏใน list (ข้ามหากฐานข้อมูลไม่มี PR ข้ามแผนก)" },
+        { type: "expected", description: "มีค่า department อย่างน้อย 2 ค่าที่แตกต่างกันปรากฏใน list " },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
       const pr = new PurchaseRequestPage(page);
-      await pr.gotoList();
-      const tab = pr.tabAllDocuments();
-      if ((await tab.count()) > 0) await tab.click();
-      const deptCells = page.getByRole("cell").filter({
-        has: page.locator("[data-column='department'], [aria-label*='department' i]"),
-      });
-      const cellCount = await deptCells.count();
-      if (cellCount === 0) {
-        const rows = page.getByRole("row");
-        const rowCount = await rows.count();
-        if (rowCount < 3) {
-          fcTest.skip(true, "Fewer than 2 data rows visible — cannot assert cross-dept scope");
-          return;
-        }
-      }
-      const distinct = new Set<string>();
-      for (let i = 0; i < Math.min(cellCount, 20); i++) {
-        const text = (await deptCells.nth(i).textContent())?.trim() ?? "";
-        if (text) distinct.add(text);
-      }
-      if (distinct.size === 0) {
-        fcTest.skip(true, "Department column not present on this list view");
-        return;
-      }
-      expect(distinct.size).toBeGreaterThanOrEqual(2);
+      await pr.gotoAllDocuments();
+      // Scope check through the API the list uses: the FC sees PRs raised from more than one department.
+      const header = page.getByRole("columnheader", { name: /department/i }).first();
+      await expect(header, "PR list has no Department column — cannot compare scopes").toBeVisible({ timeout: 10_000 });
+      const col = await header.evaluate((el) => Array.from(el.parentElement!.children).indexOf(el));
+      const cells = page.locator("tbody tr").locator(`td:nth-child(${col + 1})`);
+      await expect(cells.first(), "FC's All Documents list is empty").toBeVisible({ timeout: 10_000 });
+      const texts = (await cells.allInnerTexts()).map((t) => t.trim()).filter(Boolean);
+      expect(new Set(texts).size, `FC sees only one department: ${[...new Set(texts)].join(", ")}`).toBeGreaterThanOrEqual(2);
     },
   );
 });
@@ -802,7 +695,7 @@ hodTest.describe.serial("Golden Journey", () => {
       annotation: [
         { type: "preconditions", description: "Login เป็น HOD; มี PR ที่ pending ใหม่ seeded ผ่าน submitPRAsRequestor" },
         { type: "steps", description: "1. เปิด My Approvals\n2. เปิดหน้ารายละเอียด PR\n3. คลิก Edit\n4. ปรับ Approved Qty ในแถวแรก\n5. เลือกทั้งหมด + Bulk Approve + Confirm" },
-        { type: "expected", description: "URL ยังคงอยู่ที่ ref ของ PR หลัง bulk approve; journey เสร็จสมบูรณ์แบบ end-to-end" },
+        { type: "expected", description: "Approved Qty แก้เป็น 2 ได้; bulk approve สำเร็จ และ HOD ไม่มีปุ่ม Edit บน PR นั้นอีก (journey เสร็จสมบูรณ์)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -812,7 +705,7 @@ hodTest.describe.serial("Golden Journey", () => {
       const ma = new MyApprovalsPage(page);
 
       // Seed
-      const created = await submitPRAsRequestor(browser, { items: 1, description: "TC-PR-060901 golden" });
+      const created = await submitPRAsRequestor(browser, { items: 1, quantity: 3, description: "TC-PR-060901 golden" });
 
       // Step 1: My Approvals
       await ma.gotoList();
@@ -822,25 +715,22 @@ hodTest.describe.serial("Golden Journey", () => {
       await gotoPRDetail(page, created.ref);
 
       // Step 3: Enter Edit Mode
-      if ((await pr.editModeButton().count()) === 0) {
-        hodTest.skip(true, "Edit button not present");
-        return;
-      }
+      await expect(pr.editModeButton(), "Edit button missing — PR is not at the HOD stage").toBeVisible({ timeout: 10_000 });
       await pr.enterEditMode();
 
       // Step 4: Adjust Approved Qty
       const qty = pr.approvedQtyInput(0);
-      if ((await qty.count()) > 0) await qty.fill("2");
+      await expect(qty).toBeVisible({ timeout: 10_000 });
+      // Requested 3: the approver can lower the approved quantity (raising it above the request is clamped).
+      await qty.fill("2");
+      await expect(qty).toHaveValue("2");
 
-      // Step 5: Bulk Approve
-      await pr.selectAllInEditMode();
-      if ((await pr.bulkApproveInEditMode().count()) === 0) {
-        hodTest.skip(true, "Bulk Approve button not present");
-        return;
-      }
+      // Step 5: Bulk Approve (marks rows, document Approve, confirm)
       await bulkApprove(page);
 
-      await expect(page).toHaveURL(new RegExp(`${LIST_PATH}/${created.ref}`), { timeout: 10_000 });
+      // The HOD no longer owns the document.
+      await gotoPRDetail(page, created.ref);
+      await expect(pr.editModeButton(), "PR is still editable by the HOD after Approve").toHaveCount(0, { timeout: 10_000 });
     },
   );
 });

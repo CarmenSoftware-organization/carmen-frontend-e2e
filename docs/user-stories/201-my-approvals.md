@@ -48,14 +48,12 @@ Login เป็นผู้ใช้ที่มีสิทธิ์ approver �
 **Steps**
 
 1. ไปที่ /procurement/my-approval
-2. ตรวจสอบว่า document count badges แสดงผลถูกต้อง
-3. ตรวจสอบว่า total pending count แสดงเด่นชัด
-4. ตรวจสอบว่าเอกสารเรียงตามวันที่ส่ง (เก่าสุดก่อน)
-5. ตรวจสอบว่า visual urgency indicators แสดงผลถูกต้อง
+2. อ่านจำนวนในการ์ด Total Pending
+3. เทียบกับจำนวนรวมใน footer ของตาราง
 
 **Expected**
 
-ผู้ใช้เห็น unified approval queue ที่มีเอกสาร pending ทั้งหมด เรียงลำดับและกรองถูกต้อง พร้อม urgency indicators
+ผู้ใช้เห็นคิวอนุมัติรวม: การ์ด Total Pending แสดงจำนวนมากกว่า 0 และเท่ากับจำนวนรวมใน footer ของตาราง (Showing 1–N of <จำนวน>)
 
 ---
 
@@ -73,7 +71,8 @@ Login เป็นผู้ใช้ที่มีสิทธิ์ approver �
 **Steps**
 
 1. ไปที่ /procurement/my-approval
-2. ตรวจสอบว่า queue ว่างเปล่าพร้อมข้อความแจ้งว่าไม่มี pending approvals
+2. ค้นหาเอกสารที่ไม่มีอยู่ (STD dataset มี PR รออนุมัติของ HOD เสมอ)
+3. ตรวจสอบว่า queue ว่างพร้อมข้อความ 'No pending approvals'
 
 **Expected**
 
@@ -562,4 +561,4 @@ default business unit มี code === 'BLAVG'; trigger ของ BU switcher ใ
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a0a513d</sub>
+<sub>Last regenerated: 2026-11-21 · git 1107d0c</sub>

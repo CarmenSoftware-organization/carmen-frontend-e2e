@@ -10,6 +10,12 @@ export class MyApprovalsPage extends BasePage {
     await this.page.waitForLoadState("networkidle");
   }
 
+  /** Whole queue on one page (the default page size is 10, so a freshly seeded row is often on page 2+). */
+  async gotoListAll() {
+    await this.page.goto(`${LIST_PATH}?perpage=100`);
+    await this.page.waitForLoadState("networkidle");
+  }
+
   async gotoPRList() {
     await this.page.goto(PR_LIST_PATH);
     await this.page.waitForLoadState("networkidle");

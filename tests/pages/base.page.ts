@@ -111,6 +111,18 @@ export abstract class BasePage {
   }
 
   /**
+   * The list row whose *status chip* matches. Matching the whole row text is wrong: the
+   * Status cell also shows the workflow stage under the chip ("Approved" / "Completed" /
+   * "HOD Approval"), so /completed/i picks up every document sitting at a Completed stage.
+   * The chip renders its text lower-cased (CSS capitalises it), so match case-insensitively.
+   */
+  rowWithStatus(status: RegExp): Locator {
+    return this.page
+      .locator("tbody tr")
+      .filter({ has: this.page.locator("[data-slot='status-chip']").filter({ hasText: status }) });
+  }
+
+  /**
    * `networkidle` returns before the list query resolves, so a row lookup made
    * right after navigation can still hit the skeleton / "No data found" row.
    * Wait for either a real record row or the empty state before reading rows.

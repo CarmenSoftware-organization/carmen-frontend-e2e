@@ -1,31 +1,111 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createAuthTest } from "./fixtures/auth.fixture";
-import { GRNPage, LIST_PATH } from "./pages/grn.page";
-import { openRecordFromRow } from "./helpers/list-row";
+import { GRNPage } from "./pages/grn.page";
+import { createDraftGrn, createExtraCostType, deleteExtraCostType, deleteGrnsByPrefix, getGrn, listGrns, seededGrn } from "./helpers/grn-api";
+import { buGet } from "./helpers/bu-api";
+import { addRow, button, confirmDialog, field, lastToast, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
+import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Multi-role auth — Receiving/Procurement Staff == carmensoftware.dev+purchase@gmail.com.
-// Permission denial uses carmensoftware.dev+requestor@gmail.com.
-// requestor declared LAST so doc default role reads "Purchase".
+// Roles (permissions read from /api/user/profile of the TEST BU):
+//  - Purchase  : goods_received_note create/update/delete/commit/view
+//  - FC        : goods_received_note.view ONLY -> the "no permission" role
+//  - Requestor : no GRN permission at all (list shows "Permission Denied")
+// Mutating cases work on their own draft GRN seeded through the API (invoice no. "E2E-GRN ...",
+// tests/helpers/grn-api.ts) and clean it up; the four seeded "STD-grn.*" documents
+// (draft / saved / committed x2) are read-only fixtures.
+//
+// Deleted cases (feature absent in ../carmen-frontend/routes/procurement/goods-receive-note/*):
+//   bulk approval 180001-4 (GRN has Commit/Void only, no line approval), multi-select line delete 090005,
+//   "no vendor / invalid PO / PO without catalog product" 030003-5 and mixed vendor/currency PO selection 040002
+//   (from-po lists only vendors with open POs and scopes step 2 to the chosen vendor), partially received
+//   commit 110004, void PO-status revert 120004 (void/commit are not PO-aware in the footer), invalid currency 060002
+//   (currency is a lookup of valid values), future date 060005 and max quantity 070004 (no such rule in
+//   grn-form-schema.ts), extra "no permission" views 130002 / 140002 / 170002 (no per-tab permission; the
+//   page itself is covered by 010003), outdated financial summary 130004, no-activity log 170004
+//   (a document always has a Created entry), comment / attachment "without permission" 150002 / 160002 (the comment dialog
+//   components/ui/comment-sheet.tsx has no permission gate, so there is no denied state to test), maximum attachment count 160004 (the dialog limits type and size by BU policy, not count).
 // ─────────────────────────────────────────────────────────────────────────
+const fcTest = createAuthTest("carmensoftware.dev+fc@gmail.com");
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900001 — View GRN List
-// ═════════════════════════════════════════════════════════════════════════
+purchaseTest.describe.configure({ timeout: 90_000 });
+fcTest.describe.configure({ timeout: 60_000 });
+
+const PFX = "E2E-GRN";
+const inv = (tag: string) => `${PFX}-${tag}-${uid}`;
+const sweep = () => deleteGrnsByPrefix(PFX);
+const today = () => new Date().toLocaleDateString("sv");
+const LIST = "/procurement/goods-receive-note";
+const goto = async (page: Page, id: string) => {
+  await page.goto(`${LIST}/${id}`);
+  await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({ timeout: 20_000 });
+};
+const rowsOf = (page: Page) => page.locator("table tbody tr");
+const NO_GATE =
+  "suspected bug: view-only FC gets an enabled GRN action - the FE does not gate it (list 'New Goods Receive Note' passes no addDisabled, grn-footer-action.tsx Commit/Void carry no permission check) and the gateway good-received-notes controller has no permission decorator";
+
+/** From the list: Search box + Enter (the box only searches on Enter / the magnifier). */
+async function search(page: Page, text: string) {
+  const box = page.getByPlaceholder("Search...");
+  await box.fill(text);
+  await box.press("Enter");
+}
+
+/** Step 2 of from-po: tick the PO (its own header checkbox is the nearest one before its number). */
+async function tickPo(page: Page, poNo: string) {
+  const po = page.getByText(poNo, { exact: true });
+  await expect(po).toBeVisible({ timeout: 15_000 });
+  await po.locator("xpath=preceding::*[@role='checkbox' or @type='checkbox'][1]").click();
+}
+
+/** Edit -> Save Draft, wait for the success toast. */
+async function saveDraft(page: Page) {
+  await button(page, "Save Draft").click();
+  expect(await lastToast(page)).toMatch(/updated|saved|success/i);
+}
+
+/** New manual GRN form: vendor, invoice no/date, and one row per product (qty, price). */
+async function fillManualGrn(page: Page, invoiceNo: string, products: string[]) {
+  await page.goto(`${LIST}/new?doc_type=manual`);
+  await pickLookup(page, field(page, "Vendor").locator("button").first());
+  await page.locator("#grn-invoice-no").fill(invoiceNo);
+  expect(await pickDate(page, field(page, "Invoice Date").locator("button").first(), today()), "Invoice Date today").toBe(true);
+  for (const code of products) {
+    const row = await addRow(page);
+    // the location button is blank for a moment while the user's locations load
+    await expect(row.locator("button").first()).not.toHaveText(/^\s*$/);
+    if (await row.getByRole("button", { name: "Select Location" }).isVisible().catch(() => false)) {
+      await pickLookup(page, row.getByRole("button", { name: "Select Location" }));
+    }
+    await pickLookup(page, row.getByRole("button", { name: "Select Product" }), code);
+    // the product's units load after the pick (the seeded products are all sold in KG); saving before that sends an empty unit
+    await expect(row).toContainText("KG", { timeout: 15_000 });
+    // every unit selector still on "Select Unit" (received / FOC) needs a pick; they can render as buttons or comboboxes
+    for (let i = 0; i < 4; i++) {
+      const unit = row.getByRole("combobox", { name: "Select Unit" }).or(row.getByRole("button", { name: "Select Unit" })).first();
+      if (!(await unit.isVisible().catch(() => false))) break;
+      await unit.click();
+      await page.locator("[data-slot=popover-content]:visible button[data-value], [data-slot=select-item], [role=option]").first().click();
+    }
+    await typeInto(row.locator('input[name$=".received_qty"]'), 2);
+    await typeInto(row.locator('input[placeholder="0.00"]').first(), 50);
+  }
+  await expect(page.locator("table tbody").getByText("Select Unit")).toHaveCount(0, { timeout: 15_000 });
+}
+
 purchaseTest.describe("GRN — List", () => {
   purchaseTest(
     "TC-GRN-010001 View GRN List as Authenticated User",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็นผู้ใช้ที่มีสิทธิ์ดู GRN; มี GRN อย่างน้อยหนึ่งรายการในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. ตรวจสอบว่ารายการ GRN แสดง\n3. เลือก GRN เพื่อดูรายละเอียด",
-        },
-        { type: "expected", description: "รายการ GRN แสดงพร้อมข้อมูลปัจจุบัน ผู้ใช้สามารถเลือก GRN เพื่อดูรายละเอียดได้" },
+        { type: "preconditions", description: "Login เป็น Purchase; data:reset seed GRN 4 ใบ (draft / saved / committed x2)" },
+        { type: "steps", description: "1. ไปที่ /procurement/goods-receive-note\n2. ดูตาราง\n3. คลิกแถว GRN261100001" },
+        { type: "expected", description: "ตารางแสดง 4 แถวพร้อมสถานะ Committed/Saved/Draft และยอดรวม; คลิกแถวเปิด /procurement/goods-receive-note/<id> ของใบนั้น" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -33,7 +113,13 @@ purchaseTest.describe("GRN — List", () => {
     async ({ page }) => {
       const grn = new GRNPage(page);
       await grn.gotoList();
-      await expect(page).toHaveURL(/goods-receive-note/);
+      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "draft-4"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1);
+      await expect(page.getByRole("row").filter({ hasText: "GRN261100001" })).toContainText(/committed/i);
+      await expect(page.getByRole("row").filter({ hasText: "GRN261100003" })).toContainText(/saved/i);
+      await expect(page.getByRole("row").filter({ hasText: "draft-4" })).toContainText(/draft/i);
+      const committed = await seededGrn("committed");
+      await page.getByRole("row").filter({ hasText: "GRN261100001" }).getByText("GRN261100001").click();
+      await expect(page).toHaveURL(new RegExp(`goods-receive-note/${committed.id}$`));
     },
   );
 
@@ -41,13 +127,9 @@ purchaseTest.describe("GRN — List", () => {
     "TC-GRN-010002 View GRN List with No GRNs",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู GRN; ไม่มี GRN ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. ตรวจสอบว่าข้อความ empty state แสดง",
-        },
-        { type: "expected", description: "ข้อความ empty state แสดงว่าไม่มี GRN ให้แสดง" },
+        { type: "preconditions", description: "มี GRN ใน TEST BU (ใช้การค้นหาที่ไม่มีผลลัพธ์แทนข้อมูลว่าง)" },
+        { type: "steps", description: "1. ไปที่ list\n2. ค้นหาข้อความที่ไม่ตรงกับ GRN ใด แล้วกด Enter" },
+        { type: "expected", description: "ตารางแสดง empty state 'No data found' และไม่มีแถว GRN" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
@@ -55,7 +137,9 @@ purchaseTest.describe("GRN — List", () => {
     async ({ page }) => {
       const grn = new GRNPage(page);
       await grn.gotoList();
-      // Best-effort: empty state may not appear if seeded data exists
+      await search(page, `zz-none-${uid}`);
+      await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("row").filter({ hasText: /GRN26/ })).toHaveCount(0);
     },
   );
 
@@ -63,23 +147,27 @@ purchaseTest.describe("GRN — List", () => {
     "TC-GRN-010004 View GRN List with Large Number of GRNs",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ดู GRN; มี GRN จำนวนมากในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. ตรวจสอบว่า pagination ทำงานตามที่คาดหวัง\n3. เลื่อนผ่านหลายหน้าของ GRN",
-        },
-        { type: "expected", description: "Pagination ทำงานตามที่คาดหวัง ผู้ใช้สามารถเลื่อนผ่านหลายหน้าของ GRN ได้" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "มี GRN 4 ใบ; แบ่งหน้าละ 2 แถว (?perpage=2)" },
+        { type: "steps", description: "1. เปิด list ด้วย ?perpage=2\n2. ดูตัวนับหน้า\n3. คลิก Go to next page" },
+        { type: "expected", description: "หน้าแรกแสดง 2 แถว 'Showing 1–2 of 4' และ 'Page 1 of 2'; หน้า 2 แสดงอีก 2 แถวที่ไม่ซ้ำหน้าแรก" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      // Best-effort: pagination requires seeded volume
+      await page.goto(`${LIST}?perpage=2`);
+      await expect(page.getByText(/Showing 1–2 of 4/)).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/Page 1 of 2/)).toBeVisible();
+      const first = await page.getByRole("row").filter({ hasText: /GRN26|draft-/ }).allInnerTexts();
+      expect(first).toHaveLength(2);
+      await page.getByRole("button", { name: "Go to next page" }).click();
+      await expect(page.getByText(/Showing 3–4 of 4/)).toBeVisible({ timeout: 10_000 });
+      const second = await page.getByRole("row").filter({ hasText: /GRN26|draft-/ }).allInnerTexts();
+      expect(second).toHaveLength(2);
+      for (const r of second) expect(first).not.toContain(r);
     },
   );
+
 });
 
 requestorTest.describe("GRN — List — Permission denial", () => {
@@ -87,51 +175,40 @@ requestorTest.describe("GRN — List — Permission denial", () => {
     "TC-GRN-010003 View GRN List with Insufficient Permissions",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็นผู้ใช้ที่ไม่มีสิทธิ์ดู GRN; มี GRN อย่างน้อยหนึ่งรายการในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. ตรวจสอบว่าการเข้าถึงถูกปฏิเสธหรือแสดงข้อความแจ้งข้อผิดพลาดที่เหมาะสม",
-        },
-        { type: "expected", description: "การเข้าถึงถูกปฏิเสธหรือแสดงข้อความแจ้งข้อผิดพลาดที่เหมาะสม" },
+        { type: "preconditions", description: "Login เป็น Requestor — ไม่มี permission ของ GRN เลย" },
+        { type: "steps", description: "1. ไปที่ /procurement/goods-receive-note" },
+        { type: "expected", description: "แสดงหน้า 'Permission Denied' แทน list; ไม่มีช่อง Search และไม่มีปุ่ม New Goods Receive Note" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      await page.goto(LIST_PATH);
-      const url = page.url();
-      const onListPage = /goods-receive-note/.test(url);
-      const onUnauthorized = /unauthorized|denied|403|login/i.test(url);
-      expect(onListPage || onUnauthorized).toBeTruthy();
+      await page.goto(LIST);
+      await expect(page.getByRole("heading", { name: "Permission Denied" })).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByPlaceholder("Search...")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "New Goods Receive Note" })).toHaveCount(0);
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900002 — Filter / Search
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Filter / Search", () => {
   purchaseTest(
     "TC-GRN-020001 Filter by GRN Number",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้อยู่ที่หน้า GRN List และมี GRN ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กรอก 'GRN number' ด้วย GRN number ที่ถูกต้อง\n3. ตรวจสอบว่ารายการ GRN ที่กรองแล้วรวม GRN number ที่กรอก",
-        },
-        { type: "expected", description: "รายการ GRN กรองแสดงเฉพาะ GRN ที่มีหมายเลขที่กรอก" },
+        { type: "preconditions", description: "มี GRN261100001 ใน TEST BU" },
+        { type: "steps", description: "1. ไปที่ list\n2. พิมพ์ 'GRN261100001' ใน Search แล้วกด Enter" },
+        { type: "expected", description: "เหลือเฉพาะแถว GRN261100001 (1 แถว) ไม่มี GRN อื่น" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const filter = grn.grnNumberFilter();
-      if ((await filter.count()) > 0) await filter.fill("GRN-001").catch(() => {});
+      await page.goto(LIST);
+      await search(page, "GRN261100001");
+      await expect(page.getByRole("row").filter({ hasText: "GRN261100001" })).toHaveCount(1);
+      await expect(page.getByRole("row").filter({ hasText: /GRN261100002|GRN261100003|draft-4/ })).toHaveCount(0);
     },
   );
 
@@ -139,22 +216,20 @@ purchaseTest.describe("GRN — Filter / Search", () => {
     "TC-GRN-020002 Clear Filters",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้ได้ apply filter ให้กับรายการ GRN แล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดปุ่ม 'Clear Filters'\n3. ตรวจสอบว่ารายการ GRN กลับสู่มุมมองเต็ม",
-        },
-        { type: "expected", description: "รายการ GRN กลับสู่สถานะเริ่มต้นพร้อมบันทึกทั้งหมด visible" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "มี GRN 4 ใบ" },
+        { type: "steps", description: "1. ค้นหาจนเหลือ 1 แถว\n2. คลิกปุ่ม Clear search (x) ในช่อง Search" },
+        { type: "expected", description: "list กลับมาแสดงทั้ง 4 แถวและช่อง Search ว่าง" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const clear = grn.clearFiltersButton();
-      if ((await clear.count()) > 0) await clear.click().catch(() => {});
+      await page.goto(LIST);
+      await search(page, "GRN261100001");
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(1);
+      await page.getByRole("button", { name: /clear search/i }).click();
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(4, { timeout: 10_000 });
+      await expect(page.getByPlaceholder("Search...")).toHaveValue("");
     },
   );
 
@@ -162,23 +237,18 @@ purchaseTest.describe("GRN — Filter / Search", () => {
     "TC-GRN-020003 Invalid Search Term",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้อยู่ที่หน้า GRN List และมี GRN ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กรอกช่อง 'Search' ด้วยคำค้นหาที่ไม่ถูกต้อง\n3. รอ 5 วินาที\n4. ตรวจสอบว่าไม่มีบันทึกแสดง",
-        },
-        { type: "expected", description: "ไม่มี GRN แสดงและรายการยังคงไม่มีการกรอง" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "มี GRN ใน TEST BU" },
+        { type: "steps", description: "1. ค้นหาข้อความที่ไม่มีใน GRN ใด" },
+        { type: "expected", description: "แสดง 'No data found' และไม่มีแถว GRN" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const search = grn.searchInput();
-      if ((await search.count()) > 0) await search.fill("__NONEXISTENT_GRN_E2E__");
-      await expect(grn.emptyState()).toBeVisible({ timeout: 10_000 });
+      await page.goto(LIST);
+      await search(page, `zz-invalid-${uid}`);
+      await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(0);
     },
   );
 
@@ -186,22 +256,20 @@ purchaseTest.describe("GRN — Filter / Search", () => {
     "TC-GRN-020004 Search with Empty Term",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้อยู่ที่หน้า GRN List และมี GRN ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. ล้างช่อง 'Search'\n3. ตรวจสอบว่ารายการ GRN กลับสู่มุมมองเต็ม",
-        },
-        { type: "expected", description: "รายการ GRN กลับสู่สถานะเริ่มต้นพร้อมบันทึกทั้งหมด visible" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "preconditions", description: "ผู้ใช้เพิ่งค้นหาจน list ว่าง" },
+        { type: "steps", description: "1. ค้นหาข้อความที่ไม่มีผล\n2. ล้างช่อง Search แล้วกด Enter" },
+        { type: "expected", description: "list แสดงทั้ง 4 แถว ไม่มี empty state" },
+        { type: "priority", description: "Low" },
+        { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const search = grn.searchInput();
-      if ((await search.count()) > 0) await search.fill("");
+      await page.goto(LIST);
+      await search(page, `zz-none-${uid}`);
+      await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
+      await search(page, "");
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(4, { timeout: 10_000 });
+      await expect(page.getByText("No data found")).toHaveCount(0);
     },
   );
 
@@ -209,243 +277,168 @@ purchaseTest.describe("GRN — Filter / Search", () => {
     "TC-GRN-020005 Filter by Vendor Name and Invoice Number",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้อยู่ที่หน้า GRN List และมี GRN ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กรอก 'Vendor name' ด้วยชื่อ vendor ที่ถูกต้อง\n3. กรอก 'Invoice number' ด้วยหมายเลข invoice ที่ถูกต้อง\n4. ตรวจสอบว่ารายการ GRN ที่กรองแล้วรวม vendor และ invoice ที่กรอก",
-        },
-        { type: "expected", description: "รายการ GRN กรองแสดงเฉพาะ GRN ที่ตรงกับ vendor name และ invoice number ที่กรอก" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "GRN draft-4 มี invoice 'STD-grn.draft'" },
+        { type: "steps", description: "1. ค้นหา 'STD-grn.draft' (invoice no.)\n2. ค้นหาชื่อ vendor 'เอบีโอ'" },
+        { type: "expected", description: "ค้นหา invoice no. เหลือเฉพาะ draft-4; ค้นหาชื่อ vendor แสดงทั้ง 4 ใบ (ทุกใบเป็นของ vendor นี้)" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const vendor = grn.vendorFilter();
-      const invoice = grn.invoiceFilter();
-      if ((await vendor.count()) > 0) await vendor.fill("Test Vendor").catch(() => {});
-      if ((await invoice.count()) > 0) await invoice.fill("INV-001").catch(() => {});
+      await page.goto(LIST);
+      await search(page, "STD-grn.draft");
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(1);
+      await expect(page.getByRole("row").filter({ hasText: "draft-4" })).toHaveCount(1);
+      await search(page, "เอบีโอ");
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(4, { timeout: 10_000 });
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900003 — Create from Single PO
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Create from Single PO", () => {
   purchaseTest(
     "TC-GRN-030001 Create GRN from Single PO - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; มี vendor ที่มี PO เปิด/บางส่วนอย่างน้อยหนึ่งราย; สินค้าใน PO มีอยู่ใน product catalog" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'New GRN'\n3. เลือก vendor\n4. เลือก PO\n5. กรอก quantity ที่รับ\n6. กด 'Submit'",
-        },
-        { type: "expected", description: "GRN ถูกสร้างพร้อม status RECEIVED, GRN number ถูกสร้างอัตโนมัติ, line item มาจาก PO, PO status อัปเดต (ถ้ารับครบ)" },
+        { type: "preconditions", description: "มี PO ที่ยังเปิดอยู่ของ vendor A023 (PO261100003, 2 บรรทัด x 10 KG)" },
+        { type: "steps", description: "1. New Goods Receive Note → Purchase Order\n2. เลือก vendor เอบีโอ → Next\n3. ติ๊ก PO261100003 → Confirm\n4. กรอก Invoice No./Invoice Date แล้ว Create" },
+        { type: "expected", description: "ฟอร์ม /new?doc_type=purchase_order มี 2 บรรทัดจาก PO (Ground Beef, Chilled Angus) ยอด 2,000.00; หลัง Create backend มี GRN doc_type purchase_order 2 บรรทัด และ toast สำเร็จ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      await grn.newGRNButton().click({ timeout: 5_000 }).catch(() => {});
-      await grn.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      const invoice = inv("frompo");
+      const before = new Set((await listGrns()).map((g) => g.id));
+      await page.goto(LIST);
+      await page.getByRole("button", { name: "New Goods Receive Note" }).click();
+      await page.getByRole("button", { name: /^Purchase Order/ }).click();
+      await expect(page).toHaveURL(/from-po$/);
+      await page.getByRole("radio").first().click();
+      await button(page, "Next").click();
+      await tickPo(page, "PO261100003");
+      await button(page, "Confirm").click();
+      await expect(page).toHaveURL(/new\?doc_type=purchase_order/);
+      await expect(rowsOf(page).filter({ hasText: "Ground Beef" })).toHaveCount(1);
+      await expect(rowsOf(page).filter({ hasText: "Chilled Angus" })).toHaveCount(1);
+      await expect(page.getByText("2,000.00").first()).toBeVisible();
+      await page.locator("#grn-invoice-no").fill(invoice);
+      expect(await pickDate(page, field(page, "Invoice Date").locator("button").first(), today())).toBe(true);
+      await button(page, "Create").click();
+      expect(await lastToast(page)).toMatch(/created|success/i);
+      const created = (await listGrns(invoice)).find((g) => g.invoice_no === invoice);
+      expect(created, "GRN exists in backend").toBeTruthy();
+      const rec = (await getGrn(created!.id)).data!;
+      expect(rec.doc_type).toBe("purchase_order");
+      expect(rec.good_received_note_detail).toHaveLength(2);
+      expect(before.has(created!.id)).toBe(false);
     },
   );
 
-  purchaseTest(
-    "TC-GRN-030003 Create GRN with No Vendor",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; ไม่มี vendor ที่มี PO เปิด/บางส่วน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'New GRN'",
-        },
-        { type: "expected", description: "ผู้ใช้ไม่สามารถสร้าง GRN ได้และได้รับข้อความแจ้งข้อผิดพลาด 'No vendor with open/partial POs found'" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      await grn.newGRNButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-GRN-030004 Create GRN with Invalid PO",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; มี vendor ที่มี PO ที่ไม่ถูกต้องอย่างน้อยหนึ่งราย" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'New GRN'\n3. เลือก vendor\n4. เลือก PO ที่ไม่ถูกต้อง\n5. กรอก quantity ที่รับ",
-        },
-        { type: "expected", description: "ผู้ใช้ไม่สามารถสร้าง GRN ได้และได้รับข้อความแจ้งข้อผิดพลาด 'Invalid purchase order selected'" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      await grn.newGRNButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-GRN-030005 Create GRN with No Product in Catalog",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; vendor มี PO เปิด/บางส่วน; สินค้าใน PO ไม่มีใน product catalog" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'New GRN'\n3. เลือก vendor\n4. เลือก PO",
-        },
-        { type: "expected", description: "ผู้ใช้ไม่สามารถสร้าง GRN ได้และได้รับข้อความแจ้งข้อผิดพลาด 'Products in PO not found in product catalog'" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      await grn.newGRNButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
 });
 
-requestorTest.describe("GRN — Create — Permission denial", () => {
-  requestorTest(
+fcTest.describe("GRN — Create — Permission denial", () => {
+  fcTest(
     "TC-GRN-030002 Create GRN without Create GRN Permission",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้ไม่มีสิทธิ์ 'Create GRN'" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'New GRN'",
-        },
-        { type: "expected", description: "ผู้ใช้ไม่สามารถสร้าง GRN ได้และได้รับข้อความแจ้งข้อผิดพลาด 'Insufficient permission to create GRN'" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว)" },
+        { type: "steps", description: "1. ไปที่ list\n2. ดูปุ่ม 'New Goods Receive Note'" },
+        { type: "expected", description: "ปุ่ม New Goods Receive Note ถูกปิดใช้งาน (aria-disabled) — ผู้ใช้ไม่มีสิทธิ์สร้าง" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const btn = grn.newGRNButton();
-      // Either button is hidden (correct) or click yields permission error
-      if ((await btn.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await btn.click().catch(() => {});
-      }
+      await page.goto(LIST);
+      const add = page.getByRole("button", { name: "New Goods Receive Note" });
+      await expect(add).toBeVisible({ timeout: 15_000 });
+      fcTest.fail(true, NO_GATE);
+      await expect(add).toHaveAttribute("aria-disabled", "true");
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900004 — Create from Multiple POs
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Create from Multiple POs", () => {
-  purchaseTest(
-    "TC-GRN-040002 Create GRN from Multiple POs - Invalid PO Selection",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; vendor มี PO เปิด/บางส่วนหลายรายการ; PO อยู่ในสกุลเงินที่แตกต่างกัน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-order\n2. กด 'Create GRN'\n3. พยายามเลือก PO จาก vendor ต่างรายหรือสกุลเงินต่างกัน\n4. กด 'Submit'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดห้ามการสร้าง GRN จาก PO ของ vendor ต่างรายหรือสกุลเงินต่างกัน" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      await page.goto("/procurement/purchase-order");
-      // Best-effort: depends on multi-PO selection UI
-    },
-  );
-
   purchaseTest(
     "TC-GRN-040004 Create GRN from Multiple POs - Edge Case - Partial POs",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; vendor มี PO เปิด/บางส่วนหลายรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-order\n2. กด 'Create GRN'\n3. เลือก PO ที่รับบางส่วน\n4. กด 'Submit'",
-        },
-        { type: "expected", description: "GRN ถูกสร้างพร้อม line item จาก PO ที่รับบางส่วน, แต่ละ line item อ้างอิง PO ต้นทาง, PO ต้นทางทั้งหมดถูกอัปเดตพร้อม GRN reference" },
+        { type: "preconditions", description: "มี PO ที่ยังเปิด 2 ใบ รวม PO261100006 ที่รับแล้วบางส่วน (PARTIAL)" },
+        { type: "steps", description: "1. New GRN → Purchase Order → เลือก vendor → Next\n2. ติ๊ก PO261100006 (PARTIAL) และ PO261100007 → Confirm" },
+        { type: "expected", description: "ฟอร์มรวมบรรทัดของทั้งสอง PO (Ground Beef/Chilled Angus จาก 06 และ PORK CHOP จาก 07) และมีปุ่ม 'Add more PO'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      await page.goto("/procurement/purchase-order");
+      await page.goto(`${LIST}/from-po`);
+      await page.getByRole("radio").first().click();
+      await button(page, "Next").click();
+      for (const no of ["PO261100006", "PO261100007"]) await tickPo(page, no);
+      await button(page, "Confirm").click();
+      await expect(page).toHaveURL(/new\?doc_type=purchase_order/);
+      await expect(rowsOf(page).filter({ hasText: "PORK CHOP" })).toHaveCount(1);
+      await expect(rowsOf(page).filter({ hasText: "Ground Beef" })).toHaveCount(1);
+      await expect(rowsOf(page).filter({ hasText: "Chilled Angus" })).toHaveCount(1);
+      await expect(page.getByRole("button", { name: "Add more PO" })).toBeVisible();
     },
   );
+
 });
 
-requestorTest.describe("GRN — Create from Multiple POs — Permission denial", () => {
-  requestorTest(
+fcTest.describe("GRN — Create from Multiple POs — Permission denial", () => {
+  fcTest(
     "TC-GRN-040003 Create GRN from Multiple POs - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้ไม่มีสิทธิ์ 'Create GRN'; vendor มี PO เปิด/บางส่วนหลายรายการ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/purchase-order\n2. กด 'Create GRN'\n3. พยายามเลือก PO และสร้าง GRN",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดปฏิเสธสิทธิ์ป้องกันการสร้าง GRN" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว)" },
+        { type: "steps", description: "1. ไปที่ list\n2. ดูปุ่ม New Goods Receive Note (ทางเข้า from-po)" },
+        { type: "expected", description: "ปุ่ม New Goods Receive Note ถูกปิดใช้งาน — เข้า flow สร้างจากหลาย PO ไม่ได้" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      await page.goto("/procurement/purchase-order");
+      await page.goto(LIST);
+      const add = page.getByRole("button", { name: "New Goods Receive Note" });
+      await expect(add).toBeVisible({ timeout: 15_000 });
+      fcTest.fail(true, NO_GATE);
+      await expect(add).toHaveAttribute("aria-disabled", "true");
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900005 — Manual GRN
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Manual creation", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-050001 Create Manual GRN with Valid Data",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; vendor มีอยู่ในระบบ; สินค้ามีใน catalog" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Create New GRN'\n3. กรอก vendor field\n4. กรอกรายละเอียดสินค้า\n5. ตรวจสอบข้อมูล GRN\n6. กด 'Save'",
-        },
-        { type: "expected", description: "GRN ถูกสร้างโดยไม่มี PO reference, status ตั้งเป็น RECEIVED, ไม่มีการอัปเดต PO status, activity log บันทึกการสร้างแบบ manual" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง; มี vendor/สินค้า/คลังใน TEST BU" },
+        { type: "steps", description: "1. New GRN → Manual\n2. เลือก Vendor, กรอก Invoice No./Date\n3. Add Item เลือก Product กรอก Qty 2 ราคา 50\n4. Create" },
+        { type: "expected", description: "toast สำเร็จ; backend มี GRN manual เลข invoice นั้น 1 บรรทัด qty 2 ราคา 50 ยอด 100 และ list แสดงใบใหม่" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoNew();
-      await grn.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      const invoice = inv("manual");
+      await fillManualGrn(page, invoice, ["1111000"]);
+      await button(page, "Create").click();
+      expect(await lastToast(page)).toMatch(/created|success/i);
+      const created = (await listGrns(invoice)).find((g) => g.invoice_no === invoice);
+      expect(created, "GRN exists in backend").toBeTruthy();
+      const rec = (await getGrn(created!.id)).data!;
+      expect(rec.doc_type).toBe("manual");
+      expect(rec.good_received_note_detail).toHaveLength(1);
+      expect(Number(rec.good_received_note_detail[0].items[0].received_qty)).toBe(2);
+      expect(Number(rec.good_received_note_detail[0].items[0].received_price)).toBe(50);
+      expect(Number(rec.total_amount)).toBe(100);
     },
   );
 
@@ -453,22 +446,22 @@ purchaseTest.describe("GRN — Manual creation", () => {
     "TC-GRN-050003 Create Manual GRN with Missing Vendor",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; vendor ไม่มีอยู่ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Create New GRN'\n3. พยายามกรอก vendor field\n4. ตรวจสอบข้อความแจ้งข้อผิดพลาด",
-        },
-        { type: "expected", description: "ข้อความแจ้งข้อผิดพลาดระบุว่า vendor ไม่มีอยู่ในระบบ" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง" },
+        { type: "steps", description: "1. เปิดฟอร์ม Manual\n2. กรอก Invoice No. แต่ไม่เลือก Vendor\n3. Create" },
+        { type: "expected", description: "ไม่บันทึก: ยังอยู่ที่ /new, ไม่มี toast สำเร็จ, ไม่มี GRN เลข invoice นั้นใน backend" },
+        { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoNew();
-      const vendor = grn.vendorTrigger();
-      if ((await vendor.count()) > 0) await vendor.fill("__NONEXISTENT_VENDOR__").catch(() => {});
+      const invoice = inv("novendor");
+      await page.goto(`${LIST}/new?doc_type=manual`);
+      await page.locator("#grn-invoice-no").fill(invoice);
+      await button(page, "Create").click();
+      await page.waitForTimeout(1500);
+      await expect(page).toHaveURL(/goods-receive-note\/new/);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
+      expect((await listGrns(invoice)).filter((g) => g.invoice_no === invoice)).toHaveLength(0);
     },
   );
 
@@ -476,22 +469,24 @@ purchaseTest.describe("GRN — Manual creation", () => {
     "TC-GRN-050004 Create Manual GRN with Empty Product Details",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; vendor มีอยู่ในระบบ; สินค้ามีใน catalog" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Create New GRN'\n3. กรอก vendor field\n4. กรอกรายละเอียดสินค้าด้วย field ว่างเปล่า\n5. พยายามกด 'Save'",
-        },
-        { type: "expected", description: "ข้อความแจ้งข้อผิดพลาดระบุว่ารายละเอียดสินค้าไม่สามารถว่างเปล่าได้" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง" },
+        { type: "steps", description: "1. เปิดฟอร์ม Manual\n2. เลือก Vendor และ Invoice แต่ไม่เพิ่มรายการ\n3. Create" },
+        { type: "expected", description: "ไม่บันทึก: ยังอยู่ที่ /new ไม่มี toast สำเร็จ ไม่มี GRN เลข invoice นั้นใน backend" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoNew();
-      await grn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(grn.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const invoice = inv("noitems");
+      await page.goto(`${LIST}/new?doc_type=manual`);
+      await pickLookup(page, field(page, "Vendor").locator("button").first());
+      await page.locator("#grn-invoice-no").fill(invoice);
+      expect(await pickDate(page, field(page, "Invoice Date").locator("button").first(), today())).toBe(true);
+      await button(page, "Create").click();
+      await page.waitForTimeout(1500);
+      await expect(page).toHaveURL(/goods-receive-note\/new/);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
+      expect((await listGrns(invoice)).filter((g) => g.invoice_no === invoice)).toHaveLength(0);
     },
   );
 
@@ -499,111 +494,76 @@ purchaseTest.describe("GRN — Manual creation", () => {
     "TC-GRN-050005 Create Manual GRN with Large Number of Products",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์ 'Create GRN'; vendor มีอยู่ในระบบ; สินค้ามีใน catalog" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Create New GRN'\n3. กรอก vendor field\n4. กรอกรายละเอียดสินค้าจำนวนมาก\n5. ตรวจสอบว่าระบบรองรับสินค้าจำนวนมากได้โดยไม่ crash",
-        },
-        { type: "expected", description: "GRN ถูกสร้างโดยไม่มี PO reference, status ตั้งเป็น RECEIVED, ไม่มีการอัปเดต PO status, activity log บันทึกการสร้างแบบ manual, และระบบรองรับสินค้าจำนวนมากได้โดยไม่มีปัญหา" },
+        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์สร้าง" },
+        { type: "steps", description: "1. เปิดฟอร์ม Manual เลือก Vendor/Invoice\n2. Add Item 3 รายการ (สินค้าต่างกัน) qty 2 ราคา 50\n3. Create" },
+        { type: "expected", description: "backend มี GRN manual 3 บรรทัด ยอดรวม 300 และ toast สำเร็จ" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoNew();
+      const invoice = inv("many");
+      await fillManualGrn(page, invoice, ["11110001", "11110002", "11110003"]);
+      await button(page, "Create").click();
+      expect(await lastToast(page)).toMatch(/created|success/i);
+      const created = (await listGrns(invoice)).find((g) => g.invoice_no === invoice);
+      expect(created, "GRN exists in backend").toBeTruthy();
+      const rec = (await getGrn(created!.id)).data!;
+      expect(rec.good_received_note_detail).toHaveLength(3);
+      expect(Number(rec.total_amount)).toBe(300);
     },
   );
+
 });
 
-requestorTest.describe("GRN — Manual creation — Permission denial", () => {
-  requestorTest(
+fcTest.describe("GRN — Manual creation — Permission denial", () => {
+  fcTest(
     "TC-GRN-050002 Create Manual GRN without Permission",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้ไม่มีสิทธิ์ 'Create GRN'" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. พยายามกด 'Create New GRN'",
-        },
-        { type: "expected", description: "ผู้ใช้ไม่สามารถกด 'Create New GRN' ได้หรือแสดงข้อความแจ้งข้อผิดพลาดที่เหมาะสม" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว)" },
+        { type: "steps", description: "1. เปิด /procurement/goods-receive-note\n2. ดูปุ่ม New Goods Receive Note" },
+        { type: "expected", description: "ปุ่ม New Goods Receive Note ถูกปิดใช้งาน — ผู้ใช้ไม่มีสิทธิ์สร้างไม่ควรเปิดฟอร์ม Manual ได้" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const btn = grn.newGRNButton();
-      // Either button is hidden (correct) or click yields permission error
-      if ((await btn.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await btn.click().catch(() => {});
-      }
+      await page.goto(LIST);
+      const add = page.getByRole("button", { name: "New Goods Receive Note" });
+      await expect(add).toBeVisible({ timeout: 15_000 });
+      fcTest.fail(true, NO_GATE);
+      await expect(add).toHaveAttribute("aria-disabled", "true");
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900006 — Edit GRN Header
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Edit Header", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-060001 Edit GRN Header - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้มีสิทธิ์แก้ไข; GRN ยังไม่ได้ commit" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Edit' ที่ GRN\n3. กรอก 'Received Date' ด้วยวันที่ใหม่\n4. กรอก 'Invoice Number' ด้วยหมายเลขใหม่\n5. กรอก 'Currency' ด้วยสกุลเงินใหม่\n6. กด 'Save'",
-        },
-        { type: "expected", description: "GRN header ถูกอัปเดตด้วยข้อมูลใหม่, activity log บันทึกการเปลี่ยนแปลง, การคำนวณทางการเงินอัปเดตหาก currency เปลี่ยน" },
+        { type: "preconditions", description: "มี GRN draft ของ test (2 บรรทัด)" },
+        { type: "steps", description: "1. เปิด GRN → Edit\n2. แก้ Description\n3. Save Draft" },
+        { type: "expected", description: "toast สำเร็จ; กลับสู่โหมดดูและแสดง Description ใหม่; backend เก็บ description ใหม่ และสถานะยังเป็น draft" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) {
-        purchaseTest.skip(true, "No draft GRN");
-        return;
-      }
-      await openRecordFromRow(draftRow);
-      await grn.editButton().click({ timeout: 5_000 }).catch(() => {});
-      const inv = grn.invoiceNumberInput();
-      if ((await inv.count()) > 0) await inv.fill("INV-EDITED").catch(() => {});
-      await grn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-GRN-060002 Edit GRN Header - Invalid Currency",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้มีสิทธิ์แก้ไข; GRN ยังไม่ได้ commit; เลือก currency ที่ไม่ถูกต้อง" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Edit' ที่ GRN\n3. เลือก currency ที่ไม่ถูกต้องจาก dropdown\n4. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดเกี่ยวกับ currency ที่ไม่ถูกต้อง, GRN header ยังคงไม่เปลี่ยนแปลง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-      await grn.editButton().click({ timeout: 5_000 }).catch(() => {});
+      const g = await createDraftGrn(inv("hdr"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      const text = `edited ${uid}`;
+      await page.locator("#grn-description").fill(text);
+      await saveDraft(page);
+      await expect(page.locator("main")).toContainText(text);
+      const rec = (await getGrn(g.id)).data!;
+      expect(rec.description).toBe(text);
+      expect(rec.doc_status).toBe("draft");
     },
   );
 
@@ -611,124 +571,83 @@ purchaseTest.describe("GRN — Edit Header", () => {
     "TC-GRN-060004 Edit GRN Header - Empty Fields",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้มีสิทธิ์แก้ไข; GRN ยังไม่ได้ commit" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Edit' ที่ GRN\n3. ปล่อย field ทั้งหมดว่างเปล่า\n4. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดสำหรับ field ที่จำเป็นทั้งหมด, GRN header ยังคงไม่เปลี่ยนแปลง" },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Edit\n2. ล้างช่อง Invoice No.\n3. คลิก Save (ไม่ใช่ Save Draft — draft ยอมให้ข้อมูลไม่ครบ)" },
+        { type: "expected", description: "ไม่บันทึก: ช่อง Invoice No. ถูกมาร์ก invalid, ไม่มี toast สำเร็จ, backend ยังเก็บ invoice no. เดิม" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-      await grn.editButton().click({ timeout: 5_000 }).catch(() => {});
-      const inv = grn.invoiceNumberInput();
-      if ((await inv.count()) > 0) await inv.fill("").catch(() => {});
-      await grn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(grn.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const g = await createDraftGrn(inv("empty"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      await page.locator("#grn-invoice-no").fill("");
+      // "Save Draft" lets an incomplete draft through by design; the full Save enforces the required fields
+      await button(page, "Save").click();
+      await page.waitForTimeout(1500);
+      await expect(page.locator("#grn-invoice-no")).toHaveAttribute("aria-invalid", "true");
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
+      expect((await getGrn(g.id)).data!.invoice_no).toBe(g.invoice_no);
     },
   );
 
-  purchaseTest(
-    "TC-GRN-060005 Edit GRN Header - Future Date",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้มีสิทธิ์แก้ไข; GRN ยังไม่ได้ commit" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Edit' ที่ GRN\n3. กรอก 'Received Date' ด้วยวันที่ในอนาคต\n4. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดเกี่ยวกับวันที่ไม่ถูกต้อง, GRN header ยังคงไม่เปลี่ยนแปลง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-      await grn.editButton().click({ timeout: 5_000 }).catch(() => {});
-      const date = grn.receivedDateInput();
-      if ((await date.count()) > 0) await date.fill("2099-12-31").catch(() => {});
-      await grn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
 });
 
-requestorTest.describe("GRN — Edit Header — Permission denial", () => {
-  requestorTest(
+fcTest.describe("GRN — Edit Header — Permission denial", () => {
+  fcTest(
     "TC-GRN-060003 Edit GRN Header - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้ไม่มีสิทธิ์แก้ไข; GRN ยังไม่ได้ commit" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Edit' ที่ GRN\n3. พยายามแก้ไข 'Received Date'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดว่าสิทธิ์ไม่เพียงพอ, GRN header ยังคงไม่เปลี่ยนแปลง" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); มี GRN draft-4" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. ดูปุ่ม Edit" },
+        { type: "expected", description: "ปุ่ม Edit ถูกปิดใช้งาน (aria-disabled) กดแล้วไม่เข้าโหมดแก้ไข (ไม่มีช่อง Invoice No.)" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const edit = grn.editButton();
-      // Either button is hidden (correct) or disabled
-      if ((await edit.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(edit).toBeDisabled({ timeout: 5_000 });
-      }
+      const d = await seededGrn("draft");
+      await page.goto(`${LIST}/${d.id}`);
+      const edit = page.getByRole("button", { name: "Edit", exact: true });
+      await expect(edit).toBeVisible({ timeout: 20_000 });
+      await expect(edit).toHaveAttribute("aria-disabled", "true");
+      await edit.click({ force: true });
+      await expect(page.locator("#grn-invoice-no")).toHaveCount(0);
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900007 — Add Line Item
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Add Line Item", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-070001 Happy Path - Add Line Item",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้มีสิทธิ์แก้ไข; สามารถเข้าถึง product catalog ได้" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดแท็บ 'Items'\n3. กดปุ่ม 'Add Item'\n4. กรอกชื่อสินค้า, quantity และราคา\n5. กด 'Save'",
-        },
-        { type: "expected", description: "เพิ่ม line item ใหม่ใน GRN, ยอดรวมทางการเงินถูกคำนวณใหม่, activity log อัปเดต" },
+        { type: "preconditions", description: "มี GRN draft ของ test (2 บรรทัด x 5 @ 100 = 1,000)" },
+        { type: "steps", description: "1. เปิด GRN → Edit → Add Item\n2. เลือก Product ใหม่ qty 3 ราคา 20\n3. Save Draft" },
+        { type: "expected", description: "backend มี 3 บรรทัด ยอดรวม 1,060 และหน้าแสดง Grand Total 1,060.00" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) {
-        purchaseTest.skip(true, "No draft GRN");
-        return;
-      }
-      await openRecordFromRow(draftRow);
-      const items = grn.itemsTab();
-      if ((await items.count()) > 0) await items.click().catch(() => {});
-      await grn.addItemButton().click({ timeout: 5_000 }).catch(() => {});
+      const g = await createDraftGrn(inv("addline"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      const row = await addRow(page);
+      await pickLookup(page, row.getByRole("button", { name: "Select Product" }), "", /^(?!.*1111000[34])/s);
+      await expect(row).toContainText("KG", { timeout: 15_000 });
+      await typeInto(row.locator('input[name$=".received_qty"]'), 3);
+      await typeInto(row.locator('input[placeholder="0.00"]').first(), 20);
+      await expect(page.locator("table tbody").getByRole("button", { name: "Select Unit" })).toHaveCount(0, { timeout: 15_000 });
+      await saveDraft(page);
+      await expect(page.locator("main")).toContainText("1,060.00");
+      const rec = (await getGrn(g.id)).data!;
+      expect(rec.good_received_note_detail).toHaveLength(3);
+      expect(Number(rec.total_amount)).toBe(1060);
     },
   );
 
@@ -736,121 +655,75 @@ purchaseTest.describe("GRN — Add Line Item", () => {
     "TC-GRN-070002 Invalid Input - Empty Product Name",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้มีสิทธิ์แก้ไข; สามารถเข้าถึง product catalog ได้" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดแท็บ 'Items'\n3. กดปุ่ม 'Add Item'\n4. ปล่อย field ชื่อสินค้าว่างเปล่า\n5. กรอก quantity และราคา\n6. กด 'Save'",
-        },
-        { type: "expected", description: "แสดงข้อความแจ้งข้อผิดพลาดสำหรับชื่อสินค้าที่ว่างเปล่า, ไม่มีการเพิ่ม line item" },
+        { type: "preconditions", description: "มี GRN draft ของ test (2 บรรทัด)" },
+        { type: "steps", description: "1. เปิด GRN → Edit → Add Item\n2. ไม่เลือก Product\n3. คลิก Save" },
+        { type: "expected", description: "ไม่บันทึก: แถวใหม่ยังเป็น 'Select Product', ไม่มี toast สำเร็จ, backend ยังมี 2 บรรทัด" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-      const items = grn.itemsTab();
-      if ((await items.count()) > 0) await items.click().catch(() => {});
-      await grn.addItemButton().click({ timeout: 5_000 }).catch(() => {});
-      await grn.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(grn.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const g = await createDraftGrn(inv("noprod"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      await button(page, "Add Item").click();
+      await button(page, "Save").click();
+      await page.waitForTimeout(1500);
+      await expect(page.getByRole("button", { name: "Select Product" })).toBeVisible();
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
+      expect((await getGrn(g.id)).data!.good_received_note_detail).toHaveLength(2);
     },
   );
 
-  purchaseTest(
-    "TC-GRN-070004 Edge Case - Add Item with Maximum Quantity",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้มีสิทธิ์แก้ไข; สามารถเข้าถึง product catalog ได้; กำหนด quantity สูงสุดสำหรับสินค้า" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดแท็บ 'Items'\n3. กดปุ่ม 'Add Item'\n4. กรอกชื่อสินค้า, quantity สูงสุด และราคา\n5. กด 'Save'",
-        },
-        { type: "expected", description: "บังคับใช้ quantity สูงสุด, ยอดรวมทางการเงินถูกคำนวณใหม่, activity log อัปเดต" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-      const items = grn.itemsTab();
-      if ((await items.count()) > 0) await items.click().catch(() => {});
-      await grn.addItemButton().click({ timeout: 5_000 }).catch(() => {});
-      const qty = grn.quantityInput();
-      if ((await qty.count()) > 0) await qty.fill("999999").catch(() => {});
-    },
-  );
 });
 
-requestorTest.describe("GRN — Add Line Item — Permission denial", () => {
-  requestorTest(
+fcTest.describe("GRN — Add Line Item — Permission denial", () => {
+  fcTest(
     "TC-GRN-070003 No Permission - User Tries to Add Item",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ผู้ใช้ไม่มีสิทธิ์แก้ไข; สามารถเข้าถึง product catalog ได้" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดแท็บ 'Items'\n3. กดปุ่ม 'Add Item'\n4. กรอกชื่อสินค้า, quantity และราคา\n5. กด 'Save'",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับข้อความแจ้งข้อผิดพลาดปฏิเสธสิทธิ์, ไม่สามารถเพิ่ม line item ได้" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); มี GRN draft-4" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. มองหาปุ่ม Add Item" },
+        { type: "expected", description: "ไม่มีปุ่ม Add Item ในโหมดดู และ Edit ถูกปิดใช้งาน" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const add = grn.addItemButton();
-      // Either button is hidden (correct) or disabled
-      if ((await add.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(add).toBeDisabled({ timeout: 5_000 });
-      }
+      const d = await seededGrn("draft");
+      await page.goto(`${LIST}/${d.id}`);
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveAttribute("aria-disabled", "true", { timeout: 20_000 });
+      await expect(page.getByRole("button", { name: "Add Item" })).toHaveCount(0);
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900008 — Edit Line Item
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Edit Line Item", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-080001 Edit Existing Line Item - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; มี line item; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. คลิก GRN number ในรายการ\n3. ไปที่แท็บ 'Items'\n4. เลือก line item ที่ต้องการแก้ไข\n5. กรอก quantity, ราคา, location ใหม่\n6. กด 'Save'",
-        },
-        { type: "expected", description: "Line item ถูกอัปเดต, ยอดรวมทางการเงินถูกคำนวณใหม่, activity log บันทึกการเปลี่ยนแปลง" },
+        { type: "preconditions", description: "มี GRN draft ของ test (2 บรรทัด x 5 @ 100)" },
+        { type: "steps", description: "1. เปิด GRN → Edit\n2. แก้ Received qty แถวแรกเป็น 8\n3. Save Draft" },
+        { type: "expected", description: "บรรทัดนั้นเก็บ qty 8 (ยอดบรรทัด 800); ยอดรวมเอกสารคำนวณใหม่เป็น 1,300.00" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const items = grn.itemsTab();
-      if ((await items.count()) > 0) await items.click().catch(() => {});
+      const g = await createDraftGrn(inv("editline"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      await typeInto(page.locator('input[name="items.0.received_qty"]'), 8);
+      await saveDraft(page);
+      const rec = (await getGrn(g.id)).data!;
+      const qtys = rec.good_received_note_detail.map((d) => Number(d.items[0].received_qty)).sort((a, b) => a - b);
+      expect(qtys).toEqual([5, 8]);
+      expect(Number(rec.total_amount)).toBe(1300);
+      await expect(page.locator("main")).toContainText("1,300.00");
     },
   );
 
@@ -858,23 +731,21 @@ purchaseTest.describe("GRN — Edit Line Item", () => {
     "TC-GRN-080002 Edit Line Item - Invalid Price Input",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; มี line item; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. คลิก GRN number ในรายการ\n3. ไปที่แท็บ 'Items'\n4. เลือก line item ที่ต้องการแก้ไข\n5. กรอกราคาที่ไม่ถูกต้อง (ค่าที่ไม่ใช่ตัวเลข)\n6. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดและไม่อัปเดต line item" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Edit\n2. พิมพ์ 'abc' ในช่อง Unit Price แถวแรก\n3. ดูค่าในช่อง" },
+        { type: "expected", description: "ช่อง Unit Price ไม่รับตัวอักษร (ค่าที่เห็นไม่มีตัวอักษร) และยอดรวมไม่เป็น NaN" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
+      const g = await createDraftGrn(inv("badprice"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      const price = rowsOf(page).first().locator('input[placeholder="0.00"]').first();
+      await typeInto(price, "abc");
+      expect(await price.inputValue()).not.toMatch(/[a-z]/i);
+      await expect(page.locator("main")).not.toContainText("NaN");
     },
   );
 
@@ -882,20 +753,28 @@ purchaseTest.describe("GRN — Edit Line Item", () => {
     "TC-GRN-080004 Edit Line Item - No Line Items Exist",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; ไม่มี line item; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. คลิก GRN number ในรายการ\n3. ไปที่แท็บ 'Items'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งว่าไม่มี line item ที่จะแก้ไข" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
+        { type: "preconditions", description: "มี GRN draft ของ test (2 บรรทัด)" },
+        { type: "steps", description: "1. เปิด GRN → Edit\n2. ลบทั้งสองบรรทัด (Remove this line)\n3. คลิก Save" },
+        { type: "expected", description: "ตารางไม่มีแถว; Save ไม่ผ่าน (ไม่มี toast สำเร็จ); backend ยังมี 2 บรรทัด" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
+      const g = await createDraftGrn(inv("nolines"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      for (let i = 0; i < 2; i++) {
+        await rowsOf(page).first().getByRole("button", { name: "Remove this line" }).click();
+        await page.waitForTimeout(500);
+        const dlg = page.locator("[role=alertdialog]:visible");
+        if (await dlg.count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+      }
+      await expect(page.getByRole("button", { name: "Remove this line" })).toHaveCount(0);
+      await button(page, "Save").click();
+      await page.waitForTimeout(1500);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
+      expect((await getGrn(g.id)).data!.good_received_note_detail).toHaveLength(2);
     },
   );
 
@@ -903,82 +782,75 @@ purchaseTest.describe("GRN — Edit Line Item", () => {
     "TC-GRN-080005 Edit Line Item - GRN in RECEIVED Status",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status RECEIVED; มี line item; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. คลิก GRN number ในรายการ\n3. ไปที่แท็บ 'Items'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งว่าไม่สามารถแก้ไข GRN ได้" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const receivedRow = page.locator("tbody").getByRole("row").filter({ hasText: /received/i }).first();
-      if ((await receivedRow.count()) === 0) return;
-      await openRecordFromRow(receivedRow);
-      const edit = grn.editButton();
-      // Either button is hidden (correct) or disabled
-      if ((await edit.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(edit).toBeDisabled({ timeout: 5_000 });
-      }
-    },
-  );
-});
-
-requestorTest.describe("GRN — Edit Line Item — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-080003 Edit Line Item - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; มี line item; ผู้ใช้ไม่มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. คลิก GRN number ในรายการ\n3. ไปที่แท็บ 'Items'\n4. พยายามเลือก line item เพื่อแก้ไข",
-        },
-        { type: "expected", description: "ผู้ใช้ถูกปฏิเสธการเข้าถึงและไม่สามารถแก้ไข line item ได้" },
+        { type: "preconditions", description: "มี GRN ที่ committed (GRN261100001)" },
+        { type: "steps", description: "1. เปิด GRN261100001 → Edit\n2. ดูช่อง Received qty" },
+        { type: "expected", description: "ในโหมด Edit จำนวน Received ของทุกแถวเป็นข้อความอ่านอย่างเดียว (ไม่มีช่อง input) — แก้บรรทัดของใบที่ commit แล้วไม่ได้" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
+      const c = await seededGrn("committed");
+      await goto(page, c.id);
+      await button(page, "Edit").click();
+      await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator('input[name$=".received_qty"]')).toHaveCount(0);
+      await expect(page.locator("main")).toContainText("10KG");
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900009 — Delete Line Item
-// ═════════════════════════════════════════════════════════════════════════
+fcTest.describe("GRN — Edit Line Item — Permission denial", () => {
+  fcTest(
+    "TC-GRN-080003 Edit Line Item - No Permission",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4 มี 2 บรรทัด" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. มองหาช่อง Received qty" },
+        { type: "expected", description: "รายการเป็นข้อความอ่านอย่างเดียว ไม่มี input ของ qty และ Edit ถูกปิดใช้งาน" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async ({ page }) => {
+      const d = await seededGrn("draft");
+      await page.goto(`${LIST}/${d.id}`);
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveAttribute("aria-disabled", "true", { timeout: 20_000 });
+      await expect(page.locator('input[name$=".received_qty"]')).toHaveCount(0);
+    },
+  );
+
+});
+
 purchaseTest.describe("GRN — Delete Line Item", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-090001 Delete a valid line item from a draft GRN",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; มี line item; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดแท็บ 'Items'\n3. กดไอคอน 'Delete' ที่ line item\n4. ยืนยัน dialog การลบ",
-        },
-        { type: "expected", description: "Line item ถูกลบ, หมายเลขแถวถูกเรียงใหม่, ยอดรวมทางการเงินถูกคำนวณใหม่, activity log อัปเดต" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "มี GRN draft ของ test (2 บรรทัด x 500)" },
+        { type: "steps", description: "1. เปิด GRN → Edit\n2. คลิก Remove this line แถวแรก (ยืนยันถ้ามี dialog)\n3. Save Draft" },
+        { type: "expected", description: "เหลือ 1 แถว; หลัง Save backend มี 1 บรรทัด ยอดรวม 500 และหน้าแสดง Grand Total 500.00" },
+        { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
+      const g = await createDraftGrn(inv("rmline"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      await expect(rowsOf(page)).toHaveCount(2);
+      await rowsOf(page).first().getByRole("button", { name: "Remove this line" }).click();
+      await page.waitForTimeout(500);
+      if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+      await expect(rowsOf(page)).toHaveCount(1);
+      await saveDraft(page);
+      const rec = (await getGrn(g.id)).data!;
+      expect(rec.good_received_note_detail).toHaveLength(1);
+      expect(Number(rec.total_amount)).toBe(500);
+      await expect(page.locator("main")).toContainText("500.00");
     },
   );
 
@@ -986,105 +858,82 @@ purchaseTest.describe("GRN — Delete Line Item", () => {
     "TC-GRN-090003 Try to delete a line item from a received GRN",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status RECEIVED; มี line item; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดแท็บ 'Items'\n3. กดไอคอน 'Delete' ที่ line item",
-        },
-        { type: "expected", description: "ผู้ใช้เห็นคำเตือนว่า GRN อยู่ใน state ที่แก้ไขไม่ได้และไม่สามารถแก้ไขได้" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "มี GRN ที่ committed (GRN261100001)" },
+        { type: "steps", description: "1. เปิด GRN261100001 → Edit\n2. มองหาปุ่ม Remove this line" },
+        { type: "expected", description: "ไม่มีปุ่ม Remove this line เลย — ลบบรรทัดของใบที่ commit แล้วไม่ได้; backend ยังมี 2 บรรทัด" },
+        { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const receivedRow = page.locator("tbody").getByRole("row").filter({ hasText: /received/i }).first();
-      if ((await receivedRow.count()) === 0) return;
-      await openRecordFromRow(receivedRow);
+      const c = await seededGrn("committed");
+      await goto(page, c.id);
+      await button(page, "Edit").click();
+      await expect(page.getByRole("button", { name: "Cancel", exact: true })).toBeVisible({ timeout: 10_000 });
+      await expect(page.getByRole("button", { name: "Remove this line" })).toHaveCount(0);
+      expect((await getGrn(c.id)).data!.good_received_note_detail).toHaveLength(2);
     },
   );
 
-  purchaseTest(
-    "TC-GRN-090005 Delete multiple line items at once from a draft GRN",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; มี line item หลายรายการ; ผู้ใช้มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดแท็บ 'Items'\n3. เลือก line item หลายรายการ\n4. กดไอคอน 'Delete'",
-        },
-        { type: "expected", description: "Line item ที่เลือกถูกลบ, หมายเลขแถวถูกเรียงใหม่, ยอดรวมทางการเงินถูกคำนวณใหม่, activity log อัปเดต" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-    },
-  );
 });
 
-requestorTest.describe("GRN — Delete Line Item — Permission denial", () => {
-  requestorTest(
+fcTest.describe("GRN — Delete Line Item — Permission denial", () => {
+  fcTest(
     "TC-GRN-090002 Attempt to delete a line item without edit permission",
     {
       annotation: [
-        { type: "preconditions", description: "GRN อยู่ใน status DRAFT; มี line item; ผู้ใช้ไม่มีสิทธิ์แก้ไข" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กดแท็บ 'Items'\n3. กดไอคอน 'Delete' ที่ line item",
-        },
-        { type: "expected", description: "ผู้ใช้เห็นข้อความแจ้งข้อผิดพลาดว่าสิทธิ์ไม่เพียงพอ" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. มองหาปุ่ม Remove this line" },
+        { type: "expected", description: "ไม่มีปุ่ม Remove this line ในโหมดดู และเข้าโหมดแก้ไขไม่ได้ (Edit ปิดใช้งาน)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
+      const d = await seededGrn("draft");
+      await page.goto(`${LIST}/${d.id}`);
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveAttribute("aria-disabled", "true", { timeout: 20_000 });
+      await expect(page.getByRole("button", { name: "Remove this line" })).toHaveCount(0);
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900010 — Extra Costs
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Extra Costs", () => {
+  // the TEST BU dataset has no extra-cost type, so the describe creates one and removes it again
+  let costTypeId = "";
+  purchaseTest.beforeAll(async () => {
+    costTypeId = await createExtraCostType(`${PFX} freight ${uid}`);
+  });
+  purchaseTest.afterAll(async () => {
+    await sweep();
+    if (costTypeId) await deleteExtraCostType(costTypeId);
+  });
+
   purchaseTest(
     "TC-GRN-100001 Happy Path - Add Extra Costs",
     {
       annotation: [
-        { type: "preconditions", description: "GRN มีอยู่จริงและไม่ใช่ VOID; มี line item อย่างน้อยหนึ่งรายการ; ผู้ใช้มีสิทธิ์เพิ่มต้นทุน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Add Extra Costs'\n3. เลือก 'Freight'\n4. กรอกจำนวน\n5. เลือก 'Handling'\n6. กรอกจำนวน\n7. เลือก 'Customs'\n8. กรอกจำนวน\n9. กด 'Save'",
-        },
-        { type: "expected", description: "รายการ extra cost เพิ่มใน GRN, ต้นทุนกระจายไปยัง line item, ยอดรวม line item อัปเดต, ยอดรวม GRN เพิ่มขึ้นตาม extra costs, activity log บันทึก" },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "มี GRN draft ของ test; มีประเภท extra cost ใน TEST BU" },
+        { type: "steps", description: "1. เปิด GRN → Edit → แท็บ Extra Cost\n2. คลิก Add Cost เลือก Type กรอก Amount 100\n3. Save Draft" },
+        { type: "expected", description: "backend เก็บ extra cost 1 รายการ amount 100; แท็บ Extra Cost แสดงจำนวน 1" },
+        { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const extra = grn.addExtraCostsButton();
-      if ((await extra.count()) === 0) {
-        purchaseTest.skip(true, "Add Extra Costs UI not exposed");
-        return;
-      }
-      await extra.click().catch(() => {});
+      const g = await createDraftGrn(inv("extra"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      await page.getByRole("tab", { name: /extra cost/i }).click();
+      await button(page, "Add Cost").first().click();
+      await pickLookup(page, page.getByRole("button", { name: "Select Extra Cost" }));
+      await typeInto(page.locator('input[name="extra_cost_details.0.amount"]'), 100);
+      await saveDraft(page);
+      const ec = (await getGrn(g.id)).data!.extra_cost as { extra_cost_detail?: Array<{ amount: number }> } | null;
+      expect(ec?.extra_cost_detail).toHaveLength(1);
+      expect(Number(ec!.extra_cost_detail![0].amount)).toBe(100);
+      await expect(page.getByRole("tab", { name: /extra cost/i })).toContainText("1");
     },
   );
 
@@ -1092,88 +941,81 @@ purchaseTest.describe("GRN — Extra Costs", () => {
     "TC-GRN-100003 Edge Case - Invalid Cost Amount",
     {
       annotation: [
-        { type: "preconditions", description: "GRN มีอยู่จริงและไม่ใช่ VOID; มี line item อย่างน้อยหนึ่งรายการ; ผู้ใช้มีสิทธิ์เพิ่มต้นทุน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/goods-receive-note\n2. กด 'Add Extra Costs'\n3. เลือก 'Freight'\n4. กรอกจำนวนติดลบ\n5. เลือก 'Handling'\n6. กรอกจำนวนเป็นศูนย์\n7. กด 'Save'",
-        },
-        { type: "expected", description: "ระบบแสดงข้อความแจ้งข้อผิดพลาดสำหรับจำนวนที่ไม่ถูกต้อง, ค่า freight ไม่ถูกเพิ่ม, ค่า handling ไม่ถูกเพิ่ม, ไม่มีการเปลี่ยนแปลงกับ GRN หรือ line item" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-    },
-  );
-});
-
-requestorTest.describe("GRN — Extra Costs — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-100002 Negative - No Permission to Add Costs",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists (not VOID); at least one line item exists; user does not have permission to add costs" },
-        {
-          type: "steps",
-          description: "1. Navigate to /procurement/goods-receive-note\n2. Click 'Add Extra Costs'",
-        },
-        { type: "expected", description: "System displays error message indicating insufficient permissions, 'Add Extra Costs' button remains disabled." },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Edit → แท็บ Extra Cost → Add Cost\n2. เลือก Type แต่พิมพ์ 'abc' ใน Amount\n3. Save Draft" },
+        { type: "expected", description: "ช่อง Amount ไม่รับตัวอักษร; Save ไม่ผ่าน (ไม่มี toast สำเร็จ); backend ไม่มี extra cost" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const extra = grn.addExtraCostsButton();
-      // Either button is hidden (correct) or disabled
-      if ((await extra.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(extra).toBeDisabled({ timeout: 5_000 });
-      }
+      const g = await createDraftGrn(inv("badcost"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      await page.getByRole("tab", { name: /extra cost/i }).click();
+      await button(page, "Add Cost").first().click();
+      await pickLookup(page, page.getByRole("button", { name: "Select Extra Cost" }));
+      const amount = page.locator('input[name="extra_cost_details.0.amount"]');
+      await typeInto(amount, "abc");
+      expect(await amount.inputValue()).not.toMatch(/[a-z]/i);
+      await button(page, "Save Draft").click();
+      await page.waitForTimeout(1500);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
+      expect((await getGrn(g.id)).data!.extra_cost?.extra_cost_detail ?? []).toHaveLength(0);
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900011 — Commit GRN
-// ═════════════════════════════════════════════════════════════════════════
+fcTest.describe("GRN — Extra Costs — Permission denial", () => {
+  fcTest(
+    "TC-GRN-100002 Negative - No Permission to Add Costs",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4 → แท็บ Extra Cost\n2. มองหาปุ่ม Add Cost" },
+        { type: "expected", description: "ไม่มีปุ่ม Add Cost (โหมดดู) และ Edit ถูกปิดใช้งาน" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async ({ page }) => {
+      const d = await seededGrn("draft");
+      await page.goto(`${LIST}/${d.id}`);
+      await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveAttribute("aria-disabled", "true", { timeout: 20_000 });
+      await page.getByRole("tab", { name: /extra cost/i }).click();
+      await expect(page.getByRole("button", { name: "Add Cost" })).toHaveCount(0);
+    },
+  );
+
+});
+
 purchaseTest.describe("GRN — Commit", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-110001 Happy Path - Commit GRN",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists in RECEIVED status; user has 'Commit GRN' permission; all line items have storage locations; all required fields are complete" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on the GRN in RECEIVED status\n3. Click 'Commit GRN'\n4. Verify GRN status changed to COMMITTED\n5. Verify stock movements created for all line items\n6. Verify inventory quantities updated",
-        },
-        { type: "expected", description: "GRN status changed to COMMITTED, stock movements created, inventory quantities updated." },
+        { type: "preconditions", description: "มี GRN draft ของ test (2 บรรทัด)" },
+        { type: "steps", description: "1. เปิด GRN draft\n2. คลิก Commit ที่ footer\n3. ยืนยันใน dialog" },
+        { type: "expected", description: "backend เปลี่ยนสถานะเป็น committed; หน้าแสดง badge Committed และไม่มีปุ่ม Commit/Void อีก; แท็บ Stock Movement แสดงรายการสินค้า" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const receivedRow = page.locator("tbody").getByRole("row").filter({ hasText: /received/i }).first();
-      if ((await receivedRow.count()) === 0) {
-        purchaseTest.skip(true, "No received GRN to commit");
-        return;
-      }
-      await openRecordFromRow(receivedRow);
-      await grn.commitButton().click({ timeout: 5_000 }).catch(() => {});
+      const g = await createDraftGrn(inv("commit"));
+      await goto(page, g.id);
+      await button(page, "Commit").click();
+      await confirmDialog(page, /commit/i);
+      await expect.poll(async () => (await getGrn(g.id)).data!.doc_status, { timeout: 60_000 }).toBe("committed");
+      await page.reload();
+      await expect(page.locator("main")).toContainText(/committed/i, { timeout: 15_000 });
+      await expect(page.getByRole("button", { name: "Commit", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Void", exact: true })).toHaveCount(0);
+      await page.getByRole("tab", { name: /stock movement/i }).click();
+      await expect(page.locator("main")).toContainText("Australian Sirloin", { timeout: 15_000 });
     },
   );
 
@@ -1181,119 +1023,82 @@ purchaseTest.describe("GRN — Commit", () => {
     "TC-GRN-110003 Negative - Missing Storage Location",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists in RECEIVED status; user has 'Commit GRN' permission; one line item is missing storage location; all required fields are complete" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on the GRN in RECEIVED status\n3. Attempt to click 'Commit GRN'\n4. Verify an error message appears indicating missing storage location",
-        },
-        { type: "expected", description: "Error message displayed indicating missing storage location." },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Edit → ลบทุกบรรทัด\n2. Add Item (แถวใหม่ไม่มีคลัง)\n3. คลิก Save" },
+        { type: "expected", description: "แถวใหม่ยังเป็น 'Select Location'; Save ไม่ผ่าน (ไม่มี toast สำเร็จ); backend ยังมี 2 บรรทัดและ draft" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const receivedRow = page.locator("tbody").getByRole("row").filter({ hasText: /received/i }).first();
-      if ((await receivedRow.count()) === 0) {
-        // A bare `return` here reported a pass while doing nothing. Note also that
-        // this filter used to match the <thead> row, because the table has a
-        // "Received By" column — scoping to tbody is what made the gap visible.
-        purchaseTest.skip(true, "No received GRN in this environment to commit");
-        return;
+      const g = await createDraftGrn(inv("noloc"));
+      await goto(page, g.id);
+      await button(page, "Edit").click();
+      for (let i = 0; i < 2; i++) {
+        await rowsOf(page).first().getByRole("button", { name: "Remove this line" }).click();
+        await page.waitForTimeout(500);
+        if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
       }
-      await openRecordFromRow(receivedRow);
-      if ((await grn.commitButton().count()) === 0) {
-        purchaseTest.skip(true, "GRN offers no Commit for this role/state");
-        return;
-      }
-      await grn.commitButton().click({ timeout: 10_000 });
-      await expect(grn.anyError().first()).toBeVisible({ timeout: 5_000 });
+      await button(page, "Add Item").click();
+      await expect(page.getByRole("button", { name: "Select Location" })).toBeVisible();
+      await button(page, "Save").click();
+      await page.waitForTimeout(1500);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
+      const rec = (await getGrn(g.id)).data!;
+      expect(rec.good_received_note_detail).toHaveLength(2);
+      expect(rec.doc_status).toBe("draft");
     },
   );
 
-  purchaseTest(
-    "TC-GRN-110004 Edge Case - Partially Received GRN",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists with some line items received and others not; user has 'Commit GRN' permission; all required fields are complete" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on the GRN with partially received items\n3. Attempt to click 'Commit GRN'\n4. Verify an error message appears",
-        },
-        { type: "expected", description: "Error message displayed preventing full GRN commitment." },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-    },
-  );
 });
 
-requestorTest.describe("GRN — Commit — Permission denial", () => {
-  requestorTest(
+fcTest.describe("GRN — Commit — Permission denial", () => {
+  fcTest(
     "TC-GRN-110002 Negative - No Permission to Commit GRN",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists in RECEIVED status; user does not have 'Commit GRN' permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on the GRN in RECEIVED status\n3. Attempt to click 'Commit GRN'\n4. Verify an error message appears",
-        },
-        { type: "expected", description: "Error message displayed preventing GRN commitment." },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. ดูปุ่ม Commit ที่ footer" },
+        { type: "expected", description: "ปุ่ม Commit ถูกปิดใช้งาน (aria-disabled) — ผู้ไม่มีสิทธิ์ commit ไม่ควรกดได้" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const commit = grn.commitButton();
-      // Either button is hidden (correct) or disabled
-      if ((await commit.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(commit).toBeDisabled({ timeout: 5_000 });
-      }
+      const d = await seededGrn("draft");
+      await page.goto(`${LIST}/${d.id}`);
+      const commit = page.getByRole("button", { name: "Commit", exact: true });
+      await expect(commit).toBeVisible({ timeout: 20_000 });
+      fcTest.fail(true, NO_GATE);
+      await expect(commit).toHaveAttribute("aria-disabled", "true");
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900012 — Void GRN
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Void", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-120001 Void GRN - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "A GRN exists in RECEIVED status and the user has 'Void GRN' permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Locate the GRN to be voided\n3. Click 'Void' button\n4. Verify the status changed to VOID",
-        },
-        { type: "expected", description: "The GRN status is updated to VOID." },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN draft\n2. คลิก Void ที่ footer\n3. ยืนยันใน dialog" },
+        { type: "expected", description: "backend เปลี่ยนสถานะเป็น voided; หน้าแสดง badge Voided และไม่มีปุ่ม Commit/Void" },
+        { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const receivedRow = page.locator("tbody").getByRole("row").filter({ hasText: /received/i }).first();
-      if ((await receivedRow.count()) === 0) return;
-      await openRecordFromRow(receivedRow);
-      await grn.voidButton().click({ timeout: 5_000 }).catch(() => {});
+      const g = await createDraftGrn(inv("void"));
+      await goto(page, g.id);
+      await button(page, "Void").click();
+      await confirmDialog(page, /^void$/i);
+      await expect.poll(async () => (await getGrn(g.id)).data!.doc_status, { timeout: 60_000 }).toBe("voided");
+      await page.reload();
+      await expect(page.locator("main")).toContainText(/void/i, { timeout: 15_000 });
+      await expect(page.getByRole("button", { name: "Commit", exact: true })).toHaveCount(0);
     },
   );
 
@@ -1301,109 +1106,71 @@ purchaseTest.describe("GRN — Void", () => {
     "TC-GRN-120003 Void GRN - Committed GRN",
     {
       annotation: [
-        { type: "preconditions", description: "A GRN exists in COMMITTED status and the user has 'Void GRN' permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Locate the GRN to be voided\n3. Click 'Void' button\n4. Verify the status is reverted to RECEIVED\n5. Verify the stock movements are reversed\n6. Verify the Journal Voucher (JV) is reversed",
-        },
-        { type: "expected", description: "The GRN status is updated to RECEIVED, stock movements are reversed, and the JV is reversed." },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const committedRow = page.locator("tbody").getByRole("row").filter({ hasText: /committed/i }).first();
-      if ((await committedRow.count()) === 0) return;
-      await openRecordFromRow(committedRow);
-      await grn.voidButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-GRN-120004 Void GRN - PO Status Reverted",
-    {
-      annotation: [
-        { type: "preconditions", description: "A GRN exists in COMMITTED status and the PO status is pending; user has 'Void GRN' permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Locate the GRN to be voided\n3. Click 'Void' button\n4. Verify the PO status is reverted",
-        },
-        { type: "expected", description: "The PO status is reverted." },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("GRN — Void — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-120002 Void GRN - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "A GRN exists in COMMITTED status and the user does not have 'Void GRN' permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Locate the GRN to be voided\n3. Attempt to click 'Void' button\n4. Verify an error message is displayed",
-        },
-        { type: "expected", description: "The user is unable to void the GRN and receives an error message." },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "มี GRN ที่ committed (GRN261100001)" },
+        { type: "steps", description: "1. เปิด GRN261100001\n2. มองหาปุ่ม Void/Commit ที่ footer" },
+        { type: "expected", description: "ใบที่ commit แล้วไม่มีปุ่ม Void และ Commit (FE ให้ void ได้เฉพาะใบที่ยังไม่ commit — grn-footer-action.tsx); backend ยังเป็น committed" },
+        { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const voidBtn = grn.voidButton();
-      // Either button is hidden (correct) or disabled
-      if ((await voidBtn.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(voidBtn).toBeDisabled({ timeout: 5_000 });
-      }
+      const c = await seededGrn("committed");
+      await goto(page, c.id);
+      await expect(page.locator("main")).toContainText(/committed/i);
+      await expect(page.getByRole("button", { name: "Void", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Commit", exact: true })).toHaveCount(0);
+      expect((await getGrn(c.id)).data!.doc_status).toBe("committed");
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900013 — Financial Summary
-// ═════════════════════════════════════════════════════════════════════════
+fcTest.describe("GRN — Void — Permission denial", () => {
+  fcTest(
+    "TC-GRN-120002 Void GRN - No Permission",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. ดูปุ่ม Void ที่ footer" },
+        { type: "expected", description: "ปุ่ม Void ถูกปิดใช้งาน (aria-disabled) — ผู้ไม่มีสิทธิ์ไม่ควร void ได้" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async ({ page }) => {
+      const d = await seededGrn("draft");
+      await page.goto(`${LIST}/${d.id}`);
+      const voidBtn = page.getByRole("button", { name: "Void", exact: true });
+      await expect(voidBtn).toBeVisible({ timeout: 20_000 });
+      fcTest.fail(true, NO_GATE);
+      await expect(voidBtn).toHaveAttribute("aria-disabled", "true");
+    },
+  );
+
+});
+
 purchaseTest.describe("GRN — Financial Summary", () => {
   purchaseTest(
     "TC-GRN-130001 View Financial Summary - Happy Path",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists and financial calculations are complete" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Click 'Financial Summary' tab\n3. Verify financial totals and breakdown displayed",
-        },
-        { type: "expected", description: "User sees complete financial breakdown with tax details and accounting preview." },
+        { type: "preconditions", description: "มี GRN ที่ committed GRN261100001 (2 บรรทัด x 1,000)" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ GRN261100001\n2. ดูแถบสรุปท้ายหน้า" },
+        { type: "expected", description: "แถบสรุปแสดง Subtotal 2,000.00, Discount 0.00, Net 2,000.00, Tax 0.00, Grand Total 2,000.00 THB ตรงกับ backend" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = grn.financialSummaryTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
+      const c = await seededGrn("committed");
+      await goto(page, c.id);
+      const rec = (await getGrn(c.id)).data!;
+      expect(Number(rec.total_amount)).toBe(2000);
+      const main = page.locator("main");
+      await expect(main).toContainText(/Subtotal\s*\|?\s*2,000\.00/);
+      await expect(main).toContainText(/Net\s*\|?\s*2,000\.00/);
+      await expect(main).toContainText(/Grand Total\s*\|?\s*2,000\.00/);
+      await expect(main).toContainText(/Discount\s*\|?\s*0\.00/);
     },
   );
 
@@ -1411,103 +1178,42 @@ purchaseTest.describe("GRN — Financial Summary", () => {
     "TC-GRN-130003 View Financial Summary - Invalid GRN",
     {
       annotation: [
-        { type: "preconditions", description: "Invalid or non-existent GRN" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Enter invalid GRN in search\n3. Click 'Financial Summary' tab\n4. Verify error message or empty state",
-        },
-        { type: "expected", description: "System displays error message or shows empty state indicating no financial summary available." },
+        { type: "preconditions", description: "ไม่มี GRN ตาม id" },
+        { type: "steps", description: "1. ไปที่ /procurement/goods-receive-note/00000000-0000-4000-8000-000000000000" },
+        { type: "expected", description: "แสดงหน้า error ('Something went wrong' + Try again) ไม่มีแถบสรุปยอด" },
         { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoDetail("non-existent-grn-99999");
-    },
-  );
-
-  purchaseTest(
-    "TC-GRN-130004 View Financial Summary - Outdated Calculations",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists but financial calculations are not yet complete" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Click 'Financial Summary' tab\n3. Verify message or state indicating calculations are pending",
-        },
-        { type: "expected", description: "System displays message or state indicating financial summary is not available until calculations are complete." },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("GRN — Financial Summary — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-130002 View Financial Summary - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists and financial calculations are complete; user does not have view permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Click 'Financial Summary' tab\n3. Verify access is denied or feature is greyed out",
-        },
-        { type: "expected", description: "User is unable to view financial summary and receives appropriate access denied message." },
-        { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = grn.financialSummaryTab();
-      // Either tab is hidden (correct) or disabled
-      if ((await tab.count()) === 0) {
-        expect(true).toBe(true);
-      }
+      await page.goto(`${LIST}/00000000-0000-4000-8000-000000000000`);
+      await expect(page.getByText("Something went wrong").first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText("Grand Total")).toHaveCount(0);
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900014 — Stock Movements
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Stock Movements", () => {
   purchaseTest(
     "TC-GRN-140001 View stock movements for committed GRN",
     {
       annotation: [
-        { type: "preconditions", description: "A GRN exists in COMMITTED status with stock movements created during commit" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on the GRN detail page (status = COMMITTED)\n3. Click on 'Stock Movements' tab\n4. Verify stock movements are displayed correctly",
-        },
-        { type: "expected", description: "Stock movements are correctly displayed, showing the impact on inventory." },
+        { type: "preconditions", description: "มี GRN ที่ committed GRN261100001" },
+        { type: "steps", description: "1. เปิด GRN261100001\n2. คลิกแท็บ Stock Movement" },
+        { type: "expected", description: "แท็บแสดงแถวการเคลื่อนไหวของสินค้า Ground Beef และ Chilled Angus โดยไม่มีข้อความ 'shows after this receipt is committed'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const committedRow = page.locator("tbody").getByRole("row").filter({ hasText: /committed/i }).first();
-      if ((await committedRow.count()) === 0) return;
-      await openRecordFromRow(committedRow);
-      const tab = grn.stockMovementsTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
+      const c = await seededGrn("committed");
+      await goto(page, c.id);
+      await page.getByRole("tab", { name: /stock movement/i }).click();
+      const main = page.locator("main");
+      await expect(main).toContainText("Ground Beef", { timeout: 15_000 });
+      await expect(main).toContainText("Chilled Angus");
+      await expect(main).not.toContainText(/shows after this receipt is committed/i);
     },
   );
 
@@ -1515,80 +1221,50 @@ purchaseTest.describe("GRN — Stock Movements", () => {
     "TC-GRN-140003 No stock movements when GRN is not committed",
     {
       annotation: [
-        { type: "preconditions", description: "A GRN exists but is not in COMMITTED status" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on the GRN detail page (status != COMMITTED)\n3. Click on 'Stock Movements' tab\n4. Verify no stock movements are displayed",
-        },
-        { type: "expected", description: "No stock movements are displayed, and user is informed that there are none." },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const draftRow = page.locator("tbody").getByRole("row").filter({ hasText: /draft|received/i }).first();
-      if ((await draftRow.count()) === 0) return;
-      await openRecordFromRow(draftRow);
-    },
-  );
-});
-
-requestorTest.describe("GRN — Stock Movements — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-140002 User without permission cannot access stock movements",
-    {
-      annotation: [
-        { type: "preconditions", description: "User does not have permission to view stock movements" },
-        {
-          type: "steps",
-          description:
-            "1. Log in as a user without permission to view stock movements\n2. Navigate to /procurement/goods-receive-note\n3. Try to click on the GRN detail page (status = COMMITTED)\n4. Try to click on 'Stock Movements' tab\n5. Verify access is denied",
-        },
-        { type: "expected", description: "System denies access to stock movements and displays appropriate error message." },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "มี GRN draft-4" },
+        { type: "steps", description: "1. เปิดหน้า draft-4\n2. คลิกแท็บ Stock Movement" },
+        { type: "expected", description: "แท็บแสดงข้อความ 'Stock movement shows after this receipt is committed' ไม่มีแถวสินค้า" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
+      const d = await seededGrn("draft");
+      await goto(page, d.id);
+      await page.getByRole("tab", { name: /stock movement/i }).click();
+      await expect(page.getByText(/shows after this receipt is committed/i)).toBeVisible({ timeout: 10_000 });
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900015 — Comments
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Comments", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-150001 Add valid comment",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists and user has view permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Click 'Comments & Attachments' tab\n3. Fill 'Comment' field with valid text\n4. Click 'Add Comment'",
-        },
-        { type: "expected", description: "Comment is added to GRN and visible to all users with access, activity log records comment addition." },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "มี GRN draft ของ test (ไม่มี comment)" },
+        { type: "steps", description: "1. เปิด GRN → Comment\n2. พิมพ์ข้อความ → Send comment" },
+        { type: "expected", description: "toast 'Comment added'; header เป็น 'Comments (1)' และแสดงข้อความ + ชื่อผู้ส่ง" },
+        { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = grn.commentsTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
-      const input = grn.commentInput();
-      if ((await input.count()) > 0) await input.fill("E2E test comment").catch(() => {});
-      await grn.addCommentButton().click({ timeout: 5_000 }).catch(() => {});
+      const g = await createDraftGrn(inv("c1"));
+      await goto(page, g.id);
+      await page.getByRole("button", { name: "Comment", exact: true }).click();
+      const dlg = page.locator("[role=dialog]:visible").last();
+      await expect(dlg).toContainText(/Comments \(\d+\)/);
+      await expect(dlg).toContainText("Comments (0)");
+      const text = `hello ${uid}`;
+      await dlg.getByPlaceholder("Add comment...").fill(text);
+      await dlg.getByRole("button", { name: "Send comment" }).click();
+      await expect(dlg).toContainText("Comments (1)", { timeout: 15_000 });
+      await expect(dlg).toContainText(text);
+      await expect(dlg).toContainText("purchase carmensoftware");
     },
   );
 
@@ -1596,27 +1272,24 @@ purchaseTest.describe("GRN — Comments", () => {
     "TC-GRN-150003 Add comment with empty text",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists and user has view permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Click 'Comments & Attachments' tab\n3. Fill 'Comment' field with no text\n4. Click 'Add Comment'",
-        },
-        { type: "expected", description: "System displays error message and does not add empty comment." },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Comment\n2. ไม่พิมพ์อะไร" },
+        { type: "expected", description: "ปุ่ม Send comment ถูกปิดใช้งาน และยังเป็น 'Comments (0)'; พิมพ์เว้นวรรคอย่างเดียวก็ยังกดส่งไม่ได้" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = grn.commentsTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
-      await grn.addCommentButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(grn.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const g = await createDraftGrn(inv("c3"));
+      await goto(page, g.id);
+      await page.getByRole("button", { name: "Comment", exact: true }).click();
+      const dlg = page.locator("[role=dialog]:visible").last();
+      await expect(dlg).toContainText(/Comments \(\d+\)/);
+      const send = dlg.getByRole("button", { name: "Send comment" });
+      await expect(send).toBeDisabled();
+      await dlg.getByPlaceholder("Add comment...").fill("   ");
+      await expect(send).toBeDisabled();
+      await expect(dlg).toContainText("Comments (0)");
     },
   );
 
@@ -1624,28 +1297,23 @@ purchaseTest.describe("GRN — Comments", () => {
     "TC-GRN-150004 Add comment with very long text",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists and user has view permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Click 'Comments & Attachments' tab\n3. Fill 'Comment' field with extremely long text (exceeds maximum allowed length)\n4. Click 'Add Comment'",
-        },
-        { type: "expected", description: "System displays error message and does not add comment with long text." },
-        { type: "priority", description: "Medium" },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Comment\n2. วางข้อความ 300 ตัวอักษร" },
+        { type: "expected", description: "ช่องรับได้สูงสุด 256 ตัวอักษร (ตัวนับ 256/256) ส่วนที่เกินถูกตัด" },
+        { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = grn.commentsTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
-      const input = grn.commentInput();
-      if ((await input.count()) > 0) await input.fill("a".repeat(5000)).catch(() => {});
-      await grn.addCommentButton().click({ timeout: 5_000 }).catch(() => {});
+      const g = await createDraftGrn(inv("c4"));
+      await goto(page, g.id);
+      await page.getByRole("button", { name: "Comment", exact: true }).click();
+      const dlg = page.locator("[role=dialog]:visible").last();
+      await expect(dlg).toContainText(/Comments \(\d+\)/);
+      const box = dlg.getByPlaceholder("Add comment...");
+      await box.fill("x".repeat(300));
+      expect((await box.inputValue()).length).toBe(256);
+      await expect(dlg).toContainText("256/256");
     },
   );
 
@@ -1653,82 +1321,59 @@ purchaseTest.describe("GRN — Comments", () => {
     "TC-GRN-150005 Add multiple comments",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists and user has view permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Click 'Comments & Attachments' tab\n3. Fill 'Comment' field with valid text\n4. Click 'Add Comment'\n5. Repeat steps 3-4 to add multiple comments",
-        },
-        { type: "expected", description: "Multiple comments are added to GRN and visible to all users with access, activity log records each comment addition." },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Comment\n2. ส่ง comment สองข้อความ" },
+        { type: "expected", description: "header เป็น 'Comments (2)' และแสดงทั้งสองข้อความ" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
+      const g = await createDraftGrn(inv("c5"));
+      await goto(page, g.id);
+      await page.getByRole("button", { name: "Comment", exact: true }).click();
+      const dlg = page.locator("[role=dialog]:visible").last();
+      await expect(dlg).toContainText(/Comments \(\d+\)/);
+      for (const n of [1, 2]) {
+        await dlg.getByPlaceholder("Add comment...").fill(`msg ${n} ${uid}`);
+        await dlg.getByRole("button", { name: "Send comment" }).click();
+        await expect(dlg).toContainText(`Comments (${n})`, { timeout: 15_000 });
+      }
+      await expect(dlg).toContainText(`msg 1 ${uid}`);
+      await expect(dlg).toContainText(`msg 2 ${uid}`);
     },
   );
+
 });
 
-requestorTest.describe("GRN — Comments — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-150002 Attempt to add comment without permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists and user has no view permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to GRN detail page\n2. Click 'Comments & Attachments' tab",
-        },
-        { type: "expected", description: "User cannot see or add comments, system denies access." },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900016 — Attachments
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Attachments", () => {
+  purchaseTest.afterAll(sweep);
+
   purchaseTest(
     "TC-GRN-160001 Happy Path - Upload Valid Attachments",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists; user has edit permission; valid documents exist" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Comments & Attachments'\n3. Click 'Upload Attachments'\n4. Select and upload valid documents\n5. Click 'Submit'",
-        },
-        { type: "expected", description: "Attachments are uploaded and linked to GRN, files are accessible to authorized users, activity log records upload." },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Comment\n2. Attach file เลือกรูป PNG\n3. พิมพ์ข้อความ → Send comment" },
+        { type: "expected", description: "comment ถูกเพิ่ม ('Comments (1)') พร้อมไฟล์แนบ e2e-pixel.png ที่แสดงในรายการ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = grn.commentsTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
-      const upload = grn.uploadAttachmentsButton();
-      if ((await upload.count()) === 0) {
-        purchaseTest.skip(true, "Upload UI not exposed");
-        return;
-      }
+      const g = await createDraftGrn(inv("a1"));
+      await goto(page, g.id);
+      const dir = mkdtempSync(join(tmpdir(), "grn-att-"));
+      const png = join(dir, "e2e-pixel.png");
+      writeFileSync(png, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
+      await page.getByRole("button", { name: "Comment", exact: true }).click();
+      const dlg = page.locator("[role=dialog]:visible").last();
+      await expect(dlg).toContainText(/Comments \(\d+\)/);
+      await dlg.locator("input[type=file]").setInputFiles(png);
+      await dlg.getByPlaceholder("Add comment...").fill(`with file ${uid}`);
+      await dlg.getByRole("button", { name: "Send comment" }).click();
+      await expect(dlg).toContainText("Comments (1)", { timeout: 20_000 });
+      await expect(dlg.getByText("e2e-pixel.png").or(dlg.locator("img").first())).toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -1736,39 +1381,25 @@ purchaseTest.describe("GRN — Attachments", () => {
     "TC-GRN-160003 Negative - Upload Invalid File Type",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists; user has edit permission; invalid document type exists (e.g., .exe)" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Comments & Attachments'\n3. Click 'Upload Attachments'\n4. Select and upload invalid file type\n5. Click 'Submit'",
-        },
-        { type: "expected", description: "Upload fails, error message displayed." },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Comment\n2. Attach file เลือกไฟล์ .txt" },
+        { type: "expected", description: "toast 'only JPG, PNG, WEBP, GIF, PDF files are allowed'; ไม่มีไฟล์ถูกแนบ ยังเป็น 'Comments (0)'" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
-    async () => {
-      // Best-effort placeholder — relies on server-side validation
-    },
-  );
-
-  purchaseTest(
-    "TC-GRN-160004 Edge Case - Upload Maximum Allowed Files",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists; user has edit permission; maximum allowed number of files exist" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Comments & Attachments'\n3. Click 'Upload Attachments'\n4. Select and upload maximum allowed number of files\n5. Click 'Submit'",
-        },
-        { type: "expected", description: "Maximum allowed files are uploaded, no additional files can be added." },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async () => {
-      // Best-effort placeholder
+    async ({ page }) => {
+      const g = await createDraftGrn(inv("a3"));
+      await goto(page, g.id);
+      const dir = mkdtempSync(join(tmpdir(), "grn-att-"));
+      const txt = join(dir, "e2e-note.txt");
+      writeFileSync(txt, "hello");
+      await page.getByRole("button", { name: "Comment", exact: true }).click();
+      const dlg = page.locator("[role=dialog]:visible").last();
+      await expect(dlg).toContainText(/Comments \(\d+\)/);
+      await dlg.locator("input[type=file]").setInputFiles(txt);
+      await expect(page.locator("[data-sonner-toast]").filter({ hasText: /only JPG, PNG, WEBP, GIF, PDF/i })).toBeVisible({ timeout: 10_000 });
+      await expect(dlg).toContainText("Comments (0)");
     },
   );
 
@@ -1776,83 +1407,47 @@ purchaseTest.describe("GRN — Attachments", () => {
     "TC-GRN-160005 Negative - No Files to Upload",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists; user has edit permission; no files exist" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Comments & Attachments'\n3. Click 'Upload Attachments'\n4. Attempt to upload files",
-        },
-        { type: "expected", description: "Upload fails, no files are uploaded." },
+        { type: "preconditions", description: "มี GRN draft ของ test" },
+        { type: "steps", description: "1. เปิด GRN → Comment\n2. ไม่เลือกไฟล์และไม่พิมพ์ข้อความ" },
+        { type: "expected", description: "ปุ่ม Send comment ถูกปิดใช้งาน ไม่มี comment ถูกสร้าง" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Negative" },
       ],
     },
-    async () => {
-      // Best-effort placeholder
-    },
-  );
-});
-
-requestorTest.describe("GRN — Attachments — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-160002 Negative - Upload Without Edit Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists; user does not have edit permission; valid documents exist" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Comments & Attachments'\n3. Click 'Upload Attachments'\n4. Attempt to select and upload documents",
-        },
-        { type: "expected", description: "User cannot upload documents, error message displayed." },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const upload = grn.uploadAttachmentsButton();
-      // Either button is hidden (correct) or disabled
-      if ((await upload.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(upload).toBeDisabled({ timeout: 5_000 });
-      }
+      const g = await createDraftGrn(inv("a5"));
+      await goto(page, g.id);
+      await page.getByRole("button", { name: "Comment", exact: true }).click();
+      const dlg = page.locator("[role=dialog]:visible").last();
+      await expect(dlg).toContainText(/Comments \(\d+\)/);
+      await expect(dlg.getByRole("button", { name: "Send comment" })).toBeDisabled();
+      await expect(dlg).toContainText("Comments (0)");
     },
   );
+
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900017 — Activity Log
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("GRN — Activity Log", () => {
   purchaseTest(
     "TC-GRN-170001 View Activity Log with Valid GRN",
     {
       annotation: [
-        { type: "preconditions", description: "GRN exists in any status and user has view permission (audit access)" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on a GRN that exists\n3. Click on 'Activity Log' tab\n4. Verify all activity log entries are displayed",
-        },
-        { type: "expected", description: "User sees complete activity log of the GRN." },
+        { type: "preconditions", description: "มี GRN GRN261100003 (saved) ที่ data:reset seed" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ GRN261100003\n2. คลิก Activity" },
+        { type: "expected", description: "sheet 'Activity' แสดงเลข GRN261100003 และรายการ 'Created' กับ 'Saved' โดย purchase carmensoftware" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = grn.activityLogTab();
-      if ((await tab.count()) > 0) await tab.click().catch(() => {});
+      const s = await seededGrn("saved");
+      await goto(page, s.id);
+      await page.getByRole("button", { name: "Activity", exact: true }).click();
+      const sheet = page.locator("[role=dialog]:visible").last();
+      await expect(sheet).toContainText("GRN261100003", { timeout: 10_000 });
+      await expect(sheet).toContainText("Created");
+      await expect(sheet).toContainText("Saved");
+      await expect(sheet).toContainText("purchase carmensoftware");
     },
   );
 
@@ -1860,163 +1455,19 @@ purchaseTest.describe("GRN — Activity Log", () => {
     "TC-GRN-170003 View Activity Log for Non-Existent GRN",
     {
       annotation: [
-        { type: "preconditions", description: "GRN does not exist" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on a non-existent GRN\n3. Navigate to 'Activity Log' tab\n4. Verify no activity log entries are displayed",
-        },
-        { type: "expected", description: "User sees an empty activity log." },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoDetail("non-existent-grn-99999");
-    },
-  );
-
-  purchaseTest(
-    "TC-GRN-170004 View Activity Log with No Activity",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists but has no activity logs" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on a GRN with no activity logs\n3. Navigate to 'Activity Log' tab\n4. Verify the 'Activity Log' tab displays a message indicating no activity",
-        },
-        { type: "expected", description: "User sees a message indicating no activity logs." },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-    },
-  );
-});
-
-requestorTest.describe("GRN — Activity Log — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-170002 View Activity Log without Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists in any status but user does not have view permission (audit access)" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click on a GRN that exists\n3. Navigate to 'Activity Log' tab\n4. Verify the 'Activity Log' tab is disabled or not accessible",
-        },
-        { type: "expected", description: "User cannot access the 'Activity Log' tab." },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const tab = grn.activityLogTab();
-      // Either tab is hidden (correct) or disabled
-      if ((await tab.count()) === 0) {
-        expect(true).toBe(true);
-      }
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-GRN-900018 — Bulk Approval
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("GRN — Bulk Approval", () => {
-  purchaseTest(
-    "TC-GRN-180001 Performing a bulk approval action",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists in DRAFT status; multiple line items exist; user has edit permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Items' tab\n3. Select multiple line items\n4. Click 'Approve' button\n5. Confirm approval",
-        },
-        { type: "expected", description: "Selected items are updated to APPROVED status, activity log records the bulk approval action." },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-GRN-180003 User attempts to perform bulk action on a GRN in RECEIVED status",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists in RECEIVED status; multiple line items exist; user has edit permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Items' tab\n3. Select multiple line items\n4. Try to click 'Approve' button",
-        },
-        { type: "expected", description: "User receives an error message indicating that the GRN cannot be edited in this state, no bulk action is performed." },
+        { type: "preconditions", description: "ไม่มี GRN ตาม id" },
+        { type: "steps", description: "1. ไปที่ /procurement/goods-receive-note/00000000-0000-4000-8000-000000000001" },
+        { type: "expected", description: "แสดงหน้า error แทนหน้า detail; ไม่มีปุ่ม Activity ให้เปิด" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
+      await page.goto(`${LIST}/00000000-0000-4000-8000-000000000001`);
+      await expect(page.getByText("Something went wrong").first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByRole("button", { name: "Activity", exact: true })).toHaveCount(0);
     },
   );
 
-  purchaseTest(
-    "TC-GRN-180004 Perform bulk action with no line items selected",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists in DRAFT status; multiple line items exist; user has edit permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Items' tab\n3. Click 'Approve' button without selecting any line items",
-        },
-        { type: "expected", description: "User receives a warning message to select at least one line item before performing a bulk action, no bulk action is performed." },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-    },
-  );
 });
 
-requestorTest.describe("GRN — Bulk Approval — Permission denial", () => {
-  requestorTest(
-    "TC-GRN-180002 User attempts to perform bulk action without edit permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "GRN exists in DRAFT status; multiple line items exist; user does not have edit permission" },
-        {
-          type: "steps",
-          description:
-            "1. Navigate to /procurement/goods-receive-note\n2. Click 'Items' tab\n3. Select multiple line items\n4. Try to click 'Approve' button",
-        },
-        { type: "expected", description: "User receives an error message indicating insufficient permissions, no bulk action is performed." },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const grn = new GRNPage(page);
-      await grn.gotoList();
-    },
-  );
-});
