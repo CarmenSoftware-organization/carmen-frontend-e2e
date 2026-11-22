@@ -93,6 +93,8 @@ export class PriceListTemplatePage extends BasePage {
     if ((await firstName.count()) === 0) return false;
     await firstName.click();
     await this.page.waitForLoadState("networkidle");
+    // The detail toolbar is rendered (Activity) — "button is absent" checks are meaningless before that.
+    await this.page.getByRole("button", { name: /^Activity$/ }).first().waitFor({ state: "visible", timeout: 10_000 });
     return true;
   }
 
@@ -103,10 +105,8 @@ export class PriceListTemplatePage extends BasePage {
   async openByName(name: string) {
     await this.gotoList();
     const search = this.searchInput();
-    if ((await search.count()) > 0) {
-      await search.fill(name).catch(() => {});
-      await search.press("Enter").catch(() => {});
-    }
+    await search.fill(name);
+    await search.press("Enter");
     await this.page.getByText(name, { exact: false }).first().click();
     await this.page.waitForLoadState("networkidle");
   }

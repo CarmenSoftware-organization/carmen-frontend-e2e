@@ -48,6 +48,26 @@ const opts = {
   descriptionInputId: "cuisine-description",
 };
 
+/**
+ * The list is empty after `data:reset` (cuisine types are not part of the standard dataset), and
+ * the detail/back cases run before the create case. Make sure one record exists, creating it
+ * through the real form (same steps as TC-CUIS-030001) when the list is empty.
+ */
+async function ensureCuisine(page: import("@playwright/test").Page) {
+  const h = new PageFormCrudHelper(page, opts);
+  await h.list.goto();
+  const rows = page.locator("tbody tr:has(button)");
+  const hasRow = await rows.first().waitFor({ state: "visible", timeout: 4_000 }).then(() => true, () => false);
+  if (hasRow) return;
+  await h.list.addButton().click();
+  await page.waitForURL(new RegExp(`${PATH}/new`), { timeout: 10_000 });
+  await page.waitForLoadState("networkidle");
+  await h.nameInput().fill(`${NAME} seed`);
+  await h.saveButton().click();
+  await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
+  await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+}
+
 test.describe("Cuisine Type — Smoke & CRUD", () => {
   test.beforeEach(async ({ page }) => {
     await ensureActiveBu(page, BU_CODE);
@@ -118,22 +138,16 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
     async ({ page }) => {
       await page.goto(PATH);
       await page.waitForLoadState("networkidle");
-      const gridViewBtn = page.getByRole("button", { name: /Grid view|grid/i }).first();
-      if (await gridViewBtn.isVisible({ timeout: 5_000 })) {
-        await gridViewBtn.click();
-        await page.waitForLoadState("networkidle");
-        // In grid mode there is no <table>; cards are likely divs
-        await expect(page.locator("table")).toHaveCount(0);
-
-        // Switch back
-        const listViewBtn = page.getByRole("button", { name: /List view|list/i }).first();
-        await listViewBtn.click();
-        await page.waitForLoadState("networkidle");
-        await expect(page.locator("table").first()).toBeVisible({ timeout: 10_000 });
-      } else {
-        // View toggle not available (narrow viewport) — skip gracefully
-        await expect(page.locator("table").first()).toBeVisible({ timeout: 10_000 });
-      }
+      const gridViewBtn = page.getByRole("button", { name: /^Grid view$/i });
+      await expect(gridViewBtn).toBeVisible({ timeout: 10_000 });
+      await gridViewBtn.click();
+      await page.waitForLoadState("networkidle");
+      // In grid mode there is no <table>; the records are cards
+      await expect(page.locator("table")).toHaveCount(0);
+      // Switch back
+      await page.getByRole("button", { name: /^List view$/i }).click();
+      await page.waitForLoadState("networkidle");
+      await expect(page.locator("table").first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -141,12 +155,12 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
   // TC-CUIS-010010 — Export / Print buttons are disabled
   // ------------------------------------------------------------------
   test(
-    "TC-CUIS-010010 ปุ่ม Export / Print แสดงแบบปิดใช้งาน",
+    "TC-CUIS-010010 หน้ารายการไม่มีปุ่ม Export / Print (hideExportPrint)",
     {
       annotation: [
-        { type: "preconditions", description: "อยู่ที่หน้า /operation-plan/cuisine บนจอขนาด desktop" },
-        { type: "steps", description: "1. สังเกตปุ่มฝั่งขวาของหัวหน้า list" },
-        { type: "expected", description: "ปุ่ม 'Export' และ 'Print' อยู่ในสถานะ disabled พร้อม title='Coming soon'" },
+        { type: "preconditions", description: "อยู่ที่หน้า /operation-plan/cuisine" },
+        { type: "steps", description: "1. ไปที่ /operation-plan/cuisine\\n2. มองหาปุ่ม Export / Print บน toolbar" },
+        { type: "expected", description: "ไม่มีปุ่ม Export และ Print (หน้านี้ซ่อนไว้ด้วย hideExportPrint) ส่วนปุ่ม Add Cuisine Type ใช้งานได้" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Functional" },
       ],
@@ -154,14 +168,12 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
     async ({ page }) => {
       await page.goto(PATH);
       await page.waitForLoadState("networkidle");
-      const exportBtn = page.getByRole("button", { name: /Export/i }).first();
-      if (await exportBtn.isVisible({ timeout: 5_000 })) {
-        const isDisabled = await exportBtn.isDisabled();
-        expect(isDisabled).toBe(true);
-      }
-      // Add Cuisine Type button should be enabled
-      const addBtn = page.getByRole("button", { name: /Add Cuisine Type|Add/i }).first();
-      await expect(addBtn).toBeEnabled({ timeout: 5_000 });
+      // Add is there → the toolbar is rendered; only then is "no Export / Print" meaningful
+      const addBtn = page.getByRole("button", { name: /Add Cuisine Type/i }).first();
+      await expect(addBtn).toBeEnabled({ timeout: 10_000 });
+      // cuisine-component.tsx passes hideExportPrint: the list does not offer Export or Print at all
+      await expect(page.getByRole("button", { name: /^Export$/i })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^Print$/i })).toHaveCount(0);
     },
   );
 
@@ -181,7 +193,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
     },
     async ({ page }) => {
       const h = new PageFormCrudHelper(page, opts);
-      await h.list.goto();
+      await ensureCuisine(page);
       const firstDataRow = page.getByRole("row").nth(1);
       await expect(firstDataRow).toBeVisible({ timeout: 10_000 });
       const cellBtn = firstDataRow.getByRole("button").filter({ hasText: /\S/ }).first();
@@ -236,7 +248,7 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
     },
     async ({ page }) => {
       const h = new PageFormCrudHelper(page, opts);
-      await h.list.goto();
+      await ensureCuisine(page);
       const firstDataRow = page.getByRole("row").nth(1);
       await expect(firstDataRow).toBeVisible({ timeout: 10_000 });
       await firstDataRow.getByRole("button").filter({ hasText: /\S/ }).first().click();
@@ -279,6 +291,9 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       await h.saveButton().click();
       // Should redirect back to list
       await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
+      await expect(page.getByText(/created successfully/i).first()).toBeVisible({ timeout: 10_000 });
+      await h.list.search(NAME);
+      await expect(page.getByRole("button", { name: NAME, exact: true }).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -302,21 +317,17 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       const h = new PageFormCrudHelper(page, opts);
       await h.nameInput().fill("Dirty Cuisine");
       const backBtn = page.getByRole("button", { name: /Go back|Back|ย้อนกลับ/i }).first();
-      await backBtn.click({ timeout: 5_000 }).catch(() => {});
-      const discardDialog = page.getByRole("alertdialog")
-        .or(page.getByRole("dialog", { name: /Discard/i }));
-      const appeared = await discardDialog.isVisible({ timeout: 5_000 }).catch(() => false);
-      if (appeared) {
-        await discardDialog.getByRole("button", { name: /Keep editing|Keep/i }).click();
-        await expect(page).toHaveURL(new RegExp(`${PATH}/new`));
-        await backBtn.click({ timeout: 5_000 }).catch(() => {});
-        const discardDialog2 = page.getByRole("alertdialog")
-          .or(page.getByRole("dialog", { name: /Discard/i }));
-        await discardDialog2.getByRole("button", { name: /Discard/i }).click();
-        await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 10_000 });
-      } else {
-        expect(page.url()).not.toMatch(`${PATH}/new`);
-      }
+      await backBtn.click({ timeout: 5_000 });
+      // A dirty form always raises the Discard dialog (hooks/use-entity-form handleBack)
+      const discardDialog = page.getByRole("alertdialog");
+      await expect(discardDialog).toBeVisible({ timeout: 5_000 });
+      // Keep editing → stays on /new
+      await discardDialog.getByRole("button", { name: /Keep editing|Keep/i }).click();
+      await expect(page).toHaveURL(new RegExp(`${PATH}/new`));
+      // Back again → Discard → list
+      await backBtn.click({ timeout: 5_000 });
+      await page.getByRole("alertdialog").getByRole("button", { name: /^Discard$/i }).click();
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 10_000 });
     },
   );
 
@@ -378,15 +389,11 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       await page.waitForLoadState("networkidle");
       // Toggle the active switch
       const sw = page.getByRole("switch").first();
-      if (await sw.isVisible({ timeout: 3_000 })) {
-        const wasActive = (await sw.getAttribute("aria-checked")) === "true";
-        await sw.click();
-        await h.saveButton().click();
-        await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
-      } else {
-        // Switch not visible in this context — skip toggle but verify save works
-        await h.cancelButton().click();
-      }
+      await expect(sw).toBeVisible({ timeout: 5_000 });
+      await sw.click();
+      await h.saveButton().click();
+      await page.waitForURL(new RegExp(`^.+${PATH}\\/?(\\?.*)?$`), { timeout: 15_000 });
+      await expect(page.getByText(/updated successfully/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -419,10 +426,9 @@ test.describe("Cuisine Type — Smoke & CRUD", () => {
       await h.nameInput().fill("UNSAVED_CHANGE_XYZ");
       await h.cancelButton().click();
       // A dirty form asks "Discard changes?" before leaving edit mode (DiscardDialog).
-      const discard = page.getByRole("alertdialog").or(page.getByRole("dialog", { name: /Discard/i })).first();
-      if (await discard.isVisible({ timeout: 3_000 }).catch(() => false)) {
-        await discard.getByRole("button", { name: /^Discard$/i }).click();
-      }
+      const discard = page.getByRole("alertdialog");
+      await expect(discard).toBeVisible({ timeout: 5_000 });
+      await discard.getByRole("button", { name: /^Discard$/i }).click();
       await page.waitForLoadState("networkidle");
       // Back to view mode — Edit button should reappear
       await expect(h.editButton()).toBeVisible({ timeout: 5_000 });

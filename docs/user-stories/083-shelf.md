@@ -18,7 +18,7 @@ _Generated from `tests/083-shelf.spec.ts` annotations. Edit annotations, not thi
 | TC-SHLF-050001 | ลบชั้นวางสำเร็จ | High | CRUD |
 | TC-SHLF-200001 | บันทึกไม่ได้เมื่อเว้นรหัสและชื่อว่าง | High | Validation |
 | TC-SHLF-300001 | ส่งออกรายการชั้นวางเป็นไฟล์ XLSX | Medium | Functional |
-| TC-SHLF-900002 | backend ยังไม่มี endpoint ชั้นวาง — หน้าแสดงสถานะข้อผิดพลาดพร้อมปุ่มลองใหม่ | Medium | Edge Case |
+| TC-SHLF-900002 | รายการชั้นวางโหลดจาก endpoint จริง — แสดงตารางและไม่เป็น error state | Medium | Edge Case |
 
 ---
 
@@ -51,7 +51,7 @@ URL ตรงกับ /config/shelf; หน้าแสดงชื่อ 'Shel
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อยู่ที่หน้า /config/shelf; backend มี endpoint /api/config/{bu_code}/shelves
+Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อยู่ที่หน้า /config/shelf
 
 **Steps**
 
@@ -75,7 +75,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อย
 
 **Preconditions**
 
-อยู่ใน dialog เพิ่มชั้นวาง; backend มี endpoint ชั้นวาง
+อยู่ใน dialog เพิ่มชั้นวาง
 
 **Steps**
 
@@ -98,7 +98,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อย
 
 **Preconditions**
 
-มีชั้นวางที่สร้างไว้แล้วอย่างน้อย 1 รายการ; backend มี endpoint ชั้นวาง
+มีชั้นวางที่สร้างไว้แล้วอย่างน้อย 1 รายการ
 
 **Steps**
 
@@ -121,7 +121,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อย
 
 **Preconditions**
 
-มีชั้นวางที่สร้างขึ้นมาเพื่อลบโดยเฉพาะ; backend มี endpoint ชั้นวาง
+มีชั้นวางที่สร้างขึ้นมาเพื่อลบโดยเฉพาะ
 
 **Steps**
 
@@ -142,7 +142,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อย
 
 **Preconditions**
 
-อยู่ใน dialog เพิ่มชั้นวาง โดยยังไม่กรอกอะไรเลย; backend มี endpoint ชั้นวาง
+อยู่ใน dialog เพิ่มชั้นวาง โดยยังไม่กรอกอะไรเลย
 
 **Steps**
 
@@ -163,7 +163,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อย
 
 **Preconditions**
 
-อยู่ที่หน้า /config/shelf บน desktop; มีชั้นวางอย่างน้อย 1 รายการ; backend มี endpoint ชั้นวาง
+อยู่ที่หน้า /config/shelf บน desktop; มีชั้นวางอย่างน้อย 1 รายการ
 
 **Steps**
 
@@ -176,7 +176,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อย
 
 ---
 
-## TC-SHLF-900002 — backend ยังไม่มี endpoint ชั้นวาง — หน้าแสดงสถานะข้อผิดพลาดพร้อมปุ่มลองใหม่
+## TC-SHLF-900002 — รายการชั้นวางโหลดจาก endpoint จริง — แสดงตารางและไม่เป็น error state
 
 > **As a** Admin user, **I want** this Shelf behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -185,19 +185,18 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อย
 
 **Preconditions**
 
-backend ของ BU ที่ใช้ทดสอบยังไม่มี endpoint /api/config/{bu_code}/shelves (สถานะตามคอมเมนต์ใน hooks/use-shelf.ts)
+backend ของ BU ที่ใช้ทดสอบมี endpoint /api/config/{bu_code}/shelves ใช้งานได้
 
 **Steps**
 
 1. ไปที่ /config/shelf
-2. รอให้คำขอรายการล้มเหลว
-3. คลิกปุ่มลองใหม่ในหน้าสถานะข้อผิดพลาด
+2. รอให้คำขอรายการเสร็จ
 
 **Expected**
 
-แทนที่ตาราง หน้าแสดง ErrorState พร้อมข้อความข้อผิดพลาดและปุ่มลองใหม่; กดลองใหม่แล้วระบบยิงคำขอซ้ำโดยแอปไม่ค้างและไม่ crash
+หน้าแสดงตารางรายการ (หรือสถานะว่าง) และไม่แสดง ErrorState / ปุ่มลองใหม่
 
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>

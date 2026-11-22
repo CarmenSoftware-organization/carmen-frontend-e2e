@@ -140,12 +140,13 @@ Login เป็น carmensoftware.dev+purchase@gmail.com; on /vendor-management/
 **Steps**
 
 1. ไปที่ /vendor-management/vendor
-2. คลิก trigger filter status (combobox/button)
-3. เลือก option Active (ถ้ามี) หรือกด Escape ปิดเมนู
+2. คลิกปุ่ม Filter แล้วเปิดกลุ่ม Status
+3. ตรวจว่ามีตัวเลือก All / Active / Inactive
+4. เลือก Active แล้วปิดแผง
 
 **Expected**
 
-พบ filter trigger และ option (active/inactive/all); หลังเลือกแล้วปุ่ม Add ยังคง visible
+มีตัวเลือก All / Active / Inactive; หลังเลือก Active ตารางเหลือเฉพาะ vendor ที่ไม่ใช่ Inactive และปุ่ม Add ยัง visible
 
 ---
 
@@ -747,4 +748,4 @@ TC-VEN-040050 ผ่านแล้ว → vendor ที่ ADMIN_CODE มีอ
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>

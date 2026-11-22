@@ -7,6 +7,24 @@ import { BuSwitcherPage } from "./pages/bu-switcher.page";
 import { uid, fakeName } from "./helpers/test-data";
 import { openRecordFromRow } from "./helpers/list-row";
 
+/**
+ * Create a throw-away template and open it in view mode. The edit cases used to take "the first
+ * template in the list" and rename it — that mutated the seeded STD template the campaign specs
+ * depend on, and skipped on an empty list. Each edit case now owns its record.
+ */
+async function openOwnTemplate(page: import("@playwright/test").Page, tag: string) {
+  const tpl = new PriceListTemplatePage(page);
+  const name = `PT ${tag} ${uid}`;
+  await tpl.gotoNew();
+  await tpl.nameInput().fill(name);
+  await tpl.selectFirstCurrency();
+  await tpl.saveButton().click({ timeout: 10_000 });
+  await tpl.expectSavedToast();
+  await tpl.openByName(name);
+  await expect(tpl.editButton()).toBeVisible({ timeout: 10_000 });
+  return { tpl, name };
+}
+
 // Module-level unique id so the admin serial chain's names stay consistent
 // across a worker restart (factory `uid` provides the same per-process semantics).
 
@@ -117,12 +135,12 @@ procurementStaffTest.describe("Pricelist Template — Create — Permission deni
     "TC-PT-010004 Create Pricelist Template - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Procurement Staff และมีสิทธิ์เข้าถึงเฉพาะหน้า list ของ Pricelist Templates" },
+        { type: "preconditions", description: "Login เป็น requestor ซึ่งมีเฉพาะ vendor_management.price_list_template.view" },
         {
           type: "steps",
           description: "1. ไปที่ /vendor-management/price-list-template\n2. คลิก 'New Pricelist Template'",
         },
-        { type: "expected", description: "ผู้ใช้ถูก redirect ไปยังหน้าไม่มีสิทธิ์เข้าถึงหรือปุ่ม 'New Pricelist Template' ถูกซ่อน/disabled" },
+        { type: "expected", description: "ไม่มีปุ่ม 'Add Price List Template' (บั๊ก: ปัจจุบันปุ่มยังแสดงและเปิด /new ได้)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
@@ -130,16 +148,10 @@ procurementStaffTest.describe("Pricelist Template — Create — Permission deni
     async ({ page }) => {
       const tpl = new PriceListTemplatePage(page);
       await tpl.gotoList();
-      const btn = tpl.newButton();
-      // Either button is hidden (correct) or click yields permission error
-      if ((await btn.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await btn.click().catch(() => {});
-        await expect(page.getByText(/unauthorized|denied|insufficient|permission/i).first())
-          .toBeVisible({ timeout: 5_000 })
-          .catch(() => {});
-      }
+      await expect(tpl.rowActionsButton(), "list rendered").toBeVisible({ timeout: 10_000 });
+      // Bug site: requestor@ holds price_list_template.view only, yet the FE offers Add.
+      procurementStaffTest.fail(true, "suspected bug: a view-only role (requestor@: price_list_template.view, no .create) sees an enabled 'Add Price List Template' button");
+      await expect(tpl.newButton()).toHaveCount(0);
     },
   );
 });
@@ -190,7 +202,7 @@ procurementManagerTest.describe("Pricelist Template — Add products", () => {
   //
   // ต้องตัดสินใจฝั่ง product ก่อนว่า template ที่ไม่มีสินค้าเลยควรบันทึกได้หรือไม่
   // ถ้าไม่ควร นี่คือบั๊ก; ถ้าควร ให้ลบเคสนี้ทิ้งแล้วเขียนเคสใหม่ที่ตรงกับกฎจริง
-  procurementManagerTest.fixme(
+  procurementManagerTest(
     "TC-PT-020002 Add products to template - Invalid Input (ไม่มีสินค้าเลย)",
     {
       annotation: [
@@ -211,9 +223,14 @@ procurementManagerTest.describe("Pricelist Template — Add products", () => {
       await tpl.gotoNew();
       await tpl.nameInput().fill(`PT invalid row ${uid}`);
       await tpl.selectFirstCurrency();
+      procurementManagerTest.fail(true, "suspected bug: a price-list template saves with no product (no validation error) — product decision pending");
       // ไม่ติ๊กสินค้า — schema ต้องการอย่างน้อยหนึ่งรายการ
+      const write = page.waitForResponse((r) => r.request().method() !== "GET" && /pricelist/i.test(r.url()), { timeout: 6_000 }).then(() => true, () => false);
       await tpl.saveButton().click({ timeout: 10_000 });
-      await expect(tpl.anyError().first()).toBeVisible({ timeout: 10_000 });
+      // A blocked save sends no write request at all. (anyError() is no use here: the required-field
+      // asterisks are .text-destructive too, so it matches on a perfectly valid form.)
+      expect(await write, "validation should block the save: no POST expected").toBe(false);
+      await expect(page).toHaveURL(/price-list-template\/new/);
     },
   );
   procurementManagerTest(
@@ -263,11 +280,7 @@ procurementStaffTest.describe("Pricelist Template — Add products — Permissio
     },
     async ({ page }) => {
       const tpl = new PriceListTemplatePage(page);
-      if (!(await tpl.openFirst())) {
-        // no template to inspect → nothing to add against; treat as satisfied
-        expect(true).toBe(true);
-        return;
-      }
+      expect(await tpl.openFirst(), "no price-list template in the BU — run `bun run data:reset`").toBe(true);
       // Staff lands on a read-only detail: the lookup tree that adds products is
       // rendered only in create/edit mode, so its search box must be absent.
       await expect(tpl.productLookupSearch()).toHaveCount(0, { timeout: 5_000 });
@@ -283,23 +296,19 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
     "TC-PT-030001 Edit template with valid data",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Procurement Manager และมีสิทธิ์แก้ไข template" },
+        { type: "preconditions", description: "Login เป็น Procurement Manager และมีสิทธิ์แก้ไข template; สเปคสร้าง template ของตัวเองก่อน (ไม่แตะ template STD)" },
         {
           type: "steps",
           description:
-            "1. ไปที่ /vendor-management/price-list-template/[id]\n2. คลิก 'Edit'\n3. กรอกชื่อ template\n4. กรอก description\n5. เลือก currency\n6. กรอก validity period\n7. กรอก vendor instructions\n8. สลับ switch allow multi-MOQ\n9. สลับ switch require lead time\n10. กรอก max items per submission\n11. สลับ switch send reminders\n12. เลือก 14 และ 7 วันใน reminder checkboxes\n13. กรอก escalation days\n14. คลิก 'Save Changes'",
+            "1. สร้าง template ใหม่แล้วเปิด /vendor-management/price-list-template/[id]\n2. คลิก 'Edit'\n3. เปลี่ยนชื่อ template\n4. คลิก 'Save'",
         },
-        { type: "expected", description: "template บันทึกสำเร็จ doc_version เพิ่มขึ้น แสดงข้อความสำเร็จ และบันทึกการเปลี่ยนแปลงใน audit trail" },
+        { type: "expected", description: "template บันทึกสำเร็จ แสดง toast สำเร็จ" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const tpl = new PriceListTemplatePage(page);
-      if (!(await tpl.openFirst())) {
-        procurementManagerTest.skip(true, "No template available to edit");
-        return;
-      }
+      const { tpl } = await openOwnTemplate(page, "edit");
       await tpl.editButton().click({ timeout: 10_000 });
       // unique name avoids name-uniqueness rejection across reruns
       await tpl.nameInput().fill(`E2E edited ${uid}`);
@@ -312,7 +321,7 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
     "TC-PT-030002 Edit template with invalid validity period",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Procurement Manager และมีสิทธิ์แก้ไข template" },
+        { type: "preconditions", description: "Login เป็น Procurement Manager; สเปคสร้าง template ของตัวเองก่อน" },
         {
           type: "steps",
           description:
@@ -324,19 +333,15 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
       ],
     },
     async ({ page }) => {
-      const tpl = new PriceListTemplatePage(page);
-      // openFirst() clicks the row's name button — a bare row click does not
-      // navigate in the redesigned data grid.
-      if (!(await tpl.openFirst())) {
-        procurementManagerTest.skip(true, "No template available");
-        return;
-      }
+      const { tpl } = await openOwnTemplate(page, "validity");
       await tpl.editButton().click({ timeout: 10_000 });
       await tpl.fillHeader({ validityDays: 0 });
       await tpl.saveButton().click({ timeout: 10_000 });
       // The validity_period input carries a native min=1; entering 0 makes it
       // rangeUnderflow-invalid, so the submit is blocked and no success toast
       // appears. (Native constraint validation, not an anyError() element.)
+      const underflow = await tpl.validityDaysInput().evaluate((el) => (el as HTMLInputElement).validity.rangeUnderflow);
+      expect(underflow).toBe(true);
       await expect(tpl.successToast()).toHaveCount(0, { timeout: 3_000 });
     },
   );
@@ -345,7 +350,7 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
     "TC-PT-030003 Edit template without product selection",
     {
       annotation: [
-        { type: "preconditions", description: "Procurement Manager มีสิทธิ์แก้ไข template และไม่มี product เชื่อมโยงกับ template" },
+        { type: "preconditions", description: "Login เป็น Procurement Manager; สเปคสร้าง template ของตัวเองซึ่งไม่มีสินค้า" },
         {
           type: "steps",
           description:
@@ -357,17 +362,16 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
       ],
     },
     async ({ page }) => {
-      const tpl = new PriceListTemplatePage(page);
-      await tpl.gotoList();
-      const firstRow = page.getByRole("row").nth(1);
-      if ((await firstRow.count()) === 0) {
-        procurementManagerTest.skip(true, "No template available");
-        return;
-      }
-      await openRecordFromRow(firstRow);
-      await tpl.editButton().click({ timeout: 5_000 }).catch(() => {});
-      await tpl.saveButton().click({ timeout: 5_000 }).catch(() => {});
-      await expect(tpl.anyError().first()).toBeVisible({ timeout: 5_000 });
+      const { tpl } = await openOwnTemplate(page, "noprod");
+      await tpl.editButton().click({ timeout: 10_000 });
+      await expect(tpl.saveButton()).toBeVisible({ timeout: 10_000 });
+      // Setup above is normal; only the bug site below (a product-less save goes through) is the expected failure.
+      procurementManagerTest.fail(true, "suspected bug: a price-list template saves with no product at all (no validation error) — same as TC-PT-020002");
+      const write = page.waitForResponse((r) => r.request().method() !== "GET" && /pricelist/i.test(r.url()), { timeout: 6_000 }).then(() => true, () => false);
+      await tpl.saveButton().click({ timeout: 10_000 });
+      // A blocked save sends no write request (validation), so nothing is saved.
+      expect(await write, "validation should block the save: no write expected").toBe(false);
+      await expect(tpl.saveButton()).toBeVisible();
     },
   );
 
@@ -375,26 +379,25 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
     "TC-PT-030004 Edit template with minimal changes",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Procurement Manager และมีสิทธิ์แก้ไข template" },
+        { type: "preconditions", description: "Login เป็น Procurement Manager; สเปคสร้าง template ของตัวเองก่อน" },
         {
           type: "steps",
           description:
             "1. ไปที่ /vendor-management/price-list-template/[id]\n2. คลิก 'Edit'\n3. เปลี่ยน validity period เป็น 1 วัน\n4. คลิก 'Save Changes'",
         },
-        { type: "expected", description: "template บันทึกสำเร็จ doc_version เพิ่มขึ้น และบันทึกการเปลี่ยนแปลงใน audit trail" },
+        { type: "expected", description: "template บันทึกสำเร็จ (toast) และเปิดดูอีกครั้งแล้ว validity period เป็น 1 วัน" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
     },
     async ({ page }) => {
-      const tpl = new PriceListTemplatePage(page);
-      await tpl.gotoList();
-      const firstRow = page.getByRole("row").nth(1);
-      if ((await firstRow.count()) === 0) return;
-      await openRecordFromRow(firstRow);
-      await tpl.editButton().click({ timeout: 5_000 }).catch(() => {});
+      const { tpl, name } = await openOwnTemplate(page, "minimal");
+      await tpl.editButton().click({ timeout: 10_000 });
       await tpl.fillHeader({ validityDays: 1 });
-      await tpl.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      await tpl.saveButton().click({ timeout: 10_000 });
+      await tpl.expectSavedToast();
+      await tpl.openByName(name);
+      await expect(page.getByText(/1\s*days?/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 
@@ -402,25 +405,26 @@ procurementManagerTest.describe("Pricelist Template — Edit", () => {
     "TC-PT-030005 Edit template with all fields in default state",
     {
       annotation: [
-        { type: "preconditions", description: "Procurement Manager มีสิทธิ์แก้ไข template; template อยู่ในสถานะ default โดยไม่มีการเปลี่ยนแปลง" },
+        { type: "preconditions", description: "Login เป็น Procurement Manager; สเปคสร้าง template ของตัวเองก่อน" },
         {
           type: "steps",
           description:
-            "1. ไปที่ /vendor-management/price-list-template/[id]\n2. คลิก 'Edit'\n3. คลิก 'Save Changes'",
+            "1. สร้าง template ใหม่แล้วเปิด detail\n2. คลิก 'Edit'\n3. ไม่แก้ไขอะไร\n4. คลิก 'Cancel'",
         },
-        { type: "expected", description: "template ไม่มีการเปลี่ยนแปลง doc_version คงเดิม และไม่มีการบันทึกการเปลี่ยนแปลงใน audit trail" },
+        { type: "expected", description: "กลับสู่โหมดดูโดยไม่มี dialog ยืนยันทิ้งการแก้ไข ชื่อ template เหมือนเดิม และไม่มี toast บันทึก" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const tpl = new PriceListTemplatePage(page);
-      await tpl.gotoList();
-      const firstRow = page.getByRole("row").nth(1);
-      if ((await firstRow.count()) === 0) return;
-      await openRecordFromRow(firstRow);
-      await tpl.editButton().click({ timeout: 5_000 }).catch(() => {});
-      await tpl.saveButton().click({ timeout: 5_000 }).catch(() => {});
+      const { tpl, name } = await openOwnTemplate(page, "nochange");
+      await tpl.editButton().click({ timeout: 10_000 });
+      await tpl.cancelButton().click({ timeout: 10_000 });
+      // No edit → no discard prompt; back in view mode with the same name, nothing saved.
+      await expect(page.getByRole("alertdialog")).toHaveCount(0);
+      await expect(tpl.editButton()).toBeVisible({ timeout: 5_000 });
+      await expect(page.getByText(name).first()).toBeVisible();
+      await expect(tpl.successToast().filter({ hasText: /updated/i })).toHaveCount(0);
     },
   );
 });
@@ -451,10 +455,7 @@ procurementManagerTest.describe("Pricelist Template — Clone (removed)", () => 
     },
     async ({ page }) => {
       const tpl = new PriceListTemplatePage(page);
-      if (!(await tpl.openFirst())) {
-        expect(true).toBe(true);
-        return;
-      }
+      expect(await tpl.openFirst(), "no price-list template in the BU — run `bun run data:reset`").toBe(true);
       await expect(tpl.cloneButton()).toHaveCount(0, { timeout: 5_000 });
     },
   );
@@ -505,11 +506,8 @@ procurementManagerTest.describe("Pricelist Template — Clone (removed)", () => 
     },
     async ({ page }) => {
       const tpl = new PriceListTemplatePage(page);
-      if (!(await tpl.openFirst())) {
-        expect(true).toBe(true);
-        return;
-      }
-      await tpl.editButton().click({ timeout: 10_000 }).catch(() => {});
+      expect(await tpl.openFirst(), "no price-list template in the BU — run `bun run data:reset`").toBe(true);
+      await tpl.editButton().click({ timeout: 10_000 });
       await expect(tpl.saveButton()).toBeVisible({ timeout: 10_000 });
       await expect(tpl.cloneButton()).toHaveCount(0, { timeout: 5_000 });
     },
@@ -534,10 +532,7 @@ procurementStaffTest.describe("Pricelist Template — Clone (removed) — Permis
     },
     async ({ page }) => {
       const tpl = new PriceListTemplatePage(page);
-      if (!(await tpl.openFirst())) {
-        expect(true).toBe(true);
-        return;
-      }
+      expect(await tpl.openFirst(), "no price-list template in the BU — run `bun run data:reset`").toBe(true);
       await expect(tpl.cloneButton()).toHaveCount(0, { timeout: 5_000 });
       await expect(tpl.cloneMenuItem()).toHaveCount(0, { timeout: 5_000 });
     },
@@ -653,10 +648,7 @@ procurementStaffTest.describe("Pricelist Template — Activate / Deactivate — 
     },
     async ({ page }) => {
       const tpl = new PriceListTemplatePage(page);
-      if (!(await tpl.openFirst())) {
-        expect(true).toBe(true);
-        return;
-      }
+      expect(await tpl.openFirst(), "no price-list template in the BU — run `bun run data:reset`").toBe(true);
       // No editable status control is exposed to a read-only Procurement Staff.
       await expect(tpl.statusSelect()).toHaveCount(0, { timeout: 5_000 });
     },
@@ -684,10 +676,7 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
     },
     async ({ page }) => {
       const tpl = new PriceListTemplatePage(page);
-      if (!(await tpl.openFirst())) {
-        procurementManagerTest.skip(true, "No template available to view");
-        return;
-      }
+      expect(await tpl.openFirst(), "no price-list template in the BU — run `bun run data:reset`").toBe(true);
       await expect(page).toHaveURL(/price-list-template\/[^/]+$/, { timeout: 10_000 });
     },
   );
@@ -739,10 +728,7 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
       const tpl = new PriceListTemplatePage(page);
       await tpl.gotoList();
       const header = tpl.nameColumnHeader();
-      if ((await header.count()) === 0) {
-        procurementManagerTest.skip(true, "Name column header not visible");
-        return;
-      }
+      await expect(header, "Name column header").toBeVisible({ timeout: 10_000 });
       // Click the header's own button, not the <th>: the <th> wraps a ghost
       // <button> and clicking the cell does nothing at all (the rows never
       // reorder). Verified against the live table.
@@ -767,23 +753,20 @@ procurementManagerTest.describe("Pricelist Template — Search and View", () => 
 
 procurementStaffTest.describe("Pricelist Template — Search and View — Permission denial", () => {
   procurementStaffTest(
-    "TC-PT-060003 Search and View Templates - Negative - Insufficient Permission",
+    "TC-PT-060003 role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template",
     {
       annotation: [
-        { type: "preconditions", description: "Login เข้า Carmen Blue แต่ไม่มีสิทธิ์ดู template" },
+        { type: "preconditions", description: "Login เป็น requestor (ทุก role ใน seed มีสิทธิ์ price_list_template.view จึงทดสอบ 'ไม่มีสิทธิ์ดู' ไม่ได้)" },
         { type: "steps", description: "1. ไปที่ /vendor-management/price-list-template" },
-        { type: "expected", description: "ระบบ redirect ผู้ใช้ไปยังหน้าไม่มีสิทธิ์เข้าถึงหรือแสดงข้อความปฏิเสธสิทธิ์" },
+        { type: "expected", description: "role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template (แถว STD campaign template)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
       await page.goto(LIST_PATH);
-      // Either we land on the page (procurement staff has read access) or we get redirected
-      const url = page.url();
-      const onListPage = /price-list-template/.test(url);
-      const onUnauthorized = /unauthorized|denied|403/i.test(url);
-      expect(onListPage || onUnauthorized).toBeTruthy();
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByRole("row").filter({ hasText: /STD campaign template/ }).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 });
@@ -873,10 +856,8 @@ adminTest.describe.serial("Pricelist Template — admin@BLAVG CRUD", () => {
 
       await tpl.gotoList();
       const search = tpl.searchInput();
-      if ((await search.count()) > 0) {
-        await search.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search.press("Enter").catch(() => {});
-      }
+      await search.fill(ADMIN_NAME_UPDATED);
+      await search.press("Enter");
       await expect(page.getByText(ADMIN_NAME_UPDATED).first()).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -901,10 +882,8 @@ adminTest.describe.serial("Pricelist Template — admin@BLAVG CRUD", () => {
 
       await tpl.gotoList();
       const search = tpl.searchInput();
-      if ((await search.count()) > 0) {
-        await search.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search.press("Enter").catch(() => {});
-      }
+      await search.fill(ADMIN_NAME_UPDATED);
+      await search.press("Enter");
       await expect(page.getByText(ADMIN_NAME_UPDATED).first()).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -946,18 +925,14 @@ adminTest.describe.serial("Pricelist Template — admin@BLAVG CRUD", () => {
       const tpl = new PriceListTemplatePage(page);
       await tpl.gotoList();
       const search = tpl.searchInput();
-      if ((await search.count()) > 0) {
-        await search.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search.press("Enter").catch(() => {});
-      }
+      await search.fill(ADMIN_NAME_UPDATED);
+      await search.press("Enter");
       await tpl.deleteViaRowActions(ADMIN_NAME_UPDATED, { confirm: false });
 
       await tpl.gotoList();
       const search2 = tpl.searchInput();
-      if ((await search2.count()) > 0) {
-        await search2.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search2.press("Enter").catch(() => {});
-      }
+      await search2.fill(ADMIN_NAME_UPDATED);
+      await search2.press("Enter");
       await expect(page.getByText(ADMIN_NAME_UPDATED).first()).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -977,10 +952,8 @@ adminTest.describe.serial("Pricelist Template — admin@BLAVG CRUD", () => {
       const tpl = new PriceListTemplatePage(page);
       await tpl.gotoList();
       const search = tpl.searchInput();
-      if ((await search.count()) > 0) {
-        await search.fill(ADMIN_NAME_UPDATED).catch(() => {});
-        await search.press("Enter").catch(() => {});
-      }
+      await search.fill(ADMIN_NAME_UPDATED);
+      await search.press("Enter");
       await tpl.deleteViaRowActions(ADMIN_NAME_UPDATED, { confirm: true });
       await tpl.expectSavedToast();
     },

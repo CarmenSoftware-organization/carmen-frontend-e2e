@@ -19,7 +19,7 @@ _Generated from `tests/110-op-category.spec.ts` annotations. Edit annotations, n
 | TC-OPCAT-040003 | หน้ารายละเอียดอ่านอย่างเดียวจนกว่าจะกด Edit | Medium | Functional |
 | TC-OPCAT-050001 | ลบหมวดหมู่จากเมนูในแถวของตาราง | High | CRUD |
 | TC-OPCAT-050002 | ยกเลิกการลบใน dialog | Medium | Alternate Flow |
-| TC-OPCAT-100001 | ผู้ใช้ไม่มีสิทธิ์เข้าถึงหน้าหมวดหมู่ | High | Authorization |
+| TC-OPCAT-100001 | ผู้ใช้ที่มีสิทธิ์ category.view เห็นหน้าหมวดหมู่ | High | Authorization |
 | TC-OPCAT-200001 | บันทึกไม่ได้เมื่อเว้น Code/Name ว่าง | High | Validation |
 | TC-OPCAT-200002 | จำกัดความยาว Code ไม่เกิน 10 ตัวอักษร | Medium | Validation |
 | TC-OPCAT-900001 | ค้นหาด้วยคำที่ไม่มีผลลัพธ์ | Low | Edge Case |
@@ -207,7 +207,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; อย
 
 ---
 
-## TC-OPCAT-100001 — ผู้ใช้ไม่มีสิทธิ์เข้าถึงหน้าหมวดหมู่
+## TC-OPCAT-100001 — ผู้ใช้ที่มีสิทธิ์ category.view เห็นหน้าหมวดหมู่
 
 > **As a** low-privilege user, **I should NOT** see Add/edit controls on Op Category, **so that** role separation is enforced.
 
@@ -311,4 +311,4 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git 4c477d5</sub>

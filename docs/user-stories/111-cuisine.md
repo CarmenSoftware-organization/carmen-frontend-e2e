@@ -14,7 +14,7 @@ _Generated from `tests/111-cuisine.spec.ts` annotations. Edit annotations, not t
 | TC-CUIS-010001 | แสดงรายการ Cuisine Type | High | Smoke |
 | TC-CUIS-010002 | ค้นหา Cuisine ด้วยชื่อ | High | Functional |
 | TC-CUIS-010007 | สลับมุมมองตาราง ↔ การ์ด | Medium | Functional |
-| TC-CUIS-010010 | ปุ่ม Export / Print แสดงแบบปิดใช้งาน | Low | Functional |
+| TC-CUIS-010010 | หน้ารายการไม่มีปุ่ม Export / Print (hideExportPrint) | Low | Functional |
 | TC-CUIS-020001 | เปิดหน้ารายละเอียด Cuisine จาก list | Medium | Happy Path |
 | TC-CUIS-020003 | เปิด id ที่ไม่มีอยู่จริงแล้วเจอสถานะไม่พบข้อมูล | Medium | Negative |
 | TC-CUIS-020004 | ปุ่ม Back กลับหน้า list | Low | Happy Path |
@@ -96,23 +96,23 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; มี
 
 ---
 
-## TC-CUIS-010010 — ปุ่ม Export / Print แสดงแบบปิดใช้งาน
+## TC-CUIS-010010 — หน้ารายการไม่มีปุ่ม Export / Print (hideExportPrint)
 
-> **As a** Admin user, **I want** this Cuisine interaction to behave as expected, **so that** the workflow stays predictable.
+> **As a** Admin user, **I want** a clear empty-state when no Cuisine records match my search, **so that** I know nothing was found.
 
 **Priority:** Low · **Test Type:** Functional
 
 **Preconditions**
 
-อยู่ที่หน้า /operation-plan/cuisine บนจอขนาด desktop
+อยู่ที่หน้า /operation-plan/cuisine
 
 **Steps**
 
-1. สังเกตปุ่มฝั่งขวาของหัวหน้า list
+1. ไปที่ /operation-plan/cuisine\n2. มองหาปุ่ม Export / Print บน toolbar
 
 **Expected**
 
-ปุ่ม 'Export' และ 'Print' อยู่ในสถานะ disabled พร้อม title='Coming soon'
+ไม่มีปุ่ม Export และ Print (หน้านี้ซ่อนไว้ด้วย hideExportPrint) ส่วนปุ่ม Add Cuisine Type ใช้งานได้
 
 ---
 
@@ -405,4 +405,4 @@ _(no steps documented)_
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git 4c477d5</sub>

@@ -398,14 +398,13 @@ test.describe("Currency — Smoke & CRUD", () => {
     },
   );
 
-  // FIXME: backend accepts duplicate names (cf. dept TC-DEP-010011)
-  test.fixme(
+  test(
     "TC-CUR-200003 สร้าง name ซ้ำ ต้องถูก reject",
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG" },
         { type: "steps", description: "1. สร้าง record ด้วย name X\n2. เปิด Add dialog กรอก name X เดิม กด Save" },
-        { type: "expected", description: "รายการที่สองไม่ถูกสร้าง: dialog ยังเปิดอยู่ (backend reject name ซ้ำ)" },
+        { type: "expected", description: "รายการที่สองไม่ถูกสร้าง: dialog (ช่อง name) ยังเปิดอยู่ (backend reject name ซ้ำ)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
@@ -419,20 +418,19 @@ test.describe("Currency — Smoke & CRUD", () => {
       await h.nameInput().fill(name);
       await h.saveButton().click();
       await expect(page.getByText(/created|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
+      await expect(h.nameInput()).toBeHidden({ timeout: 10_000 });
 
       await h.list.goto();
       await h.openAddDialog();
       await selectIso(h, page, "QAR");
       await h.nameInput().fill(name);
+      const answered = page.waitForResponse((r) => r.request().method() === "POST" && /currenc/i.test(r.url()), { timeout: 10_000 });
       await h.saveButton().click();
-      await expect(h.dialog()).toBeVisible({ timeout: 10_000 });
+      const response = await answered; // the write is sent (normal step); its answer is the bug site
+      test.fail(true, "suspected bug: backend accepts a second currency with the same name (POST answers 2xx, dialog closes, record is created) — cf. dept TC-DEP-010011");
+      expect(response.ok(), `duplicate name should be rejected, POST → ${response.status()}`).toBe(false);
+      await expect(h.nameInput()).toBeVisible({ timeout: 5_000 });
       await h.cancelButton().click();
-
-      await h.list.goto();
-      await h.list.search(name);
-      await h.deleteRow(name);
-      await h.deleteConfirmButton().click();
-      await expect(page.getByText(/deleted|success|สำเร็จ/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
 

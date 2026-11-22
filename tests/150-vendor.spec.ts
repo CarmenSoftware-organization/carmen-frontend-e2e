@@ -90,8 +90,8 @@ test.describe("Vendor — List smoke", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; on /vendor-management/vendor" },
-        { type: "steps", description: "1. ไปที่ /vendor-management/vendor\n2. คลิก trigger filter status (combobox/button)\n3. เลือก option Active (ถ้ามี) หรือกด Escape ปิดเมนู" },
-        { type: "expected", description: "พบ filter trigger และ option (active/inactive/all); หลังเลือกแล้วปุ่ม Add ยังคง visible" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/vendor\n2. คลิกปุ่ม Filter แล้วเปิดกลุ่ม Status\n3. ตรวจว่ามีตัวเลือก All / Active / Inactive\n4. เลือก Active แล้วปิดแผง" },
+        { type: "expected", description: "มีตัวเลือก All / Active / Inactive; หลังเลือก Active ตารางเหลือเฉพาะ vendor ที่ไม่ใช่ Inactive และปุ่ม Add ยัง visible" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -99,33 +99,19 @@ test.describe("Vendor — List smoke", () => {
     async ({ page }) => {
     const vendor = new VendorPage(page);
     await vendor.list.goto();
-
-    // Locate a status filter control — combobox first, button fallback
-    const statusTrigger = page
-      .getByRole("combobox")
-      .filter({ hasText: /status|all|active/i })
-      .first();
-    const fallbackBtn = page.getByRole("button", { name: /status|filter/i }).first();
-    const trigger = (await statusTrigger.count()) > 0 ? statusTrigger : fallbackBtn;
-
-    // Must find at least one status filter control on the page
-    await expect(trigger).toBeVisible({ timeout: 5_000 });
-
-    await trigger.click();
-    // After clicking, at least one option should be reachable — otherwise the
-    // filter isn't wired up. Accept Active / Inactive / All.
-    const options = page.getByRole("option", { name: /^(active|inactive|all)$/i });
-    await expect(options.first()).toBeVisible({ timeout: 5_000 });
-
-    const activeOption = options.filter({ hasText: /^active$/i }).first();
-    if ((await activeOption.count()) > 0) {
-      await activeOption.click();
-      await page.waitForLoadState("networkidle");
-    } else {
-      // Close the menu by pressing Escape so subsequent assertions aren't covered
-      await page.keyboard.press("Escape");
+    // ListFilter sheet (FE components/list-filter, ListToolbar): "Status" group with All / Active / Inactive.
+    await vendor.filterButton().click();
+    const sheet = page.locator("[role=dialog]:visible").last();
+    await sheet.getByRole("button", { name: "Status" }).click();
+    for (const label of ["All", "Active", "Inactive"]) {
+      await expect(sheet.getByText(label, { exact: true }).first()).toBeVisible({ timeout: 5_000 });
     }
-
+    await sheet.getByText("Active", { exact: true }).click();
+    await page.keyboard.press("Escape");
+    await page.waitForLoadState("networkidle");
+    const rows = await vendor.list.tableRows().allInnerTexts();
+    expect(rows.length, "filter by Active should leave at least one vendor").toBeGreaterThan(0);
+    for (const row of rows) expect(row, "no Inactive vendor remains").not.toMatch(/\bInactive\b/);
     await expect(vendor.list.addButton()).toBeVisible();
   });
 });
@@ -254,7 +240,7 @@ test.describe("Vendor — Create happy path", () => {
 // (snapshot ที่ไม่ subscribe) การ์ดจึงไม่ re-render เมื่อ `handleSetPrimary` เรียก
 // `form.setValue(...)` — ค่าใน form เปลี่ยนจริงแต่ UI ไม่ตาม ผู้ใช้จริงก็เจออาการ
 // เดียวกัน ควรเปลี่ยนไปใช้ useWatch/Controller ตรวจกับแอป local 2026-09-18
-  test.fixme(
+  test(
     "TC-VEN-030005 สร้าง vendor พร้อม contact 1 รายการ (primary)",
     {
       annotation: [
@@ -277,8 +263,11 @@ test.describe("Vendor — Create happy path", () => {
       name: "Primary Person",
       email: "primary@example.com",
       phone: "0123456789",
-      is_primary: true,
     });
+    // Bug site: ticking Primary does not change the checkbox state (card does not re-render).
+    test.fail(true, "suspected bug: Primary checkbox on a vendor contact card does not re-render (vendor-contact.tsx:152 reads form.getValues, not useWatch)");
+    await vendor.setPrimaryContact(0);
+    await expect(vendor.contactRow(0).getByRole("checkbox").first()).toBeChecked({ timeout: 3_000 });
     await vendor.saveButton().click();
     await vendor.expectSaved();
     await vendor.gotoList();
@@ -383,7 +372,7 @@ test.describe("Vendor — Tabs & dynamic arrays", () => {
 // (snapshot ที่ไม่ subscribe) การ์ดจึงไม่ re-render เมื่อ `handleSetPrimary` เรียก
 // `form.setValue(...)` — ค่าใน form เปลี่ยนจริงแต่ UI ไม่ตาม ผู้ใช้จริงก็เจออาการ
 // เดียวกัน ควรเปลี่ยนไปใช้ useWatch/Controller ตรวจกับแอป local 2026-09-18
-  test.fixme(
+  test(
     "TC-VEN-030011 เปลี่ยน primary contact ได้ (radio exclusive)",
     {
       annotation: [
@@ -402,6 +391,8 @@ test.describe("Vendor — Tabs & dynamic arrays", () => {
     await vendor.addContactRow();
     await vendor.fillContact(0, { name: "A" });
     await vendor.fillContact(1, { name: "B" });
+    // Bug site: ticking Primary does not change the checkbox state (card does not re-render).
+    test.fail(true, "suspected bug: Primary checkbox on a vendor contact card does not re-render (vendor-contact.tsx:152 reads form.getValues, not useWatch)");
     await vendor.setPrimaryContact(0);
     await expect(vendor.contactRow(0).getByRole("checkbox")).toBeChecked();
     await vendor.setPrimaryContact(1);

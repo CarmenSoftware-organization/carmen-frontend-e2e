@@ -23,7 +23,7 @@ _Generated from `tests/010-department.spec.ts` annotations. Edit annotations, no
 | TC-DEP-040001 | แก้ไขชื่อและบันทึก | High | CRUD |
 | TC-DEP-040002 | แก้ไขแล้ว persist หลัง reload | High | Functional |
 | TC-DEP-040003 | Cancel ขณะ form dirty ต้องเด้ง Discard dialog | Medium | Functional |
-| TC-DEP-040004 | assign user เข้า department members | Medium | CRUD |
+| TC-DEP-040004 | ย้ายสมาชิกออก/กลับเข้า department members แล้วบันทึกคงอยู่ | Medium | CRUD |
 | TC-DEP-040005 | assign user เป็น Head of Department | Low | CRUD |
 | TC-DEP-050001 | ลบรายการ | High | CRUD |
 | TC-DEP-050002 | ยกเลิกการลบ record ต้องยังอยู่ | Medium | Functional |
@@ -304,7 +304,7 @@ Discard dialog ปรากฏ; หลังยืนยันกลับ view 
 
 ---
 
-## TC-DEP-040004 — assign user เข้า department members
+## TC-DEP-040004 — ย้ายสมาชิกออก/กลับเข้า department members แล้วบันทึกคงอยู่
 
 > **As a** Admin user, **I want** to manage Department records via CRUD, **so that** the data stays correct over time.
 
@@ -312,19 +312,18 @@ Discard dialog ปรากฏ; หลังยืนยันกลับ view 
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; ต้องมี user ที่ assign ได้ ไม่งั้น skip
+Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user
 
 **Steps**
 
-1. สร้าง record
-2. เปิด record จาก list แล้วกด Edit
-3. ใน section 'Department Members' เลือก user ตัวแรกแล้วย้ายไปขวา
-4. Save
-5. reload เปิด detail เช็คว่า user ปรากฏใน members
+1. เปิด department แรกจาก list แล้วกด Edit
+2. ย้ายสมาชิกคนแรกจาก Department Members กลับไป Available Users
+3. Save แล้ว reload เปิด Edit ดูว่ามี user ใน Available
+4. ย้าย user กลับเข้า Department Members แล้ว Save (คืนค่าเดิม)
 
 **Expected**
 
-user ที่ถูก assign แสดงใน section members หลัง reload — หรือ skip ถ้าไม่มี user ว่างให้ assign
+การย้ายสมาชิกถูกบันทึกจริง (user ปรากฏใน Available หลัง reload) และย้ายกลับแล้ว Available กลับเป็นว่างเหมือนเดิม
 
 ---
 
@@ -336,19 +335,19 @@ user ที่ถูก assign แสดงใน section members หลัง r
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG; ต้องมี user ที่ assign ได้ ไม่งั้น skip
+Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user
 
 **Steps**
 
-1. สร้าง record
-2. เปิด record จาก list แล้วกด Edit
-3. ใน section 'Head of Department' เลือก user ตัวแรกแล้วย้ายไปขวา
-4. Save
-5. reload เปิด detail เช็คว่า user ปรากฏใน HOD
+1. เปิด department แรกจาก list แล้วกด Edit
+2. ใน section 'Head of Department' เลือก user ตัวแรกแล้วย้ายไปขวา
+3. Save
+4. reload เช็คว่า user ปรากฏใน HOD
+5. เปิด Edit ย้าย user กลับออกแล้ว Save (คืนค่าเดิม)
 
 **Expected**
 
-user ที่ถูก assign แสดงใน section HOD หลัง reload — หรือ skip ถ้าไม่มี user ให้ assign
+user ที่ถูก assign แสดงใน section HOD หลัง reload และคืนค่าเดิมได้
 
 ---
 
@@ -597,4 +596,4 @@ Login เป็น carmensoftware.dev+admin@gmail.com; อยู่ที่ /co
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>
