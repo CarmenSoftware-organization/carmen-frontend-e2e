@@ -270,6 +270,21 @@ const AVG2607 = avgPeriod({
   ],
 });
 
+// รอบ catch-up 2026-11-22: CARMEN-AVG งวด 2612 (งวด 2611 ปิดแล้ว) — ราคาเหมือน avg2607; ระวัง: FE 90018c6d จำกัดวันที่เอกสารไม่เกินวันนี้
+// งวด 2612 เริ่ม 2026-12-01 จึงยังสร้างเอกสารลงงวดนี้ผ่าน UI ไม่ได้ก่อนถึงวันนั้น (phase ที่ต้องลงวันที่ในงวดจะ skip พร้อมเหตุผล)
+const AVG2612 = avgPeriod({
+  period: "2612", next: "2701", ym: "2026-12", nextYm: "2027-01", periodEnd: "2026-12-31", nextCaption: "January 2027",
+  costFrom: { value: "average", label: "Average" }, preCleanAuto: true, p4: 70,
+  price: { a1: 140, a3: 340, p3: 400, p2: 275, si2: 240, si1: 190, void1: 165, cg2: 280, draft3: 410, next3: 460 },
+  rule: "ค่าเฉลี่ย ณ ปิดงวดที่นับ = มูลค่ารับเข้าทั้งงวด (รวมยอดยกมา) ÷ จำนวน ของสินค้า ทุกคลัง (สูตร computePeriodAverages) · ของออก (SO) = ต้นทุนที่บัญชีโพสต์",
+  fixedBy: "PR #706 · #708 · #709 · #712 · #713 · #724",
+  costCases: AVG2607.costCases.map((c) => ({
+    ...c,
+    wantFrom: c.wantFrom.replace("2607", "2612"),
+    trap: c.trap.replace("2608", "2701").replace(/\b07-(\d\d)/g, "12-$1").replace("2607", "2612"),
+  })),
+});
+
 const P11: Scenario = {
   ...P10,
   period: "2611",
@@ -290,7 +305,7 @@ const P11: Scenario = {
 
 /** ตั้งชื่อ scenario ไว้จริงไหม — ไม่ตั้ง = ใช้ค่าตั้งต้นได้แค่ตอน list เทส ตอนรันจริง requireScenario() จะหยุดก่อน */
 export const SCENARIO_SET = Boolean(process.env.E2E_PERIOD_SCENARIO);
-export const SCENARIO = (process.env.E2E_PERIOD_SCENARIO ?? "avg2607") as "p09" | "p10" | "p11" | "avg2607";
-export const SCN: Scenario = { p09: P09, p10: P10, p11: P11, avg2607: AVG2607 }[SCENARIO];
+export const SCENARIO = (process.env.E2E_PERIOD_SCENARIO ?? "avg2607") as "p09" | "p10" | "p11" | "avg2607" | "avg2612";
+export const SCN: Scenario = { p09: P09, p10: P10, p11: P11, avg2607: AVG2607, avg2612: AVG2612 }[SCENARIO];
 export const PERIOD = SCN.period;
 export const NEXT = SCN.next;
