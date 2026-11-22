@@ -35,6 +35,11 @@ export const ACCOUNT_CODES: Record<keyof AccountingAccounts, string> = {
   fxLoss: "5400",
 };
 
+/** GL JV prefixes the AP posting path needs: AP / auto vouchers, and reversal (void / reverse). */
+export const JV_PREFIXES = {
+  ap: { code: "APJV", description: "AP voucher (e2e)" },
+  reversal: { code: "APRV", description: "AP reversal voucher (e2e)" },
+} as const;
 export const BANK_ACCOUNT_CODE = "E2E-BANK";
 export const VAT_PROFILE_NAME = "Vat 7%";
 export const WHT_PROFILE_NAME = "WHT 3%";
@@ -70,7 +75,38 @@ async function resolveAccounts(admin: ApiClient, base: string, result: StepResul
   return accounts;
 }
 
-async function seedGlSetting(admin: ApiClient, base: string, a: AccountingAccounts, result: StepResult): Promise<void> {
+interface JvPrefixIds { ap: string; reversal: string }
+
+/** Create the AP and reversal JV prefixes unless their codes exist; returns their ids. */
+async function seedJvPrefixes(admin: ApiClient, base: string, result: StepResult): Promise<JvPrefixIds | null> {
+  const path = `${base}/gl-jv-prefixes`;
+  const list = await admin.get(`${path}?perpage=100`);
+  if (!list.ok) {
+    result.failed.push(`GET ${path} → ${list.status}`);
+    return null;
+  }
+  const rows = rowsOf<Row>(list.body);
+  const ids: Partial<JvPrefixIds> = {};
+  for (const [role, want] of Object.entries(JV_PREFIXES) as [keyof JvPrefixIds, { code: string; description: string }][]) {
+    const existing = rows.find((r) => r.code === want.code);
+    if (existing) {
+      ids[role] = existing.id;
+      result.skipped++;
+      continue;
+    }
+    const res = await admin.post(path, { code: want.code, description: want.description, is_active: true, is_default: false });
+    const id = (res.body?.data as { id?: string } | undefined)?.id;
+    if (!res.ok || !id) {
+      result.failed.push(`POST ${path} ${want.code} → ${note(res)}`);
+      return null;
+    }
+    ids[role] = id;
+    result.created++;
+  }
+  return ids as JvPrefixIds;
+}
+
+async function seedGlSetting(admin: ApiClient, base: string, a: AccountingAccounts, prefixes: JvPrefixIds, result: StepResult): Promise<void> {
   const path = `${base}/app-config/gl_setting`;
   const current = await admin.get(path);
   // 404 = key not created yet; any other failure must not be read as "empty" and overwrite real settings.
@@ -87,6 +123,9 @@ async function seedGlSetting(admin: ApiClient, base: string, a: AccountingAccoun
     advance_deposit_account_id: a.advanceDeposit,
     realized_fx_gain_account_id: a.fxGain,
     realized_fx_loss_account_id: a.fxLoss,
+    ap_jv_prefix_id: prefixes.ap,
+    auto_jv_prefix_id: prefixes.ap,
+    reversal_prefix_id: prefixes.reversal,
     ap_auto_from_grn: false,
   };
   if (Object.entries(desired).every(([k, v]) => existing[k] === v)) {
@@ -215,7 +254,8 @@ export async function seedAccountingBase(
   const accounts = await resolveAccounts(admin, base, result);
   if (!accounts) return { ...result, accounts: emptyAccounts() };
   // gl_setting first: the GL period endpoint reads fiscal_year_start_month from it.
-  await seedGlSetting(admin, base, accounts, result);
+  const prefixes = await seedJvPrefixes(admin, base, result);
+  if (prefixes) await seedGlSetting(admin, base, accounts, prefixes, result);
   if (result.failed.length === 0) await seedGlPeriod(admin, base, now, result);
   await seedBankAccount(admin, base, accounts.bank, result);
   await seedTaxProfiles(admin, base, accounts, result);

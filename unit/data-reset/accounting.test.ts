@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ACCOUNT_CODES, BANK_ACCOUNT_CODE, seedAccountingBase } from "../../scripts/data-reset/accounting";
+import { ACCOUNT_CODES, BANK_ACCOUNT_CODE, JV_PREFIXES, seedAccountingBase } from "../../scripts/data-reset/accounting";
 import { loadCoaFixture } from "../../scripts/data-reset/bu-base";
 import { createSessions } from "../../scripts/data-reset/sessions";
 import { fakeBackend } from "./fake-backend";
@@ -13,6 +13,8 @@ const coaRows = Object.values(ACCOUNT_CODES).map((code) => ({ id: idOf(code), co
 function routes(over: Record<string, unknown> = {}) {
   return {
     [`GET ${base}/chart-of-accounts`]: { data: coaRows },
+    [`GET ${base}/gl-jv-prefixes`]: { data: [{ id: "px-jv", code: "JV" }] },
+    [`POST ${base}/gl-jv-prefixes`]: (b: unknown) => ({ data: { id: `px-${(b as { code: string }).code}` } }),
     [`GET ${base}/app-config/gl_setting`]: { __status: 404 },
     [`PUT ${base}/app-config/gl_setting`]: { data: {} },
     [`GET ${base}/gl-periods`]: { data: [] },
@@ -64,8 +66,29 @@ describe("seedAccountingBase", () => {
       realized_fx_gain_account_id: idOf("4300"),
       realized_fx_loss_account_id: idOf("5400"),
       ap_auto_from_grn: false,
+      ap_jv_prefix_id: `px-${JV_PREFIXES.ap.code}`,
+      auto_jv_prefix_id: `px-${JV_PREFIXES.ap.code}`,
+      reversal_prefix_id: `px-${JV_PREFIXES.reversal.code}`,
     });
     expect(result.accounts.bank).toBe(idOf("1110"));
+  });
+
+  it("creates the AP and reversal JV prefixes, and reuses ones that exist", async () => {
+    const { writes } = await run();
+    const posts = writes.filter((w) => w.method === "POST" && w.path === `${base}/gl-jv-prefixes`).map((w) => (w.body as { code: string }).code);
+    expect(posts).toEqual([JV_PREFIXES.ap.code, JV_PREFIXES.reversal.code]);
+    const again = await run({
+      [`GET ${base}/gl-jv-prefixes`]: { data: [{ id: "x1", code: "APJV" }, { id: "x2", code: "APRV" }] },
+    });
+    expect(again.writes.some((w) => w.path.includes("/gl-jv-prefixes"))).toBe(false);
+    const value = (bodyOf(again.writes, "PUT", `${base}/app-config/gl_setting`) as { value: Record<string, unknown> }).value;
+    expect(value).toMatchObject({ ap_jv_prefix_id: "x1", auto_jv_prefix_id: "x1", reversal_prefix_id: "x2" });
+  });
+
+  it("writes nothing when the prefix list cannot be read", async () => {
+    const { writes, result } = await run({ [`GET ${base}/gl-jv-prefixes`]: { __status: 500 } });
+    expect(result.failed.length).toBeGreaterThan(0);
+    expect(writes.some((w) => w.path.endsWith("/gl_setting"))).toBe(false);
   });
 
   it("keeps other gl_setting keys and skips the write when already current", async () => {
@@ -74,6 +97,7 @@ describe("seedAccountingBase", () => {
       ap_control_account_id: idOf("2100"), input_vat_account_id: idOf("1170"), wht_payable_account_id: idOf("2150"),
       advance_deposit_account_id: idOf("1180"), realized_fx_gain_account_id: idOf("4300"), realized_fx_loss_account_id: idOf("5400"),
       ap_auto_from_grn: false,
+      ap_jv_prefix_id: "px-APJV", auto_jv_prefix_id: "px-APJV", reversal_prefix_id: "px-APRV",
     };
     const same = await run({ [`GET ${base}/app-config/gl_setting`]: { data: { value: current } } });
     expect(same.writes.some((w) => w.path.endsWith("/gl_setting"))).toBe(false);
@@ -142,6 +166,18 @@ describe("seedAccountingBase", () => {
     expect(again.writes.some((w) => w.path.includes("/vendors"))).toBe(false);
   });
 
+  it("dry run writes nothing (the plan is only logged by runDataReset; see run.test.ts)", async () => {
+    // seedAccountingBase has no dry-run mode: runDataReset never calls it with --dry-run.
+    const backend = fakeBackend(routes());
+    const { runDataReset } = await import("../../scripts/data-reset/index");
+    const code = await runDataReset(
+      { dryRun: true, yes: false, skipReset: false, verbose: false, help: false }, cfg,
+      { fetchFn: backend.fetchFn, now, log: () => {}, seedMaster: async () => [], seedDocuments: async () => [] },
+    );
+    expect(code).toBeLessThanOrEqual(1);
+    expect(backend.writes()).toEqual([]);
+  });
+
   it("reports a missing COA account instead of writing", async () => {
     const { writes, result } = await run({ [`GET ${base}/chart-of-accounts`]: { data: coaRows.slice(1) } });
     expect(result.failed.join()).toContain("lacks");
@@ -152,7 +188,9 @@ describe("seedAccountingBase", () => {
     const full = { [`GET ${base}/app-config/gl_setting`]: { data: { value: {
       fiscal_year_start_month: 1, ap_control_account_id: idOf("2100"), input_vat_account_id: idOf("1170"), wht_payable_account_id: idOf("2150"),
       advance_deposit_account_id: idOf("1180"), realized_fx_gain_account_id: idOf("4300"), realized_fx_loss_account_id: idOf("5400"), ap_auto_from_grn: false,
+      ap_jv_prefix_id: "x1", auto_jv_prefix_id: "x1", reversal_prefix_id: "x2",
     } } },
+    [`GET ${base}/gl-jv-prefixes`]: { data: [{ id: "x1", code: "APJV" }, { id: "x2", code: "APRV" }] },
     [`GET ${base}/gl-periods`]: { data: [{ status: "open", start_at: "2026-01-01T00:00:00.000Z", end_at: "2026-12-31T23:59:59.999Z" }] },
     [`GET ${base}/bank-accounts`]: { data: [{ id: "b1", code: BANK_ACCOUNT_CODE, chart_of_accounts_id: idOf("1110") }] },
     [`GET ${base}/tax-profiles`]: { data: [
@@ -163,6 +201,6 @@ describe("seedAccountingBase", () => {
     const { writes, result } = await run(full);
     expect(writes).toEqual([]);
     expect(result).toMatchObject({ created: 0, failed: [] });
-    expect(result.skipped).toBe(7);
+    expect(result.skipped).toBe(9);
   });
 });

@@ -61,6 +61,8 @@ function routes(over: Record<string, unknown> = {}) {
     "PATCH /api/business-units": { data: { id: "bu-1", doc_version: 5 } },
     [`GET ${base}/chart-of-accounts`]: { data: coa },
     [`POST ${base}/chart-of-accounts`]: { data: { id: "a1" } },
+    [`GET ${base}/gl-jv-prefixes`]: { data: [] },
+    [`POST ${base}/gl-jv-prefixes`]: (b: unknown) => ({ data: { id: `px-${(b as { code: string }).code}` } }),
     [`GET ${base}/app-config/gl_setting`]: { __status: 404 },
     [`PUT ${base}/app-config/gl_setting`]: { data: {} },
     [`GET ${base}/gl-periods`]: { data: [] },
@@ -112,6 +114,7 @@ describe("runDataReset", () => {
       "POST /api-system/tenant/resets/",
       "PATCH /api/business-units",
       `POST ${base}/chart-of-accounts`,
+      `POST ${base}/gl-jv-prefixes`,
       `PUT ${base}/app-config/gl_setting`,
       `POST ${base}/gl-periods/years`,
       `POST ${base}/bank-accounts`,
@@ -132,6 +135,7 @@ describe("runDataReset", () => {
     expect(code).toBe(0);
     expect(backend.writes()).toEqual([]);
     expect(seedCalls).toEqual([true]);
+    expect(out).toContain("accounting: would");
     for (const step of ["reset", "master", "accounting", "mappings", "access", "workflows", "period"]) expect(out).toContain(step);
   });
 
