@@ -48,25 +48,29 @@ const ok = (r: ApiResult, what: string) => {
 /** ISO instant for a `YYYY-MM-DD` day (the JV date fields reject a bare date). */
 export const isoDay = (day: string): string => `${day}T05:00:00.000Z`;
 
-/** `YYYY-MM-DD` of today in the machine's local time - the day the seed's open GL year covers. */
+/** `YYYY-MM-DD` of today in the BU's timezone (Asia/Bangkok), the basis the GL period dates are read on. */
 export function today(): string {
-  const d = new Date();
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
-/** Every row of a BU list (pages of 100). */
+const MAX_PAGES = 50;
+
+/**
+ * Every row of a BU list. The page size comes from the response's `paginate` metadata when present (the BE may cap
+ * `perpage` below 100); a listing cut short by the page cap throws, so a truncated list never reads as "not there".
+ */
 export async function listAllRows(role: Role, path: string, config = false): Promise<Row[]> {
   const send = config ? buConfigSend : buSend;
   const rows: Row[] = [];
-  for (let page = 1; page <= 20; page++) {
+  for (let page = 1; page <= MAX_PAGES; page++) {
     const r = await send(role, "GET", `${path}${path.includes("?") ? "&" : "?"}perpage=100&page=${page}`);
     if (r.status !== 200) throw new Error(`GET ${path} -> ${r.status}`);
     const got: Row[] = Array.isArray(r.body?.data) ? r.body.data : [];
     rows.push(...got);
-    if (got.length < 100) break;
+    const meta = r.body?.paginate as { perpage?: number; pages?: number } | undefined;
+    if (meta?.pages !== undefined ? page >= Number(meta.pages) : got.length < Number(meta?.perpage ?? 100)) return rows;
   }
-  return rows;
+  throw new Error(`GET ${path}: more than ${MAX_PAGES} pages, listing would be truncated`);
 }
 
 /** Workflow action on a document: reads `doc_version` right before (a stale one is refused), then POSTs. Returns the raw result. */
@@ -100,7 +104,7 @@ export async function accountId(code: string): Promise<string> {
 export async function jvOfSource(sourceType: string, sourceId: string): Promise<JvLine[]> {
   const heads = (await listAllRows(CREATOR, "/gl-jv"))
     .filter((j) => j.source_ref_type === sourceType && j.source_ref_id === sourceId)
-    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    .sort((a, b) => String(a.created_at ?? a.audit?.created?.at ?? "").localeCompare(String(b.created_at ?? b.audit?.created?.at ?? "")));
   const lines: JvLine[] = [];
   for (const h of heads) {
     const d = ok(await buSend(CREATOR, "GET", `/gl-jv/${h.id}`), `GET gl-jv ${h.id}`).body.data;
@@ -177,11 +181,24 @@ export async function withGlSetting<T>(patch: Partial<GlSetting>, fn: () => Prom
   if (!before) throw new Error("gl_setting has no value on the TEST BU - run data:reset");
   const previous = structuredClone(before);
   ok(await buConfigSend(CREATOR, "PUT", GL_SETTING, { value: { ...before, ...patch } }), `PUT ${GL_SETTING}`);
+  let failed = false;
+  let original: unknown;
+  let result!: T;
   try {
-    return await fn();
-  } finally {
-    ok(await buConfigSend(CREATOR, "PUT", GL_SETTING, { value: previous }), `restore ${GL_SETTING}`);
+    result = await fn();
+  } catch (e) {
+    failed = true;
+    original = e;
   }
+  try {
+    ok(await buConfigSend(CREATOR, "PUT", GL_SETTING, { value: previous }), `restore ${GL_SETTING}`);
+  } catch (restoreError) {
+    // A failed restore must not hide the spec's own failure: log it and rethrow the original.
+    if (!failed) throw restoreError;
+    console.error(`withGlSetting: ${String(restoreError)} - gl_setting was NOT restored`);
+  }
+  if (failed) throw original;
+  return result;
 }
 
 const REQUIRED_SETTING_KEYS = [

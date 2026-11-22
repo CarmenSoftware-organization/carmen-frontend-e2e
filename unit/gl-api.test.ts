@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { assertAccountingReady, withGlSetting } from "../tests/helpers/gl-api";
+import { assertAccountingReady, listAllRows, today, withGlSetting } from "../tests/helpers/gl-api";
 
 const { buConfigSend, buSend } = vi.hoisted(() => ({ buConfigSend: vi.fn(), buSend: vi.fn() }));
 vi.mock("../tests/helpers/bu-api", () => ({ buConfigSend, buSend }));
@@ -52,13 +52,52 @@ describe("withGlSetting", () => {
   });
 });
 
+describe("withGlSetting restore failure", () => {
+  it("keeps the spec's own error when the restore also fails", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let puts = 0;
+    buConfigSend.mockImplementation(async (_r: string, method: string) => {
+      if (method === "GET") return { status: 200, body: { data: { value: FULL } } };
+      puts += 1;
+      return { status: puts === 1 ? 200 : 500, body: {} };
+    });
+    await expect(
+      withGlSetting({ ap_auto_from_grn: true }, async () => {
+        throw new Error("spec failed");
+      }),
+    ).rejects.toThrow("spec failed");
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("throws the restore error when fn succeeded", async () => {
+    let puts = 0;
+    buConfigSend.mockImplementation(async (_r: string, method: string) => {
+      if (method === "GET") return { status: 200, body: { data: { value: FULL } } };
+      puts += 1;
+      return { status: puts === 1 ? 200 : 500, body: {} };
+    });
+    await expect(withGlSetting({ ap_auto_from_grn: true }, async () => 1)).rejects.toThrow(/restore/);
+  });
+});
+
+describe("listAllRows", () => {
+  it("throws instead of returning a truncated list", async () => {
+    buSend.mockImplementation(async () => ({ status: 200, body: { data: Array.from({ length: 100 }, (_, i) => ({ id: i })), paginate: { perpage: 100, pages: 999 } } }));
+    await expect(listAllRows("Admin", "/gl-jv")).rejects.toThrow(/truncated/);
+  });
+  it("follows paginate.pages when the BE caps the page size", async () => {
+    buSend.mockImplementation(async (_r: string, _m: string, path: string) => {
+      const page = Number(/page=(\d+)/.exec(path)![1]);
+      return { status: 200, body: { data: [{ id: page }, { id: page + 100 }], paginate: { perpage: 2, pages: 3 } } };
+    });
+    expect(await listAllRows("Admin", "/gl-jv")).toHaveLength(6);
+  });
+});
+
 describe("assertAccountingReady", () => {
-  const today = new Date();
-  const periodOpen = {
-    status: "open",
-    start_at: new Date(today.getFullYear(), 0, 1).toISOString(),
-    end_at: new Date(today.getFullYear() + 1, 0, 1).toISOString(),
-  };
+  const year = Number(today().slice(0, 4));
+  const periodOpen = { status: "open", start_at: `${year}-01-01T00:00:00.000Z`, end_at: `${year + 1}-01-01T23:59:59.999Z` };
   const mock = (setting: { status: number; value?: unknown }, periods: unknown[]) =>
     buConfigSend.mockImplementation(async (_r: string, _m: string, path: string) =>
       path.startsWith("/gl-periods")

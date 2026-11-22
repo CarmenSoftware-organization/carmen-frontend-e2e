@@ -150,10 +150,15 @@ export const voidApDoc = (id: string, role: Role = CREATOR, reason = "e2e") => p
  * A draft payment settling `invoiceIds` in full or in part, allocated across each invoice's lines in order.
  * With `whtProfile`, one WHT row on the "WHT 3%" profile is added at payment on the pre-VAT base
  * (the applied share of the invoice net), and the cash leg is reduced so `applied = cash + WHT` (ap-payment-save-rules.md:17).
+ *
+ * Without overrides the helper fills the WHT row the way the FE does, from the BE's own line net and the profile rate -
+ * so a spec must NOT assert against those echoed values. Assert against `money.ts` figures computed from the spec's own
+ * inputs (e.g. `whtOf(999.99, 3, 2)`), never against `getApDoc`. The overrides send exact values instead: oracle literals,
+ * or a deliberately mismatched WHT to test that the BE refuses it. `whtBase` / `whtAmount` imply a WHT row.
  */
 export async function createPayment(
   invoiceIds: { id: string; amount: number }[],
-  opts: { whtProfile?: boolean } = {},
+  opts: { whtProfile?: boolean; whtAmount?: number; whtBase?: number; paymentAmount?: number } = {},
 ): Promise<{ id: string }> {
   const allocations: { ap_invoice_detail_id: string; applied_amount: number }[] = [];
   let applied = 0;
@@ -166,6 +171,8 @@ export async function createPayment(
       const take = Math.min(left, line.unpaid);
       if (take <= 0) continue;
       allocations.push({ ap_invoice_detail_id: line.id, applied_amount: round(take, 2) });
+      // assumption: a partial payment carries the WHT base pro rata (applied / line total x line net); the docs fix no
+      // proration rule (preflight 4.3, WHT base rows / pay:110).
       whtBase += line.total > 0 ? (line.net * take) / line.total : 0;
       left = round(left - take, 2);
     }
@@ -177,11 +184,11 @@ export async function createPayment(
   if (!bank || !type) throw new Error("no E2E-BANK / E2E-PT on the TEST BU - run data:reset");
   let wht: unknown[] | undefined;
   let whtTotal = 0;
-  if (opts.whtProfile) {
+  if (opts.whtProfile || opts.whtAmount !== undefined || opts.whtBase !== undefined) {
     const profile = (await listAllRows(CREATOR, "/tax-profiles", true)).find((t) => t.name === "WHT 3%");
     if (!profile) throw new Error('no tax profile "WHT 3%" on the TEST BU - run data:reset');
-    const base = round(whtBase, 2);
-    whtTotal = whtOf(base, Number(profile.rate), 2);
+    const base = opts.whtBase ?? round(whtBase, 2);
+    whtTotal = opts.whtAmount ?? whtOf(base, Number(profile.rate), 2);
     wht = [{ wht_tax_profile_id: String(profile.id), base_amount: base, wht_amount: whtTotal }];
   }
   const doc = await getApDoc(invoiceIds[0].id);
@@ -193,7 +200,7 @@ export async function createPayment(
       bank_account_id: String(bank.id),
       payment_type_id: String(type.id),
       payment_method: "bank_transfer",
-      payment_amount: round(applied - whtTotal, 2),
+      payment_amount: opts.paymentAmount ?? round(applied - whtTotal, 2),
       description: "e2e payment",
       allocations,
       ...(wht ? { wht } : {}),
