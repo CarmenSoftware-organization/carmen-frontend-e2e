@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { BU_CODE, TEST_USERS } from "../test-users";
-import { TEST_PASSWORD } from "../test-users";
+import { BU_CODE, TEST_PASSWORD, TEST_USERS } from "../test-users";
+import { rateLimitBypassToken } from "./rate-limit";
 
 /**
  * Direct backend access for the TEST BU (default project accounts, `TEST_USERS`).
@@ -51,7 +51,7 @@ async function login(role: Role): Promise<string> {
       headers: {
         "Content-Type": "application/json",
         "x-app-id": appId,
-        "x-rate-limit-bypass": process.env.E2E_RATE_LIMIT_BYPASS_TOKEN || process.env.RATE_LIMIT_BYPASS_TOKEN || "true",
+        "x-rate-limit-bypass": rateLimitBypassToken(),
       },
       body: JSON.stringify({ email, password: TEST_PASSWORD }),
     });
@@ -77,42 +77,14 @@ export interface ApiResult<T = any> {
   body: T;
 }
 
-/** `path` is relative to the BU: `/purchase-request-templates` -> `/api/<BU>/purchase-request-templates`. */
-export async function buSend<T = any>(
+async function send<T>(
   role: Role,
-  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
-  path: string,
+  method: string,
+  fullPath: (backendUrl: string) => string,
   body?: unknown,
 ): Promise<ApiResult<T>> {
   const { url, appId } = await (backend ??= resolveBackend());
-  const r = await fetch(`${url}/api/${BU_CODE}${path}`, {
-    method,
-    headers: {
-      "Content-Type": "application/json",
-      "x-app-id": appId,
-      Authorization: `Bearer ${await tokenFor(role)}`,
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await r.text();
-  let parsed: unknown = null;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = text;
-  }
-  return { status: r.status, body: parsed as T };
-}
-
-/** Config endpoints live under `/api/config/<BU>/...` (extra-cost-types, tax profiles ...). */
-export async function buConfigSend<T = any>(
-  role: Role,
-  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
-  path: string,
-  body?: unknown,
-): Promise<ApiResult<T>> {
-  const { url, appId } = await (backend ??= resolveBackend());
-  const r = await fetch(`${url}/api/config/${BU_CODE}${path}`, {
+  const r = await fetch(fullPath(url), {
     method,
     headers: { "Content-Type": "application/json", "x-app-id": appId, Authorization: `Bearer ${await tokenFor(role)}` },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -127,6 +99,16 @@ export async function buConfigSend<T = any>(
   return { status: r.status, body: parsed as T };
 }
 
+type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
+
+/** `path` is relative to the BU: `/purchase-request-templates` -> `/api/<BU>/purchase-request-templates`. */
+export const buSend = <T = any>(role: Role, method: Method, path: string, body?: unknown) =>
+  send<T>(role, method, (u) => `${u}/api/${BU_CODE}${path}`, body);
+
+/** Config endpoints live under `/api/config/<BU>/...` (extra-cost-types, tax profiles ...). */
+export const buConfigSend = <T = any>(role: Role, method: Method, path: string, body?: unknown) =>
+  send<T>(role, method, (u) => `${u}/api/config/${BU_CODE}${path}`, body);
+
 export const buGet = <T = any>(role: Role, path: string) => buSend<T>(role, "GET", path);
 
 /** The role's permission keys from /api/user/profile (for "no role gate" claims). */
@@ -139,15 +121,4 @@ export async function profilePermissions(role: Role): Promise<unknown> {
 }
 
 /** GET on a gateway path that is not BU-prefixed (`/purchase-requests` -> `/api/purchase-requests`, the cross-BU list). */
-export async function rootGet<T = any>(role: Role, path: string): Promise<ApiResult<T>> {
-  const { url, appId } = await (backend ??= resolveBackend());
-  const r = await fetch(`${url}/api${path}`, { headers: { "x-app-id": appId, Authorization: `Bearer ${await tokenFor(role)}` } });
-  const text = await r.text();
-  let parsed: unknown = null;
-  try {
-    parsed = text ? JSON.parse(text) : null;
-  } catch {
-    parsed = text;
-  }
-  return { status: r.status, body: parsed as T };
-}
+export const rootGet = <T = any>(role: Role, path: string) => send<T>(role, "GET", (u) => `${u}/api${path}`);

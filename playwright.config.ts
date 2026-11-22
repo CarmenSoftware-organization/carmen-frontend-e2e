@@ -19,6 +19,8 @@ function readRateLimitBypassToken(): string {
   return "";
 }
 const RATE_LIMIT_BYPASS_TOKEN_CONFIGURED = readRateLimitBypassToken();
+// Workers inherit process.env, so tests/helpers read the one resolved value (tests/helpers/rate-limit.ts).
+if (RATE_LIMIT_BYPASS_TOKEN_CONFIGURED) process.env.E2E_RATE_LIMIT_BYPASS_TOKEN = RATE_LIMIT_BYPASS_TOKEN_CONFIGURED;
 if (!RATE_LIMIT_BYPASS_TOKEN_CONFIGURED) {
   // Never print the token itself, only the fact that it is missing.
   console.warn(
