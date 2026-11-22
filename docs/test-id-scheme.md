@@ -57,6 +57,7 @@ Strict regex: `^TC-[A-Z]{2,5}-\d{6}$`
 | `501-grn.spec.ts` | `GRN` | 01–18, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = movement doc flow (`502-grn-doc-flow.spec.ts`) |
 | `601-cn.spec.ts` | `CN` | 01–11, 20–29, 30–39, 50–54, 70, 90 | CRUD + validation + integration; 70 = movement doc flow (`603-cn-doc-flow.spec.ts`) |
 | `602-cn-reason.spec.ts` | `CNR` | 01, 03–05, 10, 20 | CRUD + security |
+| `801-ap-invoice.spec.ts` | `APINV` | 01–04, 10, 20, 40 | Accounting AP invoice on TEST BU: list, detail, create, edit, validation, posting (JV), void, viewer permissions |
 | `701-sr.spec.ts` | `SR` | 01–12, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = movement doc flow (`702-sr-doc-flow.spec.ts`) |
 | `720-stock-issue.spec.ts` | `SI` | 01–06, 70–71, 90 | CRUD + sub-journeys + edge cases; 70–71 = movement SR → Issue flow, AVG / FIFO (`721-sr-issue-doc-flow.spec.ts`) |
 | `730-inventory-adjustment-doc-flow.spec.ts` | `IADJ` | 01–06, 10, 20, 30, 70–71, 90 | Movement doc flow: 70 = Stock In, 71 = Stock Out; the rest are open cases in `test-cases/gaps/730-inventory-adjustment-gap.md` |
