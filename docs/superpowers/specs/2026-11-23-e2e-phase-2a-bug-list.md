@@ -18,6 +18,19 @@ Same format as `2026-11-20-e2e-catchup-bug-list.md`. Verdicts are the implemente
 | --- | --- | --- | --- | --- |
 | View-only roles see an enabled Void on a posted AP invoice | 801 TC-APINV-100001 | Expected: a role without `accounting.ap.void` (Requestor, accounting viewer) does not get a Void button. Actual: the button is shown; pressing it makes the gateway answer 403 (TC-APINV-100002 pins that the API refuses). | Log in as `requestor@`, open `E2E-AP-POSTED`. | FE `routes/accounting/accounts-payable/shared/ap-status.ts` `apActions()` offers `void` on `doc_status === "posted"` alone; `ap-invoice-detail.tsx` has no `useCan` / permission gate (only AR pages use `useCan`). Searched `git log` of `../carmen-frontend` for an intentional ungated design (`--grep permission` / `void` under `routes/accounting`): none found. |
 
+### 1c. Backend (AP payment approvals, 804)
+
+| Cause | Specs / TC-IDs | Actual vs expected | Repro | FE/BE suspect |
+| --- | --- | --- | --- | --- |
+| A user who is not assigned to the Accounting Approval stage can approve and post a payment voucher | 804 TC-APAPR-030002 | Expected 403 for a wrong workflow assignment (pay:194, pay:253). Actual: `POST /ap-payment/:id/approve` as the view-only Requestor on an in_review voucher answered 200, the voucher became posted and a JV was created. The Approve button is hidden in the FE for such a user (`apActions` / `user_action.execute`), so only the API is open. | Admin submits a payment; `POST /ap-payment/:id/approve` as `requestor@`. | BE `ap-payment` approve does not check the stage `assigned_users`; gateway `ap-payment.controller.ts` docblock says approve / reject carry no `@Permission` (KeycloakGuard only) - that covers permission keys, not stage assignment. Searched `git log` of `../carmen-turborepo-backend` (`--grep payment`): no commit states that approval is open to non-assignees. |
+| The user who submitted a payment voucher can approve it (no maker-checker) | 804 TC-APAPR-030001 | Expected 403 "maker-checker violation" (pay:253, pay:225). Actual: Budget submits then approves its own voucher, 200, posted with a JV. The seeded workflow lists Budget in both the Create Request and the Accounting Approval stages, so the stage rule alone allows it; the oracle requires the BE to refuse it. | Budget: submit then approve the same voucher (API). | BE approve does not compare the approver with the submitter / creator. |
+
+### 1d. Frontend (AP payment approvals, 804)
+
+| Cause | Specs / TC-IDs | Actual vs expected | Repro | FE/BE suspect |
+| --- | --- | --- | --- | --- |
+| The Payment Approvals queue lists every in_review voucher to every user | 804 TC-APAPR-010002 | Expected: a user who is not the assigned approver (view-only Requestor) does not see the voucher in the queue (pay:225 "submitted assigned items"). Actual: the row is listed; only the selection / batch-approve is gated by `user_action.execute` (`canBatchApprovePayment`). The brief for this task states the expectation; it may be intended as a shared worklist, so this one needs a product decision as well. | Admin submits a payment; open `/accounting/accounts-payable/payment-approvals` as `requestor@`, search the PV no. | FE `ap-payment-list.tsx` `approvalQueue` filter is `doc_status|string:in_review` with no assignee clause; BE list returns all rows. Searched `git log` of `../carmen-frontend` for `approvalQueue` / `canBatchApprovePayment`: introduced in a bulk commit (`fb412778`), no commit states the queue is meant to be unscoped. |
+
 ## 2. Needs product decision (not pinned, no assertion)
 
 | Cause | Specs / TC-IDs | Actual vs expected | Repro | FE/BE suspect |
@@ -28,6 +41,14 @@ Same format as `2026-11-20-e2e-catchup-bug-list.md`. Verdicts are the implemente
 | With `ap_auto_from_grn` on, a GRN whose product has no inventory account mapping cannot be committed at all | 805 (probe, not asserted; the spec maps the item group to 1140 first) | Probe: commit of a saved AP GRN with the switch on and no `tb_product_account_code_mapping` (inventory) for the product or its item group answered 422 `AP_INVOICE_LINE_INVALID` ("no inventory account mapping for product ..."), the GRN stayed `saved` and no stock moved. By design the auto invoice is raised in the commit's own transaction and every AP error aborts it (mb `ap-invoice.service.ts` `createAndPostFromGrnInTx`, `good-received-note.logic.ts` commit). Decide whether a missing GL mapping may block goods receipt, or whether the invoice should fall back to a draft / the GRN should commit without it. | Turn on the switch, commit a GRN of an unmapped product. | BE `grnLines` -> `resolveProductAccount` returns null -> `AP_INVOICE_LINE_INVALID` -> `abortWith`. |
 | `data:reset` seeds no inventory account mapping for the product item groups | 805 (spec sets it up and removes it) | The seeded master data has no `account_codes` on the item groups or products, so no GRN-auto invoice can be raised on a freshly reset TEST BU. 805 `beforeAll` maps the GRN products' item groups to 1140 when unmapped and `afterAll` takes its own mapping out. Decide whether `scripts/data-reset` should seed the mapping (then 805 only reads it). | `bun run data:reset --yes`, then GET `/product-item-groups/<id>` -> `account_codes: []`. | `scripts/data-reset` (accounting step) does not touch item groups. |
 
+## 2b. Needs product decision (AP payment, 803 / 804)
+
+| Cause | Specs / TC-IDs | Actual vs expected | Repro | FE/BE suspect |
+| --- | --- | --- | --- | --- |
+| No threshold stage on the seeded `ap_payment` workflow | 804 (header; no case) | `scripts/data-reset/fixtures/workflows.json` `ap_payment` has `routing_rules: []`, so `base_net_paid_amount` never routes. A threshold case needs a seeded rule; decide whether the fixture should carry one. | Read the fixture. | `scripts/data-reset` fixture only. |
+| The FE WHT preview returns nothing for an invoice line without a WHT service | 803 TC-APPAY-050001 | `POST /ap-payment/wht-preview` returns `[]` for an invoice line with no WHT service / profile, so "Recalculate from invoices" shows no WHT row for a plain invoice (the user must add a row by hand). The case puts the "WHT 3%" profile on the invoice line. Decide whether a payment of an invoice with no WHT config should offer the vendor's default WHT. | Pay an invoice created without a WHT profile on its line and press Recalculate. | BE `wht-preview` reads line-level WHT only. |
+| A voided payment's reversing JV reuses a `jv_no` | 803 TC-APPAY-020001, 020003 (not asserted) | Same cause as the 801 row above: the reversal of a payment JV carries `jv_no 20261100001` / `20261100002`, numbers of earlier JVs (reversal prefix running number). | Void any posted payment. | BE reversal prefix running number. |
+
 ## 3. Confirmed by probe (no action, listed for the record)
 
 | Item | Specs / TC-IDs | Observation |
@@ -36,3 +57,8 @@ Same format as `2026-11-20-e2e-catchup-bug-list.md`. Verdicts are the implemente
 | Deposit posting | 802 TC-APDOC-010002 | Dr 1180 advance deposit / Cr 2100, as assumed. A deposit line carrying VAT is refused 422 "deposit lines may not carry VAT" (TC-APDOC-010003). |
 | CN / DN without a reference invoice | 802 TC-APDOC-020001, 030001 | Create and post both work standalone (the preflight assumption). |
 | No `test.fail` in 802 or 805 | - | Both specs are fully green; the only pinned bug of PR2 is the one `requestorTest.fail` in 801 (TC-APINV-100001). |
+| WHT on a payment | 803 TC-APPAY-010001, 010002, 020002 | Posted payment with WHT 3%: Dr 2100 = applied, Cr 1110 = applied - WHT, Cr 2150 = WHT; the invoice open amount drops by cash + WHT (inference confirmed on dev). 999.99 x 3% -> 30.00 (half-up). |
+| Mismatched WHT refused | 803 TC-APPAY-010003 | WHT 99.00 on a 1,070.00 payment: 422 "Payment is not balanced: invoices = payment + WHT - other expenses"; no voucher created. |
+| Partial payment and void | 803 TC-APPAY-020001 | 400 then 600 on a 1,000.00 invoice: open 600 then 0; voiding the second payment restores 600 and its reversing JV cancels every account exactly. |
+| Over-payment | 803 TC-APPAY-030001, 030002 | 1,000.01 on a 1,000.00 line and any amount on E2E-AP-PAID: 422 `AP_PAYMENT_OVER_ALLOCATED`. |
+| Reject | 804 TC-APAPR-020002 | Reject on an in_review voucher returns it to draft (workflow stage stays "Accounting Approval"), no JV, the invoice open amount unchanged. The FE offers Reject and Return; the gateway has no `/sendback` route (404). |

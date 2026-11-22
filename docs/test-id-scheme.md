@@ -59,6 +59,8 @@ Strict regex: `^TC-[A-Z]{2,5}-\d{6}$`
 | `602-cn-reason.spec.ts` | `CNR` | 01, 03–05, 10, 20 | CRUD + security |
 | `801-ap-invoice.spec.ts` | `APINV` | 01–04, 10, 20, 40 | Accounting AP invoice on TEST BU: list, detail, create, edit, validation, posting (JV), void, viewer permissions |
 | `802-ap-doc-types.spec.ts` | `APDOC` | 01–03 | Accounting AP deposit (01), debit note (02), credit note (03) on TEST BU: create, posting (JV signs), read set |
+| `803-ap-payment.spec.ts` | `APPAY` | 01–05 | Accounting AP payment on TEST BU: full payment with WHT 3% and rounding edge, mismatched WHT refused (01), partial payments and void (02), over-payment refusals (03), read set (04), WHT recalculated on the payment form (05) |
+| `804-ap-payment-approvals.spec.ts` | `APAPR` | 01–03 | Accounting AP payment approvals on TEST BU: Payment Approvals queue (01), approve and reject on the detail page (02), who may approve - maker-checker and stage assignment (03) |
 | `805-ap-from-grn.spec.ts` | `APGRN` | 01–04 | GRN -> AP invoice auto-creation (`ap_auto_from_grn`): switch on (01), off (02), GRN-side header edit voids and re-issues (03), setting restored (04) |
 | `701-sr.spec.ts` | `SR` | 01–12, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = movement doc flow (`702-sr-doc-flow.spec.ts`) |
 | `720-stock-issue.spec.ts` | `SI` | 01–06, 70–71, 90 | CRUD + sub-journeys + edge cases; 70–71 = movement SR → Issue flow, AVG / FIFO (`721-sr-issue-doc-flow.spec.ts`) |
