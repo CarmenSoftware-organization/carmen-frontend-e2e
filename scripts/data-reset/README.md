@@ -64,7 +64,7 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    - SR draft 2, รออนุมัติ 2, รอจ่าย 1, ยกเลิก 1 (ใช้ reject เพราะไม่มี endpoint ยกเลิก), completed 1
    - price list 3 ใบที่ใช้ได้วันนี้, campaign 3 ใบ: เปิดอยู่ / ยังไม่เริ่ม / ปิดแล้ว (หน้าจอคำนวณสถานะจากวันที่)
    - ชุดเอกสารบัญชีอ่านอย่างเดียว (`docs/accounting.ts`, ขั้น `accounting-docs`) ค้นเจอด้วย key ใน `vendor_invoice_no` / คำอธิบาย
-     / code: `E2E-AP-POSTED` (3 × 333.33 + VAT 7% = 1,069.98), `E2E-AP-INCVAT` (1,070.00 รวม VAT), `E2E-AP-PARTIAL` (1,000 + VAT,
+     / code: `E2E-AP-POSTED` (1 บรรทัด 3 × 333.33 = 999.99 + VAT 70.00 = 1,069.99), `E2E-AP-INCVAT` (1,070.00 รวม VAT), `E2E-AP-PARTIAL` (1,000 + VAT,
      จ่าย 400.00 ไม่มี WHT → ค้าง 670.00), `E2E-AP-PAID` (535.00 จ่ายครบ), `E2E-AP-DRAFT`, `E2E-AP-DEPOSIT`, `E2E-AP-DN`, `E2E-AP-CN`,
      `E2E-JV-POSTED` (Dr 5300 / Cr 1110 250.00), `E2E-JVT-1` (template) — ใบจ่ายเงินสร้างโดย admin อนุมัติโดย budget,
      ต้องมี Payment Type (`E2E-PT`) ซึ่ง reset ล้างทิ้ง จึงสร้างให้ · ยอดรวมและยอดค้างเทียบกับที่คำนวณจากบรรทัดของตัวเอง

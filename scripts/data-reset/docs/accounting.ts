@@ -57,7 +57,7 @@ interface InvoicePlan {
 }
 
 export const INVOICE_PLANS: InvoicePlan[] = [
-  { key: "E2E-AP-POSTED", docType: "invoice", lines: [1, 2, 3].map(() => ({ qty: 1, price: 333.33, vat: true })) },
+  { key: "E2E-AP-POSTED", docType: "invoice", lines: [{ qty: 3, price: 333.33, vat: true }] },
   { key: "E2E-AP-INCVAT", docType: "invoice", lines: [{ qty: 1, price: 1070, vat: true, vatIncluded: true }] },
   { key: "E2E-AP-PARTIAL", docType: "invoice", lines: [{ qty: 1, price: 1000, vat: true }], pay: 400 },
   { key: "E2E-AP-PAID", docType: "invoice", lines: [{ qty: 1, price: 500, vat: true }], pay: "all" },

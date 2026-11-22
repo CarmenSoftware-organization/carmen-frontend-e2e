@@ -132,13 +132,13 @@ describe("seedAccountingDocs", () => {
     const b = accountingBackend();
     await run(b);
     const byKey = (key: string) => [...b.invoices.values()].find((d) => d.vendor_invoice_no === key)!;
-    // 3 × (333.33 + 23.33 VAT), VAT rounded per line.
-    expect(byKey("E2E-AP-POSTED").total_amount).toBe(1069.98);
+    // One line, qty 3 × 333.33: net 999.99, VAT 7% = 69.9993 → 70.00 (half-up), total 1069.99.
+    expect(byKey("E2E-AP-POSTED").total_amount).toBe(1069.99);
     expect(byKey("E2E-AP-INCVAT").total_amount).toBe(1070);
     expect(byKey("E2E-AP-PARTIAL").outstanding_amount).toBe(670);
     expect(byKey("E2E-AP-PAID").outstanding_amount).toBe(0);
     expect(byKey("E2E-AP-DRAFT").doc_status).toBe("draft");
-    expect(INVOICE_PLANS.map((p) => planTotal(p))).toEqual([1069.98, 1070, 1070, 535, 100, 2000, 150, 120]);
+    expect(INVOICE_PLANS.map((p) => planTotal(p))).toEqual([1069.99, 1070, 1070, 535, 100, 2000, 150, 120]);
     // 400.00 cash with no WHT on the partly paid document (controller ruling R5).
     const partial = [...b.payments.values()].find((p) => p.allocations[0].ap_invoice_detail_id.startsWith(byKey("E2E-AP-PARTIAL").id))!;
     expect(partial.allocations).toEqual([{ ap_invoice_detail_id: expect.any(String), applied_amount: 400 }]);
@@ -189,7 +189,7 @@ describe("seedAccountingDocs", () => {
       return res;
     }) as unknown as typeof fetch;
     const result = await seedAccountingDocs(createSessions(cfg, lying), cfg, ctx, new RowLedger());
-    expect(result.failed[0]).toMatch(/^E2E-AP-POSTED: total 1, expected 1069.98/);
+    expect(result.failed[0]).toMatch(/^E2E-AP-POSTED: total 1, expected 1069.99/);
   });
 
   it("says when a payment fails instead of leaving the document half done", async () => {
