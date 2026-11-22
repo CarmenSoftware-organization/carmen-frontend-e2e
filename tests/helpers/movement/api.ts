@@ -1,3 +1,4 @@
+import { rateLimitBypassToken } from "../rate-limit";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MOVEMENT_USERS, type MovementUser } from "../../movement-users";
@@ -65,7 +66,7 @@ async function login(user: MovementUser): Promise<string> {
   for (let attempt = 0; attempt < 6; attempt++) {
     r = await fetch(`${url}/api/auth/login`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-app-id": appId, "x-rate-limit-bypass": "true" },
+      headers: { "Content-Type": "application/json", "x-app-id": appId, "x-rate-limit-bypass": rateLimitBypassToken() },
       body: JSON.stringify({ email: creds.email, password: creds.password }),
     });
     if (r.status !== 429) break;

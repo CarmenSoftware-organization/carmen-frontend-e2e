@@ -8,6 +8,7 @@ import { CreditNotePage } from "./pages/credit-note.page";
 import { createDraftCn, deleteE2eCns, deleteReason, ensureReason, getCn, listCns, seededCn } from "./helpers/cn-api";
 import { button, confirmDialog, lastToast, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
 import { uid } from "./helpers/test-data";
+import { expectBlocked, expectRefused, expectSilentlyBlocked } from "./helpers/settle";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Roles (permissions read from /api/user/profile of the TEST BU):
@@ -39,6 +40,20 @@ fcTest.describe.configure({ timeout: 60_000 });
 const LIST = "/procurement/credit-note";
 const today = () => new Date().toLocaleDateString("sv");
 const rowsOf = (page: Page) => page.locator("table tbody tr");
+
+const toastWith = (page: Page, re: RegExp) => page.locator("[data-sonner-toast]").filter({ hasText: re });
+
+/** Remove the first item; the app either asks to confirm or removes it at once. Waits for one of the two. */
+async function removeFirstItem(page: Page) {
+  const dlg = page.locator("[role=alertdialog]:visible");
+  const removers = rowsOf(page).getByRole("button", { name: /remove|delete/i });
+  const before = await removers.count();
+  await removers.first().click();
+  await expect
+    .poll(async () => (await dlg.count()) > 0 || (await removers.count()) < before, { message: "item neither removed nor confirm dialog shown" })
+    .toBe(true);
+  if (await dlg.count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+}
 const NO_GATE =
   "suspected bug: view-only FC gets an enabled CN action - the FE does not gate it (cn-footer-action.tsx Submit has no permission check) and the gateway credit-notes controller has no permission decorator";
 
@@ -282,8 +297,8 @@ withReason("CN — Create from GRN", () => {
     },
     async ({ page }) => {
       await page.goto(`${LIST}/new`);
-      await button(page, "Add Item").click();
-      await page.waitForTimeout(1000);
+      // no vendor/GRN yet: the app refuses to open the picker and says why
+      await expectBlocked(page, /credit-note/, () => button(page, "Add Item").click(), toastWith(page, /Select a vendor first/i));
       await expect(page.locator("[role=dialog]:visible").getByRole("checkbox")).toHaveCount(0);
       await page.keyboard.press("Escape");
       await expect(page.getByText("No Items Yet")).toBeVisible();
@@ -306,8 +321,9 @@ withReason("CN — Create from GRN", () => {
       await fillHeader(page, taxNo);
       await addFromGrn(page, 1);
       await typeInto(rowsOf(page).first().locator('input[name$=".quantity"]'), 10);
-      await button(page, "Create").click();
-      await page.waitForTimeout(1500);
+      // the form validates on change: the over-quantity field is already flagged before Create is clicked (the only feedback)
+      await expect(page.locator('input[name$=".quantity"][aria-invalid="true"]')).toBeVisible();
+      await expectSilentlyBlocked(page, /credit-note/, () => button(page, "Create").click(), 'bug-list §1b "CN Create with an over-quantity line gives no feedback on submit": Create adds no toast and no new signal, the live aria-invalid is all there is');
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       await expect(page).toHaveURL(/credit-note\/new/);
       for (const c of await listCns()) expect((await getCn(c.id)).data!.tax_invoice_no).not.toBe(taxNo);
@@ -333,8 +349,7 @@ withReason("CN — Create validation", () => {
     async ({ page }) => {
       const before = (await listCns()).length;
       await page.goto(`${LIST}/new`);
-      await button(page, "Create").click();
-      await page.waitForTimeout(1500);
+      await expectRefused(page, /credit-note/, () => button(page, "Create").click(), toastWith(page, /Check these fields again/i));
       await expect(page).toHaveURL(/credit-note\/new/);
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       expect((await listCns()).length).toBe(before);
@@ -356,8 +371,7 @@ withReason("CN — Create validation", () => {
       const before = (await listCns()).length;
       await page.goto(`${LIST}/new`);
       await pickLookup(page, page.getByRole("button", { name: "Select Vendor" }));
-      await button(page, "Create").click();
-      await page.waitForTimeout(1500);
+      await expectRefused(page, /credit-note/, () => button(page, "Create").click(), toastWith(page, /Check these fields again/i));
       await expect(page.getByRole("button", { name: "Select GRN" })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       expect((await listCns()).length).toBe(before);
@@ -382,8 +396,7 @@ withReason("CN — Create validation", () => {
       await pickLookup(page, page.getByRole("button", { name: "Select GRN" }), "GRN261100002");
       await page.locator("#cn-tax-invoice-no").fill(taxNo);
       await addFromGrn(page, 1);
-      await button(page, "Create").click();
-      await page.waitForTimeout(1500);
+      await expectRefused(page, /credit-note/, () => button(page, "Create").click(), toastWith(page, /aren't filled in correctly|Check these fields again/i));
       await expect(page.getByRole("button", { name: "Select CN Reason" })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       for (const c of await listCns()) expect((await getCn(c.id)).data!.tax_invoice_no).not.toBe(taxNo);
@@ -527,8 +540,7 @@ withReason("CN — Edit", () => {
       await save(page);
       expect(Number((await getCn(g.id)).data!.credit_note_detail[0].return_qty)).toBe(0);
       await button(page, "Submit").click();
-      await confirmDialog(page, /submit|confirm|yes/i);
-      await page.waitForTimeout(2000);
+      await expectBlocked(page, /credit-note/, () => confirmDialog(page, /submit|confirm|yes/i), toastWith(page, /still incomplete|details are missing/i));
       expect((await getCn(g.id)).data!.doc_status).toBe("draft");
       await expect(page.locator("main")).toContainText(/draft/i);
     },
@@ -549,15 +561,12 @@ withReason("CN — Edit", () => {
       const g = await createDraftCn("noitems");
       await gotoCn(page, g.id);
       await button(page, "Edit").click();
-      await rowsOf(page).first().getByRole("button", { name: /remove|delete/i }).first().click();
-      await page.waitForTimeout(500);
-      if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+      await removeFirstItem(page);
       await expect(page.getByText("No Items Yet")).toBeVisible();
       await save(page);
       expect((await getCn(g.id)).data!.credit_note_detail).toHaveLength(0);
       await button(page, "Submit").click();
-      await confirmDialog(page, /submit|confirm|yes/i);
-      await page.waitForTimeout(2000);
+      await expectBlocked(page, /credit-note/, () => confirmDialog(page, /submit|confirm|yes/i), toastWith(page, /still incomplete|details are missing/i));
       expect((await getCn(g.id)).data!.doc_status).toBe("draft");
     },
   );
@@ -603,9 +612,7 @@ withReason("CN — Edit", () => {
       await gotoCn(page, g.id);
       await button(page, "Edit").click();
       await expect(rowsOf(page).filter({ has: page.getByRole("button", { name: /remove|delete/i }) })).toHaveCount(2);
-      await rowsOf(page).first().getByRole("button", { name: /remove|delete/i }).first().click();
-      await page.waitForTimeout(500);
-      if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+      await removeFirstItem(page);
       await save(page);
       expect((await getCn(g.id)).data!.credit_note_detail).toHaveLength(1);
     },
@@ -670,8 +677,11 @@ withReason("CN — Edit", () => {
     async ({ page }) => {
       const g = await createDraftCn("emptystock");
       await gotoCn(page, g.id);
-      await page.getByRole("tab", { name: /stock movement/i }).click();
-      await page.waitForTimeout(1500);
+      const tab = page.getByRole("tab", { name: /stock movement/i });
+      await tab.click();
+      await expect(tab).toHaveAttribute("aria-selected", "true");
+      await expect(page.getByRole("tabpanel")).toBeVisible();
+      await expect(page.getByText(/Stock movement shows after this credit note is completed/i)).toBeVisible();
       await expect(page.getByText("Something went wrong")).toHaveCount(0);
       await expect(page.locator("table tbody tr").filter({ hasText: "Ground Beef" })).toHaveCount(0);
     },
@@ -1021,7 +1031,10 @@ withReason("CN — Validation & amounts (revived)", () => {
     },
     async ({ page }) => {
       const g = await createDraftCn("badamt");
+      // the cap (GRN received qty) is filled in once the GRN loads — typing before that leaves the cap unset
+      const grnLoaded = page.waitForResponse((r) => /good-received-notes\/[0-9a-f-]{36}(\?|$)/.test(r.url()) && r.request().method() === "GET");
       await gotoCn(page, g.id);
+      await grnLoaded;
       await button(page, "Edit").click();
       await typeInto(quantity(page), 6);
       await button(page, "Save").click();

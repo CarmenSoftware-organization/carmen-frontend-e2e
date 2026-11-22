@@ -15,7 +15,7 @@ import { expect } from "@playwright/test";
 export async function expectActionUnavailable(
   page: Page,
   action: Locator,
-  refusal: RegExp = /insufficient|permission|denied|not authori[sz]ed|cannot|not allowed/i,
+  refusal: RegExp = /insufficient|permission|denied|not authori[sz]ed|forbidden/i,
 ): Promise<void> {
   await expect(
     page.getByRole("button", { name: /^comment(\s*\(\d+\))?$/i }).first(),
@@ -25,7 +25,8 @@ export async function expectActionUnavailable(
   if (await action.isDisabled()) return; // present but disabled: also unavailable
   await action.click({ timeout: 5_000 });
   await expect(
-    page.getByText(refusal).first(),
+    // only a toast / alert counts: page text such as the confirm dialog's "This action cannot be undone." does not
+    page.locator("[data-sonner-toast], [role=alert]").filter({ hasText: refusal }).first(),
     "the action was available to this role and was not refused",
   ).toBeVisible({ timeout: 5_000 });
 }

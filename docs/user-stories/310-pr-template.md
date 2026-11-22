@@ -5,7 +5,7 @@ _Generated from `tests/310-pr-template.spec.ts` annotations. Edit annotations, n
 **Module:** Purchase Request Template
 **Spec:** `tests/310-pr-template.spec.ts`
 **Default role:** Budget
-**Total test cases:** 31 (20 High / 8 Medium / 3 Low)
+**Total test cases:** 32 (20 High / 9 Medium / 3 Low)
 
 ## Test Cases at a Glance
 
@@ -30,6 +30,7 @@ _Generated from `tests/310-pr-template.spec.ts` annotations. Edit annotations, n
 | TC-PRT-070003 | Add item with no permission | High | Authorization |
 | TC-PRT-070004 | Add item with zero quantity | Medium | Edge Case |
 | TC-PRT-070005 | Add item with very large quantity | Low | Edge Case |
+| TC-PRT-070006 | Save while the new row's Unit is still loading gives feedback | Medium | Edge Case |
 | TC-PRT-080001 | Edit existing template item successfully | High | Happy Path |
 | TC-PRT-080002 | Attempt to edit template without permission | High | Authorization |
 | TC-PRT-080003 | Edit template item with invalid quantity | Medium | Negative |
@@ -61,8 +62,9 @@ _Generated from `tests/310-pr-template.spec.ts` annotations. Edit annotations, n
 1. ไปที่ /procurement/purchase-request-template
 2. คลิก 'Add Purchase Request Template'
 3. เลือก Workflow และกรอก Name
-4. คลิก 'Add Item' เลือก Location และ Product แล้วกรอก Qty 3
-5. คลิก 'Create'
+4. คลิก 'Add Item' เลือก Location และ Product แล้วรอให้ช่อง Unit โหลดหน่วยเสร็จ
+5. กรอก Qty 3
+6. คลิก 'Create'
 
 **Expected**
 
@@ -375,8 +377,9 @@ template ถูกลบโดยคนอื่น (ผ่าน API) หลั
 1. เปิด template → Edit
 2. คลิก 'Add Item'
 3. เลือก Location และ Product (ตัวที่ยังไม่อยู่ใน template)
-4. กรอก Qty 7
-5. Save
+4. รอให้ช่อง Unit โหลดหน่วยของสินค้าเสร็จ
+5. กรอก Qty 7
+6. Save
 
 **Expected**
 
@@ -443,7 +446,8 @@ Login เป็น FC (view อย่างเดียว); มี template 'ST
 
 1. เปิด template → Edit → Add Item
 2. เลือก Location, Product และคง Qty = 0 (ค่าเริ่มต้น)
-3. Save
+3. รอให้ช่อง Unit โหลดหน่วยของสินค้าเสร็จ
+4. Save
 
 **Expected**
 
@@ -471,6 +475,29 @@ Login เป็น FC (view อย่างเดียว); มี template 'ST
 **Expected**
 
 ระบบแสดงข้อความว่า quantity มากเกินไปและไม่บันทึก (ค่าใน backend ยังเป็น 5)
+
+---
+
+## TC-PRT-070006 — Save while the new row's Unit is still loading gives feedback
+
+> **As a** Budget user, **I want** this Purchase Request Template behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Medium · **Test Type:** Edge Case
+
+**Preconditions**
+
+มี template ของ test (2 รายการ); คำขอ units/order/product/:id ถูกหน่วงไว้ในเบราว์เซอร์ (page.route) เพื่อให้ช่อง Unit ค้างสถานะโหลด
+
+**Steps**
+
+1. เปิด template → Edit → Add Item
+2. เลือก Product (ช่อง Unit แสดง spinner และถูกปิดใช้งาน)
+3. คลิก Save ทันทีขณะที่คำตอบหน่วยยังไม่มา
+
+**Expected**
+
+ผู้ใช้เห็นผลของการกด Save: มี toast (บันทึกสำเร็จ หรือข้อความตรวจสอบ) — ไม่เงียบ; ปัจจุบันเงียบ (ไม่มี toast ไม่ส่ง request) จึงปักเป็นบั๊ก
 
 ---
 
@@ -742,4 +769,4 @@ list กลับมาแสดง template ทั้งหมด (มี 'STD 
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 941704b</sub>
+<sub>Last regenerated: 2026-11-22 · git 3ed771c</sub>

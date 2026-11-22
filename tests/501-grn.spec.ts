@@ -8,6 +8,7 @@ import { createDraftGrn, createExtraCostType, deleteExtraCostType, deleteGrnsByP
 import { buGet } from "./helpers/bu-api";
 import { addRow, button, confirmDialog, field, lastToast, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
 import { uid } from "./helpers/test-data";
+import { expectBlocked, expectRefused } from "./helpers/settle";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Roles (permissions read from /api/user/profile of the TEST BU):
@@ -46,6 +47,23 @@ const goto = async (page: Page, id: string) => {
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({ timeout: 20_000 });
 };
 const rowsOf = (page: Page) => page.locator("table tbody tr");
+
+/** The toast the form raises when it refuses to submit (missing field / incomplete line / bad value). */
+const blockedToast = (page: Page) =>
+  page.locator("[data-sonner-toast]").filter({ hasText: /details are missing|still incomplete|aren't filled in/i });
+
+/** Remove the first line; the app either asks to confirm or removes it at once. Waits for the row to be gone. */
+async function removeFirstLine(page: Page) {
+  const removers = page.getByRole("button", { name: "Remove this line" });
+  const before = await removers.count();
+  await rowsOf(page).first().getByRole("button", { name: "Remove this line" }).click();
+  const dlg = page.locator("[role=alertdialog]:visible");
+  await expect
+    .poll(async () => (await dlg.count()) > 0 || (await removers.count()) < before, { message: "line neither removed nor confirm dialog shown" })
+    .toBe(true);
+  if (await dlg.count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+  await expect(removers).toHaveCount(before - 1);
+}
 const NO_GATE =
   "suspected bug: view-only FC gets an enabled GRN action - the FE does not gate it (list 'New Goods Receive Note' passes no addDisabled, grn-footer-action.tsx Commit/Void carry no permission check) and the gateway good-received-notes controller has no permission decorator";
 
@@ -457,8 +475,7 @@ purchaseTest.describe("GRN — Manual creation", () => {
       const invoice = inv("novendor");
       await page.goto(`${LIST}/new?doc_type=manual`);
       await page.locator("#grn-invoice-no").fill(invoice);
-      await button(page, "Create").click();
-      await page.waitForTimeout(1500);
+      await expectBlocked(page, /good-received-note/, () => button(page, "Create").click(), blockedToast(page));
       await expect(page).toHaveURL(/goods-receive-note\/new/);
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       expect((await listGrns(invoice)).filter((g) => g.invoice_no === invoice)).toHaveLength(0);
@@ -482,8 +499,7 @@ purchaseTest.describe("GRN — Manual creation", () => {
       await pickLookup(page, field(page, "Vendor").locator("button").first());
       await page.locator("#grn-invoice-no").fill(invoice);
       expect(await pickDate(page, field(page, "Invoice Date").locator("button").first(), today())).toBe(true);
-      await button(page, "Create").click();
-      await page.waitForTimeout(1500);
+      await expectBlocked(page, /good-received-note/, () => button(page, "Create").click(), blockedToast(page));
       await expect(page).toHaveURL(/goods-receive-note\/new/);
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /created|success/i })).toHaveCount(0);
       expect((await listGrns(invoice)).filter((g) => g.invoice_no === invoice)).toHaveLength(0);
@@ -584,8 +600,7 @@ purchaseTest.describe("GRN — Edit Header", () => {
       await button(page, "Edit").click();
       await page.locator("#grn-invoice-no").fill("");
       // "Save Draft" lets an incomplete draft through by design; the full Save enforces the required fields
-      await button(page, "Save").click();
-      await page.waitForTimeout(1500);
+      await expectBlocked(page, /good-received-note/, () => button(page, "Save").click(), blockedToast(page));
       await expect(page.locator("#grn-invoice-no")).toHaveAttribute("aria-invalid", "true");
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
       expect((await getGrn(g.id)).data!.invoice_no).toBe(g.invoice_no);
@@ -667,8 +682,7 @@ purchaseTest.describe("GRN — Add Line Item", () => {
       await goto(page, g.id);
       await button(page, "Edit").click();
       await button(page, "Add Item").click();
-      await button(page, "Save").click();
-      await page.waitForTimeout(1500);
+      await expectBlocked(page, /good-received-note/, () => button(page, "Save").click(), blockedToast(page));
       await expect(page.getByRole("button", { name: "Select Product" })).toBeVisible();
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
       expect((await getGrn(g.id)).data!.good_received_note_detail).toHaveLength(2);
@@ -764,15 +778,9 @@ purchaseTest.describe("GRN — Edit Line Item", () => {
       const g = await createDraftGrn(inv("nolines"));
       await goto(page, g.id);
       await button(page, "Edit").click();
-      for (let i = 0; i < 2; i++) {
-        await rowsOf(page).first().getByRole("button", { name: "Remove this line" }).click();
-        await page.waitForTimeout(500);
-        const dlg = page.locator("[role=alertdialog]:visible");
-        if (await dlg.count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
-      }
+      for (let i = 0; i < 2; i++) await removeFirstLine(page);
       await expect(page.getByRole("button", { name: "Remove this line" })).toHaveCount(0);
-      await button(page, "Save").click();
-      await page.waitForTimeout(1500);
+      await expectBlocked(page, /good-received-note/, () => button(page, "Save").click(), blockedToast(page));
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
       expect((await getGrn(g.id)).data!.good_received_note_detail).toHaveLength(2);
     },
@@ -842,9 +850,7 @@ purchaseTest.describe("GRN — Delete Line Item", () => {
       await goto(page, g.id);
       await button(page, "Edit").click();
       await expect(rowsOf(page)).toHaveCount(2);
-      await rowsOf(page).first().getByRole("button", { name: "Remove this line" }).click();
-      await page.waitForTimeout(500);
-      if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
+      await removeFirstLine(page);
       await expect(rowsOf(page)).toHaveCount(1);
       await saveDraft(page);
       const rec = (await getGrn(g.id)).data!;
@@ -958,8 +964,8 @@ purchaseTest.describe("GRN — Extra Costs", () => {
       const amount = page.locator('input[name="extra_cost_details.0.amount"]');
       await typeInto(amount, "abc");
       expect(await amount.inputValue()).not.toMatch(/[a-z]/i);
-      await button(page, "Save Draft").click();
-      await page.waitForTimeout(1500);
+      // the form lets the bad amount through to the backend, which refuses it (4xx) and the app reports it
+      await expectRefused(page, /good-received-note/, () => button(page, "Save Draft").click(), blockedToast(page));
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
       expect((await getGrn(g.id)).data!.extra_cost?.extra_cost_detail ?? []).toHaveLength(0);
     },
@@ -1034,15 +1040,10 @@ purchaseTest.describe("GRN — Commit", () => {
       const g = await createDraftGrn(inv("noloc"));
       await goto(page, g.id);
       await button(page, "Edit").click();
-      for (let i = 0; i < 2; i++) {
-        await rowsOf(page).first().getByRole("button", { name: "Remove this line" }).click();
-        await page.waitForTimeout(500);
-        if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|yes/i);
-      }
+      for (let i = 0; i < 2; i++) await removeFirstLine(page);
       await button(page, "Add Item").click();
       await expect(page.getByRole("button", { name: "Select Location" })).toBeVisible();
-      await button(page, "Save").click();
-      await page.waitForTimeout(1500);
+      await expectBlocked(page, /good-received-note/, () => button(page, "Save").click(), blockedToast(page));
       await expect(page.locator("[data-sonner-toast]").filter({ hasText: /updated|saved|success/i })).toHaveCount(0);
       const rec = (await getGrn(g.id)).data!;
       expect(rec.good_received_note_detail).toHaveLength(2);

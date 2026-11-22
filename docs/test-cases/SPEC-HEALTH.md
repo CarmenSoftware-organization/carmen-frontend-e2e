@@ -8,8 +8,8 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1255 |
-| **Running** | **1102** |
+| Cases declared | 1256 |
+| **Running** | **1103** |
 | Skipped | 153 |
 | Fixme | 0 |
 | **Dormant** (skipped + fixme) | **12%** |
@@ -17,7 +17,7 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | **Running cases asserting nothing at all** | **0** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 23 |
-| Assertions in running cases | 2831 |
+| Assertions in running cases | 2837 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -45,7 +45,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `401-po.spec.ts` | 19 | 32 | 0 | 63% | 0 | 0 | 0 | **1** | 66 | 0 |
 | `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 14 | 0 |
-| `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 141 | 0 |
+| `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 145 | 0 |
 | `301-pr.spec.ts` | 59 | 47 | 0 | 44% | 0 | 0 | 0 | 0 | 120 | 0 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
@@ -77,7 +77,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `302-pr-creator-journey.spec.ts` | 42 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 105 | 0 |
 | `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 79 | 0 |
 | `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 92 | 0 |
-| `310-pr-template.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 109 | 0 |
+| `310-pr-template.spec.ts` | 32 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 111 | 0 |
 | `311-pr-returned-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 42 | 0 |
 | `312-pr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
 | `402-po-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 80 | 0 |
