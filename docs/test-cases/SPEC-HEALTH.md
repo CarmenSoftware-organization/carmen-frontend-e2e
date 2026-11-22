@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1418 |
-| **Running** | **1174** |
+| Cases declared | 1423 |
+| **Running** | **1179** |
 | Skipped | 201 |
 | Fixme | 43 |
 | **Dormant** (skipped + fixme) | **17%** |
 | Running cases asserting only through a page-object helper | 38 |
 | **Running cases asserting nothing at all** | **285** |
 | Running cases whose assertions are all trivial | 25 |
-| Running cases behind an in-body skip guard | 248 |
-| Assertions in running cases | 1534 |
+| Running cases behind an in-body skip guard | 251 |
+| Assertions in running cases | 1547 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -84,7 +84,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `121-recipe-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
 | `131-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
 | `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | **22** | 37 | 10 |
-| `304-pr-purchaser-journey.spec.ts` | 26 | 0 | 0 | 0% | 0 | 0 | 0 | **22** | 36 | 9 |
+| `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | **25** | 49 | 9 |
 | `312-pr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
 | `402-po-purchaser-journey.spec.ts` | 32 | 0 | 0 | 0% | 0 | 0 | 0 | **26** | 42 | 17 |
 | `404-po-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 17 | 1 |
