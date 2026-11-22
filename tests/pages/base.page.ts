@@ -132,7 +132,13 @@ export abstract class BasePage {
       .first()
       .or(this.page.getByText(/no data found/i).first())
       .waitFor({ state: "visible", timeout })
-      .catch(() => {});
+      .catch((e) => {
+        // A list that shows neither rows nor the "no data found" state has not loaded (or the data is
+        // missing): say so, instead of letting the next locator time out with an unrelated message.
+        throw new Error(
+          `no rows on ${this.page.url()} (and no "no data found" state) within ${timeout}ms — check data:reset seeds this entity. ${e instanceof Error ? e.message.split("\n")[0] : ""}`,
+        );
+      });
   }
 
   /**
