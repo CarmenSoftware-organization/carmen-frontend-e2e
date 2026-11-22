@@ -5,7 +5,7 @@
 | Date | 2026-11-22 |
 | Branch | `chore/e2e-catchup-close-phase-1` (PR stack #87 → #88 → #89 → #90 → #91 → #92 → #93 → this PR) |
 | Dev backend | API `v4.0.13-build.20261112.f529576a9` (dev CI deploys have been blocked by billing, so dev may lag BE `main`) |
-| Source of truth | every `test.fail(` in `tests/` (56 pin sites, counted incl. fixture forms such as `hodTest.fail(` / `fcTest.fail(`, excluding comments; the run numbers below count only the pins that executed in that run, so they are lower). A `test.fail` reports **passed** while the bug exists and turns **red ("unexpectedly passed")** once it is fixed — drop the marker then. |
+| Source of truth | every `test.fail(` in `tests/` (56 pin sites, counted incl. fixture forms such as `hodTest.fail(` / `fcTest.fail(`, excluding comments: 46 in the default run (setup + login + chromium) and 10 in the opt-in movement / period-close specs. The full-run figure of 53 below is a different measure (cases executed in that run) and does not equal 46; it was not reconciled). A `test.fail` reports **passed** while the bug exists and turns **red ("unexpectedly passed")** once it is fixed — drop the marker then. |
 
 Each row is one cause; several TC-IDs may share it. "Repro" is what the pinned test does, so
 `bun run test -- tests/<spec> -g <TC-ID>` reproduces it on dev after `bun run data:reset --yes`.
@@ -31,7 +31,7 @@ BE `main` (`carmen-turborepo-backend`); none has been confirmed by a product own
 
 Full default run (`setup` + `login` + `chromium`, after `data:reset --yes`, 2.3 h): **1059 passed, 2 failed, 179 skipped**.
 Both failures were investigated (see the PR body): `TC-CUR-040002` is flaky (passes in isolation and in a full 040 re-run); `TC-CN-530003` was a test race (typed the over-quantity before the GRN lookup had set the cap) and was fixed.
-The 179 skips = 153 static `test.skip` + in-body data / precondition skips; the `test.fail` pins that executed in that run (53 in that run; the code holds 56 sites) count as passed.
+The 179 skips = 153 static `test.skip` + in-body data / precondition skips; the `test.fail` pins that executed in that run (53 as reported by that run; the code holds 56 sites, 46 of them in default-run specs) count as passed.
 Playwright's list reporter prints the expected-failure pins with a red cross even though they count as passed.
 
 
