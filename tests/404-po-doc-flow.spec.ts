@@ -6,7 +6,7 @@ import {
   button,
   confirmDialog,
   field,
-  inputValues,
+  shownText,
   numRe,
   pickDate,
   pickLookup,
@@ -146,7 +146,7 @@ test(
   },
   async ({ page }) => {
     await gotoBu(page, `/procurement/purchase-order/${draftId}`, BU);
-    await expect.poll(() => inputValues(page)).toContain(DESC);
+    await expect.poll(() => shownText(page)).toContain(DESC);
     const seen: string[] = [];
     for (const l of LINES) {
       const row = itemRow(page, l.product);

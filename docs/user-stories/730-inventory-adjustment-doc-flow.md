@@ -157,7 +157,7 @@ GET ใบนั้นไม่พบแล้ว และหน้าจออ
 
 **Preconditions**
 
-Login เป็น fc@carmen.com; BU CARMEN-AVG; E2E_DB_URL ตั้งไว้ (ตรวจ inventory transaction จาก DB)
+Login เป็น fc@carmen.com; BU CARMEN-AVG; ตรวจ inventory transaction จาก API
 
 **Steps**
 
@@ -167,7 +167,7 @@ Login เป็น fc@carmen.com; BU CARMEN-AVG; E2E_DB_URL ตั้งไว�
 
 **Expected**
 
-หลังบ้าน doc_status = completed, รายการ 11020001×2@50, 55000001×2@40; ใน DB มี tb_stock_in_detail ของใบนี้ที่ inventory_transaction_id ไม่ว่าง (ให้ Stock Out มีของจ่าย)
+หลังบ้าน doc_status = completed, รายการ 11020001×2@50, 55000001×2@40; inventory-transactions ของใบนี้รับเข้ารวม 4 หน่วย (ให้ Stock Out มีของจ่าย)
 
 > _Note: เดิม SI.5 · ใกล้ TC-IADJ-060002 ใน gap report (เคสนี้ commit จากหน้า new โดยตรง)_
 
@@ -304,7 +304,7 @@ GET ใบนั้นไม่พบแล้ว และหน้าจออ
 
 **Preconditions**
 
-TC-IADJ-700006 commit Stock In ไปแล้ว (1FO02 มี A อย่างน้อย 1); E2E_DB_URL ตั้งไว้
+TC-IADJ-700006 commit Stock In ไปแล้ว (1FO02 มี A อย่างน้อย 1); ตรวจ inventory transaction จาก API
 
 **Steps**
 
@@ -314,11 +314,11 @@ TC-IADJ-700006 commit Stock In ไปแล้ว (1FO02 มี A อย่า�
 
 **Expected**
 
-หลังบ้าน doc_status = completed, รายการ 11020001×1; ใน DB มี tb_stock_out_detail ของใบนี้ที่ inventory_transaction_id ไม่ว่าง
+หลังบ้าน doc_status = completed, รายการ 11020001×1; inventory-transactions ของใบนี้จ่ายออกรวม 1 หน่วย
 
 > _Note: เดิม SO.5_
 
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-21 · git 4a3cb23</sub>

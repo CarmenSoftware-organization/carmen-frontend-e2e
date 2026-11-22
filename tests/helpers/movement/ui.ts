@@ -150,6 +150,14 @@ export async function inputValues(page: Page): Promise<string[]> {
 }
 
 /**
+ * What a document page shows for its header fields: input values (edit mode) plus the
+ * page text (view mode renders description / invoice no. as plain text, not inputs).
+ */
+export async function shownText(page: Page): Promise<string> {
+  return [...(await inputValues(page)), await page.locator("main").innerText()].join("\n");
+}
+
+/**
  * Type into a numeric field like a user: click → select all → type → Tab.
  * Never locator.fill() a price field that already holds a value: the field
  * reformats on focus ("18.00" → "18"), fill's selection is lost and the digits
@@ -166,6 +174,18 @@ export async function typeInto(input: Locator, value: string | number): Promise<
 export function numRe(n: number): RegExp {
   const forms = [...new Set([String(n), n.toFixed(2)])].map((f) => f.replace(".", "\\."));
   return new RegExp(`(^|[^\\d.])(${forms.join("|")})(\\.0+)?(?![\\d])`);
+}
+
+/**
+ * The SR Submit confirm dialog asks "Today is outside the open period ... pick the date" itself
+ * (FE 7bca06a0) and keeps Submit disabled until a radio is chosen. Picks one when the question is
+ * there; returns whether it was asked.
+ */
+export async function chooseDateInDialog(dlg: Locator, choice: "open-period" | "today" = "open-period"): Promise<boolean> {
+  const radios = dlg.getByRole("radio");
+  if (!(await radios.count())) return false;
+  await dlg.getByRole("radio", { name: choice === "today" ? /^Today/ : /^Last day of the open period/ }).click();
+  return true;
 }
 
 /**

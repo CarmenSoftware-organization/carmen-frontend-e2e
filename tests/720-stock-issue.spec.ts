@@ -1,115 +1,149 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { StockIssuePage, LIST_PATH } from "./pages/stock-issue.page";
-import { openRecordFromRow, recordRows } from "./helpers/list-row";
+import { recordRows } from "./helpers/list-row";
+import { rootGet } from "./helpers/bu-api";
+import { BU_CODE } from "./test-users";
+import { ensureActiveBu } from "./helpers/bu";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Multi-role auth — Warehouse/Store-Operations Staff == carmensoftware.dev+purchase@gmail.com.
-// Permission denial uses carmensoftware.dev+requestor@gmail.com.
+// Stock Issue = the Store Requisition list/detail at the "Issue" stage.
+// Warehouse/Store-Operations Staff == carmensoftware.dev+purchase@gmail.com (can start SR workflows).
+// requestor@ sees only SRs it raised itself (store-requisition.service.ts findAll limits a user
+// holding only `view` to `requestor_id = caller`), so it is the "no access to other people's SR" role.
 // requestor declared LAST so doc default role reads "Purchase".
+// Seed (data:reset STD): SR261100001/2 in_progress at Store Approval, SR261100003 at Issue,
+// SR261100004 voided, SR261100005 completed, draft-1/draft-2 — expected values are read from the API.
 // ─────────────────────────────────────────────────────────────────────────
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-SI-900001 — View Issue List
-// ═════════════════════════════════════════════════════════════════════════
+interface Sr { id: string; description?: string | null; sr_no: string; doc_status: string; workflow_current_stage: string | null; department_name?: string | null; from_location_name?: string; to_location_name?: string; store_requisition_detail: { product: { name: string } }[] }
+async function loadAllSrs(): Promise<Sr[]> {
+  const r = await rootGet("Purchase", `/store-requisitions?perpage=50&bu_code=${BU_CODE}`);
+  expect(r.status, "store-requisitions list").toBe(200);
+  return r.body.data.find((b: { bu_code: string }) => b.bu_code === BU_CODE).data as Sr[];
+}
+/** The data:reset SRs only - 701-sr.spec.ts leaves finished/voided SRs ("E2E 701 ..." / SRs it seeded) behind. */
+async function loadSrs(): Promise<Sr[]> {
+  const seed = (await loadAllSrs()).filter((s) => !/^E2E 701/.test(s.description ?? ""));
+  expect(seed.length, "data:reset SRs are in the first 50 rows (run data:reset if 701 left many SRs behind)").toBeGreaterThan(0);
+  return seed;
+}
+/** An SR still waiting at the Issue stage (a voided SR keeps its last stage name). */
+const atIssue = (s: Sr) => s.workflow_current_stage === "Issue" && s.doc_status === "in_progress";
+/** Data precondition (API-checked): the SR the case needs exists. */
+async function needSr(pick: (s: Sr) => boolean, what: string): Promise<Sr> {
+  const found = (await loadSrs()).find(pick);
+  purchaseTest.skip(!found, `TEST BU has no SR ${what} (API-checked)`);
+  return found!;
+}
+const detailPath = (id: string) => `${LIST_PATH}/${id}`;
+const goDetail = async (page: Page, sr: Sr) => {
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await page.goto(detailPath(sr.id));
+  await expect(page.getByText(sr.sr_no).first()).toBeVisible({ timeout: 20_000 });
+};
+const errorState = (page: Page) => page.getByText(/something went wrong/i).first();
+
 purchaseTest.describe("Stock Issue — List", () => {
+  purchaseTest.describe.configure({ timeout: 90_000 });
   purchaseTest(
     "TC-SI-010001 Happy Path - View Issue List",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view และมี permission store_operations.view" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. ตรวจสอบว่า summary cards แสดงจำนวนและมูลค่ารวมที่ถูกต้อง\n3. ตรวจสอบว่า issue list ถูก filter สำหรับ Issue stage ที่มี DIRECT destinations\n4. คลิก row\n5. ตรวจสอบว่ารายละเอียด issue ที่เลือกตรงกับ row",
-        },
-        { type: "expected", description: "Summary cards และ issue list แสดงข้อมูลที่ถูกต้อง ผู้ใช้สามารถดูรายละเอียดของ issues ที่เลือก" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. ไปที่ /store-operation/store-requisition\n2. เปิด All Documents" },
+        { type: "expected", description: "แสดงหัวคอลัมน์ SR No./Status และแถว SR ทุกใบของ BU (เลขเอกสารตรงกับ API)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Smoke" },
       ],
     },
     async ({ page }) => {
+      const srs = await loadSrs();
       const si = new StockIssuePage(page);
-      await si.gotoList();
+      await page.setViewportSize({ width: 1920, height: 1080 });
+      await page.goto(`${LIST_PATH}?view=all-document&perpage=50`);
       await expect(page).toHaveURL(/store-requisition/);
+      for (const h of ["SR No.", "Workflow", "Requester", "Status"]) await expect(page.getByRole("columnheader", { name: h })).toBeVisible();
+      for (const s of srs) await expect(page.getByText(s.sr_no).first()).toBeVisible();
     },
   );
 
   purchaseTest(
-    "TC-SI-010003 Edge Case - No Issues",
+    "TC-SI-010003 Edge Case - ไม่มีรายการที่ตรงคำค้น แสดง empty state",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์เข้าถึง และไม่มี issues ใน Issue stage ที่มี DIRECT destinations" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. ตรวจสอบว่า summary cards แสดง 0 สำหรับทุก counts และ total value\n3. ตรวจสอบว่า issue list ว่างเปล่า",
-        },
-        { type: "expected", description: "Summary cards และ issue list แสดง 0 counts และ empty list" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. เปิด All Documents\n2. ค้นหาคำที่ไม่มี SR ตรง" },
+        { type: "expected", description: "ไม่มีแถว SR และแสดงข้อความ 'No data found'" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
       const si = new StockIssuePage(page);
-      await si.gotoList();
+      await si.gotoAllDocuments();
+      const input = si.searchInput();
+      await input.fill("NO_SUCH_SR_E2E_010003");
+      await input.press("Enter");
+      await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(recordRows(page)).toHaveCount(0);
     },
   );
 
   purchaseTest(
-    "TC-SI-010004 Edge Case - Pagination",
+    "TC-SI-010004 Edge Case - Pagination เปลี่ยนหน้าแสดงแถวชุดถัดไป",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view และมี permission store_operations.view" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. ตรวจสอบว่า pagination controls มีอยู่\n3. กด Next หรือ Previous page button\n4. ตรวจสอบว่าหน้า issues ถัดไปหรือก่อนหน้าแสดงขึ้นมา",
-        },
-        { type: "expected", description: "Pagination controls ทำงานได้และหน้า issues ถัดไปหรือก่อนหน้าแสดงอย่างถูกต้อง" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; BU มี SR > 5 ใบ" },
+        { type: "steps", description: "1. เปิด All Documents ด้วย perpage=5\n2. กดหน้าถัดไป" },
+        { type: "expected", description: "หน้าแรกมี 5 แถว; หน้า 2 (page=2 ใน URL) มีแถวที่เหลือและเป็นคนละชุดกับหน้าแรก" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const next = si.paginationNext();
-      if ((await next.count()) > 0) await next.click().catch(() => {});
+      const srs = await loadAllSrs();
+      purchaseTest.skip(srs.length <= 5, `TEST BU has only ${srs.length} SR(s); pagination needs > 5 (API-checked)`);
+      await page.goto(`${LIST_PATH}?view=all-document&perpage=5`);
+      await expect(recordRows(page)).toHaveCount(5, { timeout: 20_000 });
+      const first = await recordRows(page).allInnerTexts();
+      await page.getByRole("button", { name: /next page/i }).click();
+      await expect(page).toHaveURL(/page=2/);
+      await expect(recordRows(page)).toHaveCount(Math.min(5, srs.length - 5));
+      const second = await recordRows(page).allInnerTexts();
+      expect(second.some((t) => first.includes(t))).toBe(false);
     },
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-SI-900002 — View Issue Detail
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("Stock Issue — View Detail", () => {
+  purchaseTest.describe.configure({ timeout: 90_000 });
   purchaseTest(
     "TC-SI-020001 View existing issue with all details",
     {
       annotation: [
-        { type: "preconditions", description: "StoreRequisition อยู่ใน Issue stage destinationLocationType เป็น DIRECT และผู้ใช้มี view permission" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. คลิก issue row หรือ reference number\n3. ตรวจสอบ header พร้อม SR reference, date และ status badge\n4. ตรวจสอบ cards ของ From Location, Issue Summary, To Location, Department และ Expense Account\n5. ตรวจสอบ items table พร้อมรายละเอียดที่ถูกต้อง\n6. ตรวจสอบ tracking info หากมี",
-        },
-        { type: "expected", description: "ระบบแสดงรายละเอียดทั้งหมดใน issue layout ตามที่คาดหวัง" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; SR261100003 อยู่ที่ขั้น Issue" },
+        { type: "steps", description: "1. เปิด All Documents\n2. เปิด SR ที่อยู่ขั้น Issue" },
+        { type: "expected", description: "หน้ารายละเอียดแสดงเลข SR, สถานะ In progress, Request From/Deliver To ตรงกับ API และรายการสินค้าครบ" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Smoke" },
       ],
     },
     async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) {
-        purchaseTest.skip(true, "No SR available");
-        return;
-      }
-      await openRecordFromRow(row);
+      const sr = await needSr(atIssue, "at the Issue stage");
+      await page.setViewportSize({ width: 1920, height: 1080 });
+      await page.goto(`${LIST_PATH}?view=all-document&perpage=50`);
+      await page.getByText(sr.sr_no).first().click();
+      await expect(page).toHaveURL(new RegExp(detailPath(sr.id)));
+      const main = page.locator("main");
+      await expect(main).toContainText(sr.sr_no);
+      await expect(main).toContainText(/in progress/i);
+      await expect(main).toContainText(sr.from_location_name!);
+      await expect(main).toContainText(sr.to_location_name!);
+      await page.getByRole("tab", { name: "Items" }).click();
+      for (const d of sr.store_requisition_detail) await expect(page.locator("tbody").getByText(d.product.name).first()).toBeVisible();
     },
   );
 
@@ -117,74 +151,67 @@ purchaseTest.describe("Stock Issue — View Detail", () => {
     "TC-SI-020002 View issue with missing department assignment",
     {
       annotation: [
-        { type: "preconditions", description: "StoreRequisition อยู่ใน Issue stage destinationLocationType เป็น DIRECT ผู้ใช้มี view permission และ department ไม่ถูก assign" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. คลิก issue row หรือ reference number\n3. ตรวจสอบ header พร้อม SR reference, date และ status badge\n4. ตรวจสอบ cards ของ From Location, Issue Summary, To Location และ Expense Account\n5. ตรวจสอบ items table พร้อมรายละเอียดที่ถูกต้อง\n6. ตรวจสอบ tracking info หากมี",
-        },
-        { type: "expected", description: "ระบบแสดงรายละเอียดทั้งหมดยกเว้น department card ตามที่คาดหวัง" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; มี SR ที่ department_name ว่าง" },
+        { type: "steps", description: "1. เปิดรายละเอียดของ SR ที่ไม่มี department" },
+        { type: "expected", description: "หน้ารายละเอียดเปิดได้ปกติ (ไม่เกิด error) และแสดงเลข SR กับรายการสินค้า" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
+      const sr = await needSr((s) => !s.department_name, "without a department");
+      await goDetail(page, sr);
+      await expect(errorState(page)).toHaveCount(0);
+      await expect(page.getByRole("tab", { name: "Items" })).toBeVisible();
     },
   );
 });
 
 requestorTest.describe("Stock Issue — View Detail — Permission denial", () => {
+  requestorTest.describe.configure({ timeout: 90_000 });
   requestorTest(
-    "TC-SI-020003 View issue without view permission",
+    "TC-SI-020003 เปิด URL ของ SR ที่คนอื่นสร้างโดยตรงไม่ได้ (ไม่เห็นข้อมูลเอกสาร)",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com StoreRequisition อยู่ใน Issue stage destinationLocationType เป็น DIRECT และผู้ใช้ไม่มี view permission" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. คลิก issue row หรือ reference number\n3. ตรวจสอบ error message หรือสัญญาณบอกว่าถูกจำกัดสิทธิ์",
-        },
-        { type: "expected", description: "ระบบจำกัดการเข้าถึงหรือแสดง error message ตามที่คาดหวัง" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase" },
+        { type: "steps", description: "1. เปิด /store-operation/store-requisition/<id ของ SR ที่ Purchase สร้าง> โดยตรง" },
+        { type: "expected", description: "หน้าแสดง error state ('Something went wrong') และไม่แสดงเลข SR หรือรายการสินค้า" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      await page.goto(LIST_PATH);
-      const url = page.url();
-      const onListPage = /store-requisition/.test(url);
-      const onUnauthorized = /unauthorized|denied|403|login/i.test(url);
-      expect(onListPage || onUnauthorized).toBeTruthy();
+      const sr = (await loadSrs()).find((s) => s.doc_status === "in_progress")!;
+      await page.goto(detailPath(sr.id));
+      await expect(errorState(page)).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText(sr.sr_no)).toHaveCount(0);
+      await expect(page.getByRole("tab", { name: "Items" })).toHaveCount(0);
     },
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-SI-900003 — Search & Filter
-// ═════════════════════════════════════════════════════════════════════════
 purchaseTest.describe("Stock Issue — Search & Filter", () => {
+  purchaseTest.describe.configure({ timeout: 90_000 });
   purchaseTest(
     "TC-SI-030001 Happy Path - Search by SR Reference Number",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กรอก search term 'SR-12345' ใน search box\n3. เลือก status filter 'All'\n4. รอให้ list อัปเดต\n5. ตรวจสอบว่า SR 'SR-12345' แสดงใน list",
-        },
-        { type: "expected", description: "SR 'SR-12345' แสดงใน list พร้อมรายละเอียดที่เกี่ยวข้องอย่างถูกต้อง" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. เปิด All Documents\n2. ค้นหาเลข SR ใบหนึ่งแล้วกด Enter" },
+        { type: "expected", description: "เหลือเฉพาะแถวของ SR นั้นใบเดียว" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
+      const [sr] = await loadSrs();
       const si = new StockIssuePage(page);
-      await si.gotoList();
-      const search = si.searchInput();
-      if ((await search.count()) > 0) await search.fill("SR-12345").catch(() => {});
+      await si.gotoAllDocuments();
+      const input = si.searchInput();
+      await input.fill(sr.sr_no);
+      await input.press("Enter");
+      await expect(recordRows(page)).toHaveCount(1, { timeout: 15_000 });
+      await expect(recordRows(page).first()).toContainText(sr.sr_no);
     },
   );
 
@@ -192,208 +219,9 @@ purchaseTest.describe("Stock Issue — Search & Filter", () => {
     "TC-SI-030002 Negative Case - Invalid Search Term",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กรอก search term 'InvalidSR' ใน search box\n3. เลือก status filter 'All'\n4. รอให้ list อัปเดต\n5. ตรวจสอบว่าไม่มี SRs แสดง",
-        },
-        { type: "expected", description: "ไม่มี SRs แสดงใน list" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const search = si.searchInput();
-      if ((await search.count()) > 0) await search.fill("__INVALID_SR_E2E__").catch(() => {});
-      await expect(si.emptyState()).toBeVisible({ timeout: 10_000 });
-    },
-  );
-
-  purchaseTest(
-    "TC-SI-030003 Edge Case - Empty Search Term",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. clear search term ใน search box\n3. เลือก status filter 'All'\n4. รอให้ list อัปเดต\n5. ตรวจสอบว่า SRs ทั้งหมดแสดงขึ้นมา",
-        },
-        { type: "expected", description: "SRs ทั้งหมดแสดงใน list" },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const search = si.searchInput();
-      if ((await search.count()) > 0) await search.fill("").catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-SI-030005 Edge Case - Multiple Filters",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กรอก search term 'SR-12345' ใน search box\n3. เลือก status filter 'Active'\n4. กด dropdown 'From Location'\n5. เลือก 'Warehouse A' จาก dropdown\n6. กด dropdown 'To Location'\n7. เลือก 'Warehouse B' จาก dropdown\n8. กด dropdown 'Department'\n9. เลือก 'Sales' จาก dropdown\n10. รอให้ list อัปเดต\n11. ตรวจสอบว่า SR 'SR-12345' ที่มีสถานะ 'Active' จาก 'Warehouse A' ไปยัง 'Warehouse B' และอยู่ใน department 'Sales' แสดงขึ้นมา",
-        },
-        { type: "expected", description: "SR 'SR-12345' ที่ตรงกับ filters ที่กำหนดแสดงใน list" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const search = si.searchInput();
-      if ((await search.count()) > 0) await search.fill("SR-12345").catch(() => {});
-    },
-  );
-});
-
-requestorTest.describe("Stock Issue — Search & Filter — Permission denial", () => {
-  requestorTest(
-    "TC-SI-030004 Negative Case - No Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com และไม่มีสิทธิ์เข้าถึง Stock Issues view" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. พยายามกรอก search term ใน search box",
-        },
-        { type: "expected", description: "ผู้ใช้ถูก redirect ไปยังหน้า permission denied หรือ error message แสดงขึ้นมา" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      await page.goto(LIST_PATH);
-      const url = page.url();
-      const onListPage = /store-requisition/.test(url);
-      const onUnauthorized = /unauthorized|denied|403|login/i.test(url);
-      expect(onListPage || onUnauthorized).toBeTruthy();
-    },
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-SI-900004 — View Full SR
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Stock Issue — View Full SR", () => {
-  purchaseTest(
-    "TC-SI-040001 Happy Path - View Full SR from Issue Detail",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มี SR view permission และ Issue view แสดงอยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Full SR'\n3. ตรวจสอบว่าหน้า Store Requisition detail แสดงขึ้นมา",
-        },
-        { type: "expected", description: "ผู้ใช้ถูกนำทางไปยังหน้า Store Requisition detail ซึ่งสามารถดูข้อมูลที่เกี่ยวข้องทั้งหมดและดำเนินการได้หากมีสิทธิ์" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      await si.viewFullSRButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-SI-040003 Edge Case - Empty SR Reference Link",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี SR view permission และ Issue view แสดงพร้อม SR reference link ที่ว่างเปล่า" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Full SR' (link ว่างเปล่า)\n3. ตรวจสอบว่า error message แสดงขึ้นมา",
-        },
-        { type: "expected", description: "Error message แสดงว่า SR reference link ไม่ถูกต้องหรือว่างเปล่า" },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-SI-040004 Negative - User at Issue Stage No Permissions",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มี SR view permission และ Issue view แสดงพร้อม SR ใน Issue stage" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Full SR'\n3. กด 'Complete'\n4. ตรวจสอบว่า error message แสดงขึ้นมา",
-        },
-        { type: "expected", description: "Error message แสดงว่าผู้ใช้ไม่มีสิทธิ์ complete SR" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-    },
-  );
-
-  purchaseTest(
-    "TC-SI-040005 Happy Path - Print SR",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com มี SR view และ print permission และ Issue view แสดงพร้อม SR ใน Issue stage" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Full SR'\n3. กด 'Print'\n4. ตรวจสอบว่า print dialog หรือ confirmation message แสดงขึ้นมา",
-        },
-        { type: "expected", description: "Print dialog หรือ confirmation message แสดงขึ้นมาเพื่อให้ผู้ใช้ print SR ได้" },
-        { type: "priority", description: "Low" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      await si.printButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-});
-
-requestorTest.describe("Stock Issue — View Full SR — Permission denial", () => {
-  requestorTest(
-    "TC-SI-040002 Negative - No SR View Permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่มี SR view permission และ Issue view แสดงอยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition?view=all-document\n2. ตรวจสอบว่ารายการว่างและไม่มีปุ่ม View Full SR",
-        },
-        { type: "expected", description: "รายการ SR ของ requestor ว่าง (สิทธิ์ view เห็นเฉพาะใบที่ตัวเองเป็นผู้ขอ) จึงไม่มีใบให้เปิดและไม่มีปุ่ม View Full SR" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. เปิด All Documents\n2. ค้นหา '__INVALID_SR_E2E__'" },
+        { type: "expected", description: "ไม่มีแถว SR และแสดง 'No data found'" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
@@ -401,65 +229,205 @@ requestorTest.describe("Stock Issue — View Full SR — Permission denial", () 
     async ({ page }) => {
       const si = new StockIssuePage(page);
       await si.gotoAllDocuments();
-      // Permission scope, not missing data: store-requisition.service.ts findAll limits a user with
-      // only `view` to `requestor_id = caller` (department users get `view_department`). The
-      // STD seed creates every SR as the purchase user, so the requestor's list is empty while
-      // hod/fc/purchase see 7 SRs in the same BU (measured 2026-11-21). The empty list is the denial.
+      const input = si.searchInput();
+      await input.fill("__INVALID_SR_E2E__");
+      await input.press("Enter");
       await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(recordRows(page)).toHaveCount(0);
-      // ...and there is no record to open, so the restricted action cannot be reached.
-      await expect(si.viewFullSRButton()).toHaveCount(0);
+    },
+  );
+
+  purchaseTest(
+    "TC-SI-030003 Edge Case - ล้างคำค้นแล้วรายการกลับมาครบ",
+    {
+      annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. ค้นหาเลข SR\n2. ล้างช่องค้นหาแล้วกด Enter" },
+        { type: "expected", description: "จำนวนแถวกลับมาเท่ากับจำนวน SR ใน API" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const srs = await loadAllSrs();
+      const si = new StockIssuePage(page);
+      await si.gotoAllDocuments();
+      const input = si.searchInput();
+      await input.fill(srs[0].sr_no);
+      await input.press("Enter");
+      await expect(recordRows(page)).toHaveCount(1);
+      await input.fill("");
+      await input.press("Enter");
+      await expect(recordRows(page)).toHaveCount(Math.min(10, srs.length));
+    },
+  );
+
+  purchaseTest(
+    "TC-SI-030005 Edge Case - สลับ scope (My pending) แล้วคำค้นถูกล้างและรายการเป็นของ scope ใหม่",
+    {
+      annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. เปิด All Documents และค้นหาเลข SR\n2. สลับไป My pending" },
+        { type: "expected", description: "URL เป็น view=my-pending โดยไม่มี search และช่องค้นหาว่าง (การสลับ scope ล้างคำค้น)" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Edge Case" },
+      ],
+    },
+    async ({ page }) => {
+      const [sr] = await loadSrs();
+      const si = new StockIssuePage(page);
+      await si.gotoAllDocuments();
+      const input = si.searchInput();
+      await input.fill(sr.sr_no);
+      await input.press("Enter");
+      await expect(recordRows(page)).toHaveCount(1);
+      await si.tabMyPending().click();
+      await expect(page).toHaveURL(/view=my-pending/);
+      await expect(page).not.toHaveURL(/search=/);
+      await expect(input).toHaveValue("");
     },
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-SI-900005 — Print Stock Issue
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Stock Issue — Print", () => {
-  purchaseTest(
-    "TC-SI-050001 Happy Path: Warehouse Staff prints a stock issue document",
+requestorTest.describe("Stock Issue — Search & Filter — Permission denial", () => {
+  requestorTest.describe.configure({ timeout: 90_000 });
+  requestorTest(
+    "TC-SI-030004 Requestor ค้นหาเลข SR ของคนอื่นไม่พบ (scope เฉพาะเอกสารของตัวเอง)",
     {
       annotation: [
-        { type: "preconditions", description: "Issue อยู่ใน Issue/Complete stage และผู้ใช้มี view permission" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'Print' button\n3. ตรวจสอบว่าเอกสารถูกสร้างพร้อม header, location information, items list และ signature fields\n4. Browser print dialog เปิดขึ้นมา",
-        },
-        { type: "expected", description: "เอกสารถูก print สำเร็จพร้อมข้อมูลที่จำเป็นทั้งหมด" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase" },
+        { type: "steps", description: "1. เปิด All Documents\n2. ค้นหาเลข SR ที่ Purchase สร้าง" },
+        { type: "expected", description: "ไม่มีแถว SR และแสดง 'No data found' (ไม่มีแถวรั่วมาจาก SR ของคนอื่น)" },
         { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
+      const [sr] = await loadSrs();
       const si = new StockIssuePage(page);
-      await si.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      await si.printButton().click({ timeout: 5_000 }).catch(() => {});
+      await si.gotoAllDocuments();
+      const input = si.searchInput();
+      await input.fill(sr.sr_no);
+      await input.press("Enter");
+      await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(recordRows(page)).toHaveCount(0);
+    },
+  );
+});
+
+purchaseTest.describe("Stock Issue — Issue stage actions", () => {
+  purchaseTest.describe.configure({ timeout: 90_000 });
+  purchaseTest(
+    "TC-SI-040004 Negative - SR ที่ขั้น Issue ไม่มีปุ่ม action เดินเอกสารสำหรับ Purchase",
+    {
+      annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; SR261100003 อยู่ที่ขั้น Issue และ Purchase ไม่ใช่ผู้รับผิดชอบขั้นนี้" },
+        { type: "steps", description: "1. เปิดรายละเอียด SR ที่อยู่ขั้น Issue" },
+        { type: "expected", description: "ไม่มีปุ่ม Issue/Approve/Reject/Submit ในหน้า (มีเพียง Edit/Duplicate/Print/Comment/Activity)" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async ({ page }) => {
+      const sr = await needSr(atIssue, "at the Issue stage");
+      await goDetail(page, sr);
+      for (const name of [/^issue$/i, /^approve$/i, /^reject$/i, /submit/i]) await expect(page.getByRole("button", { name })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^Print$/ })).toBeVisible();
     },
   );
 
   purchaseTest(
-    "TC-SI-050003 Edge Case: Multiple items with zero quantity",
+    "TC-SI-040005 Happy Path - Print SR เปิดหน้า report viewer",
     {
       annotation: [
-        { type: "preconditions", description: "Issue มี items หลายรายการ บางรายการมี quantity เป็นศูนย์" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'Print' button\n3. ตรวจสอบว่าเอกสารแสดงเฉพาะ items ที่มี quantity ไม่ใช่ศูนย์",
-        },
-        { type: "expected", description: "เอกสารไม่แสดง items ที่มี quantity เป็นศูนย์" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. เปิดรายละเอียด SR\n2. กดปุ่ม Print" },
+        { type: "expected", description: "ยิง GET .../store-requisitions/{id}/print-viewer สำเร็จและเปิด popup ของ report viewer" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
+      ],
+    },
+    async ({ page }) => {
+      const [sr] = await loadSrs();
+      await goDetail(page, sr);
+      const viewer = page.waitForResponse((r) => r.url().includes(`/store-requisitions/${sr.id}/print-viewer`));
+      const popup = page.waitForEvent("popup");
+      await page.getByRole("button", { name: /^Print$/ }).click();
+      expect((await viewer).status()).toBe(200);
+      expect((await popup).url()).toMatch(/Report\/Viewer\//);
+    },
+  );
+});
+
+requestorTest.describe("Stock Issue — View Full SR — Permission denial", () => {
+  requestorTest.describe.configure({ timeout: 90_000 });
+  requestorTest(
+    "TC-SI-040002 Negative - Requestor ไม่เห็น SR ของคนอื่นใน All Documents (scope เฉพาะของตัวเอง)",
+    {
+      annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase" },
+        { type: "steps", description: "1. เปิด All Documents" },
+        { type: "expected", description: "ไม่มีแถว SR (BU มี SR 7 ใบที่คนอื่นสร้าง) และแสดง 'No data found'" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async ({ page }) => {
+      const srs = await loadSrs();
+      expect(srs.length, "SRs exist in the BU for other users").toBeGreaterThan(0);
+      const si = new StockIssuePage(page);
+      await si.gotoAllDocuments();
+      await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(recordRows(page)).toHaveCount(0);
+    },
+  );
+});
+
+purchaseTest.describe("Stock Issue — Print", () => {
+  purchaseTest.describe.configure({ timeout: 90_000 });
+  purchaseTest(
+    "TC-SI-050001 Happy Path: Warehouse Staff prints a stock issue document",
+    {
+      annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; SR ที่ขั้น Issue" },
+        { type: "steps", description: "1. เปิดรายละเอียด SR ที่ขั้น Issue\n2. กดปุ่ม Print" },
+        { type: "expected", description: "ยิง print-viewer สำเร็จ (200) และเปิดหน้า report viewer" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
+      ],
+    },
+    async ({ page }) => {
+      const sr = await needSr(atIssue, "at the Issue stage");
+      await goDetail(page, sr);
+      const viewer = page.waitForResponse((r) => r.url().includes(`/store-requisitions/${sr.id}/print-viewer`));
+      const popup = page.waitForEvent("popup");
+      await page.getByRole("button", { name: /^Print$/ }).click();
+      expect((await viewer).status()).toBe(200);
+      expect((await popup).url()).toMatch(/Report\/Viewer\//);
+    },
+  );
+
+  purchaseTest(
+    "TC-SI-050003 Edge Case: รายการที่ยังไม่ได้ issue (Issued = 0) แสดงเป็น 0.00",
+    {
+      annotation: [
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; SR261100003 ยังไม่ issue สินค้าใด" },
+        { type: "steps", description: "1. เปิดรายละเอียด SR ที่ขั้น Issue\n2. ตรวจคอลัมน์ Issued ในแท็บ Items" },
+        { type: "expected", description: "ทุกแถวสินค้าแสดงจำนวน Issued 0.00 และตารางไม่ error" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
+      const sr = await needSr(atIssue, "at the Issue stage");
+      await goDetail(page, sr);
+      await page.getByRole("tab", { name: "Items" }).click();
+      await expect(page.getByRole("columnheader", { name: /Issued/i })).toBeVisible();
+      for (const d of sr.store_requisition_detail) {
+        const row = page.locator("tbody tr").filter({ hasText: d.product.name }).first();
+        await expect(row).toBeVisible();
+        await expect(row).toContainText("0.00KG"); // issued column (nothing issued yet)
+      }
     },
   );
 
@@ -467,185 +435,80 @@ purchaseTest.describe("Stock Issue — Print", () => {
     "TC-SI-050004 Negative: Issue does not exist",
     {
       annotation: [
-        { type: "preconditions", description: "Issue ไม่มีอยู่ในระบบ" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'Print' button\n3. ตรวจสอบว่าระบบแสดง error message",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่า issue ไม่มีอยู่" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. เปิด /store-operation/store-requisition/<uuid ที่ไม่มี>" },
+        { type: "expected", description: "แสดง error state พร้อมปุ่ม Try again และไม่มีข้อมูลเอกสาร" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoDetail("non-existent-issue-99999");
+      await page.goto(detailPath("00000000-0000-4000-8000-000000000000"));
+      await expect(errorState(page)).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("button", { name: /try again/i })).toBeVisible();
+      await expect(page.getByRole("tab", { name: "Items" })).toHaveCount(0);
     },
   );
 
   purchaseTest(
-    "TC-SI-050005 Edge Case: Issue at Cancel stage",
+    "TC-SI-050005 Edge Case: Issue at Cancel stage (SR ที่ void แล้ว)",
     {
       annotation: [
-        { type: "preconditions", description: "Issue มีอยู่แต่อยู่ใน Cancel stage" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'Print' button\n3. ตรวจสอบว่าระบบแสดง error message",
-        },
-        { type: "expected", description: "ระบบแสดง error message ว่า issue อยู่ใน Cancel stage และไม่สามารถ print ได้" },
-        { type: "priority", description: "Low" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; มี SR สถานะ voided" },
+        { type: "steps", description: "1. เปิดรายละเอียด SR ที่ void" },
+        { type: "expected", description: "header แสดงสถานะ Voided และไม่มีปุ่ม Edit" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
       ],
     },
     async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const cancelledRow = page.locator("tbody").getByRole("row").filter({ hasText: /cancel/i }).first();
-      if ((await cancelledRow.count()) === 0) return;
-      await openRecordFromRow(cancelledRow);
+      const sr = await needSr((s) => s.doc_status === "voided", "in voided status");
+      await goDetail(page, sr);
+      await expect(page.locator("main")).toContainText(/voided/i);
+      await expect(page.getByRole("button", { name: /^Edit$/ })).toHaveCount(0);
     },
   );
 });
 
 requestorTest.describe("Stock Issue — Print — Permission denial", () => {
-    // App finding, not a test bug — do not restore the silent version.
-  // The button is present and **enabled** for this role; the assertion only ever
-  // "passed" because it was wrapped in .catch(() => {}) (the other branch was the
-  // equally empty `expect(true).toBe(true)`). These modules have no client-side
-  // role gate at all: unlike Purchase Order, whose /new route is wrapped in
-  // `CreateWorkflowGate` and answers "RESTRICTED — Permission Denied", the
-  // vendor-management routes carry no guard, and requestor@ can open the create
-  // form directly. Whether that is intended is a product decision — un-fixme once
-  // it is settled, and assert whatever the answer turns out to be.
-requestorTest.fixme(
-    "TC-SI-050002 Negative: User without permission attempts to print",
+  requestorTest.describe.configure({ timeout: 90_000 });
+  requestorTest(
+    "TC-SI-050002 Negative: Requestor เปิดเอกสารของคนอื่นเพื่อพิมพ์ไม่ได้ (ไม่มีปุ่ม Print)",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com Issue อยู่ใน Issue/Complete stage แต่ผู้ใช้ไม่มี view permission" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /store-operation/store-requisition\n2. กด 'Print' button\n3. ตรวจสอบว่าระบบปฏิเสธสิทธิ์และไม่อนุญาตให้ print",
-        },
-        { type: "expected", description: "ระบบปฏิเสธการ print เนื่องจาก permissions ไม่เพียงพอ" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase" },
+        { type: "steps", description: "1. เปิดรายละเอียด SR ที่ Purchase สร้างโดยตรง" },
+        { type: "expected", description: "แสดง error state และไม่มีปุ่ม Print" },
         { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
+        { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const row = page.getByRole("row").nth(1);
-      if ((await row.count()) === 0) return;
-      await openRecordFromRow(row);
-      const print = si.printButton();
-      // Either button is hidden (correct) or disabled
-      if ((await print.count()) === 0) {
-        expect(true).toBe(true);
-      } else {
-        await expect(print).toBeDisabled({ timeout: 5_000 });
-      }
+      const sr = (await loadSrs()).find(atIssue)!;
+      await page.goto(detailPath(sr.id));
+      await expect(errorState(page)).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("button", { name: /^Print$/ })).toHaveCount(0);
     },
   );
 });
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-SI-900006 — Expense Allocation
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Stock Issue — Expense Allocation", () => {
-  purchaseTest(
-    "TC-SI-060001 Happy Path - View Expense Allocation",
-    {
-      annotation: [
-        { type: "preconditions", description: "สถานะ SR เป็น Completed และผู้ใช้มี permission ดู costs" },
-        {
-          type: "steps",
-          description: "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Expense Allocation'",
-        },
-        { type: "expected", description: "รายละเอียด expense allocation แสดงขึ้นมา: Department, Expense Account, Total Value expensed และ items พร้อม individual costs" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-      const completedRow = page.locator("tbody").getByRole("row").filter({ hasText: /complete/i }).first();
-      if ((await completedRow.count()) === 0) return;
-      await openRecordFromRow(completedRow);
-      await si.viewExpenseAllocationButton().click({ timeout: 5_000 }).catch(() => {});
-    },
-  );
-
-  purchaseTest(
-    "TC-SI-060003 Edge Case - SR with No Expense Allocation",
-    {
-      annotation: [
-        { type: "preconditions", description: "สถานะ SR เป็น Completed ผู้ใช้มี permission ดู costs และ SR ไม่มี expense allocation" },
-        {
-          type: "steps",
-          description: "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Expense Allocation'",
-        },
-        { type: "expected", description: "ระบบแสดง message ว่าไม่มี expense allocation" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoList();
-    },
-  );
-
+purchaseTest.describe("Stock Issue — Invalid id", () => {
+  purchaseTest.describe.configure({ timeout: 90_000 });
   purchaseTest(
     "TC-SI-060004 Negative - Invalid SR ID",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ดู costs" },
-        {
-          type: "steps",
-          description: "1. ไปที่ /store-operation/store-requisition\n2. กด 'View Expense Allocation'",
-        },
-        { type: "expected", description: "ระบบแสดง message ว่า SR ID ไม่ถูกต้อง" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset" },
+        { type: "steps", description: "1. เปิด /store-operation/store-requisition/999" },
+        { type: "expected", description: "แสดง error state และไม่มีข้อมูลเอกสาร" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
       ],
     },
     async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoDetail("999");
-    },
-  );
-});
-
-requestorTest.describe("Stock Issue — Expense Allocation — Permission denial", () => {
-  requestorTest(
-    "TC-SI-060002 Negative - No Permission to View Costs",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com สถานะ SR เป็น Completed และผู้ใช้ไม่มี permission ดู costs" },
-        {
-          type: "steps",
-          description: "1. ไปที่ /store-operation/store-requisition?view=all-document\n2. ตรวจสอบว่ารายการว่างและไม่มีปุ่ม View Expense Allocation",
-        },
-        { type: "expected", description: "รายการ SR ของ requestor ว่าง จึงไม่มีใบให้เปิดและไม่มีปุ่ม View Expense Allocation (ดู costs ไม่ได้)" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-      ],
-    },
-    async ({ page }) => {
-      const si = new StockIssuePage(page);
-      await si.gotoAllDocuments();
-      // Permission scope, not missing data: store-requisition.service.ts findAll limits a user with
-      // only `view` to `requestor_id = caller` (department users get `view_department`). The
-      // STD seed creates every SR as the purchase user, so the requestor's list is empty while
-      // hod/fc/purchase see 7 SRs in the same BU (measured 2026-11-21). The empty list is the denial.
-      await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
-      await expect(recordRows(page)).toHaveCount(0);
-      // ...and there is no record to open, so the restricted action cannot be reached.
-      await expect(si.viewExpenseAllocationButton()).toHaveCount(0);
+      await page.goto(detailPath("999"));
+      await expect(errorState(page)).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("tab", { name: "Items" })).toHaveCount(0);
     },
   );
 });

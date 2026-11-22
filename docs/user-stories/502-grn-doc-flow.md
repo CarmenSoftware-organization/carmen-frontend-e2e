@@ -126,7 +126,7 @@ GET ใบนั้นไม่พบแล้ว และหน้าจออ
 
 **Preconditions**
 
-Login เป็น requestor@carmen.com; BU CARMEN-AVG (costing แบบ average — ลงสต๊อกตอน saved); E2E_DB_URL ตั้งไว้ (ตรวจ inventory transaction จาก DB)
+Login เป็น requestor@carmen.com; BU CARMEN-AVG (costing แบบ average — ลงสต๊อกตอน saved); ตรวจ inventory transaction จาก API
 
 **Steps**
 
@@ -136,11 +136,11 @@ Login เป็น requestor@carmen.com; BU CARMEN-AVG (costing แบบ averag
 
 **Expected**
 
-หลังบ้าน doc_status = saved, grn_no ไม่ขึ้นต้นด้วย draft, รายการ 11110012×1@50; ใน DB มี tb_good_received_note_detail_item ของใบนี้ที่ inventory_transaction_id ไม่ว่างอย่างน้อย 1 แถว
+หลังบ้าน doc_status = saved, grn_no ไม่ขึ้นต้นด้วย draft, รายการ 11110012×1@50; inventory-transactions ของใบนี้รับเข้า 11110012 จำนวน 1
 
 > _Note: เดิม GRN.5 · ขัดกับ TC-GRN-140003 (501-grn: ยังไม่ commit ต้องไม่มี stock movement) — ต้องให้ทีมหลังบ้านยืนยันว่าพฤติกรรมของ AVG แบบไหนถูก_
 
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-21 · git 4a3cb23</sub>

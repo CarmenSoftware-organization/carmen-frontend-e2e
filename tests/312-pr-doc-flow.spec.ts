@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, gotoBu, expect, observed } from "./fixtures/movement.fixture";
 import { apiGet } from "./helpers/movement/api";
-import { addRow, button, confirmDialog, inputValues, pickLookup, pickSelectIn, toasts, typeInto } from "./helpers/movement/ui";
+import { addRow, button, confirmDialog, numRe, shownText, pickLookup, pickSelectIn, toasts, typeInto } from "./helpers/movement/ui";
 import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, itemRow, stamp } from "./helpers/movement/doc-flow";
 
 /**
@@ -122,12 +122,12 @@ test(
   },
   async ({ page }) => {
     await gotoBu(page, `/procurement/purchase-request/${draftId}`, BU);
-    await expect.poll(() => inputValues(page)).toContain(DESC);
+    await expect.poll(() => shownText(page)).toContain(DESC);
     const seen: string[] = [];
     for (const l of LINES) {
       const row = itemRow(page, l.product);
       await expect(row).toBeVisible();
-      await expect(row).toContainText(String(l.qty));
+      await expect(row).toContainText(numRe(l.qty));
       seen.push(`${l.product}: ${(await row.innerText()).replace(/\s+/g, " ").slice(0, 80)}`);
     }
     await observed(seen.join(" · "));
@@ -156,6 +156,7 @@ test(
     await expect(itemRow(page, PROD.P2.code)).toHaveCount(0);
     await addLine(page, EDITED[1]);
     const r = await saveAndWait(page);
+    test.fail(true, "suspected bug: PATCH of a Draft with an added line -> 400 'Argument is_tax_included is missing' (BE update/add path) - bisected by replaying PATCH .../save: a line carrying BOTH pricelist_detail_id:null AND is_tax_included fails, dropping either key gives 200; FE 76ec45e4 (2026-11-09) added is_tax_included to the payload, BE schema 1ac85b1ae (2026-11-09) has the column and dev runs build f529576a9 (2026-11-13), so this is not a not-yet-deployed change; same cluster as the pins in the 301/302/311 PR specs");
     expect(r.status, JSON.stringify(r.body).slice(0, 300)).toBeLessThan(300);
     await expect.poll(async () => fmt((await prById(draftId)).lines), { timeout: 15_000 }).toBe(fmt(EDITED));
     const pr = await prById(draftId);

@@ -1,8 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, gotoBu, expect, observed } from "./fixtures/movement.fixture";
-import { apiGet } from "./helpers/movement/api";
+import { apiGet, txOfDoc } from "./helpers/movement/api";
 import { createGrn } from "./helpers/movement/docs";
-import { schemaOf, sql } from "./helpers/movement/db";
 import { addRow, button, confirmDialog, inputValues, numRe, pickLookup, toasts, typeInto } from "./helpers/movement/ui";
 import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD as P, activePeriodDate, itemRow, stamp } from "./helpers/movement/doc-flow";
 
@@ -18,7 +17,6 @@ import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD as P, activePeriodDate, itemRow,
  * Origin: `_movement_play/eop_bf/e2e/fe/04-grn.spec.ts` (GRN.1–GRN.5).
  */
 const { user: USER, loc: LOC } = DOC_FLOW_ROLE.grn;
-const SCHEMA = schemaOf(BU);
 test.use({ user: USER, bu: BU });
 test.describe.configure({ mode: "serial" });
 
@@ -198,9 +196,9 @@ test(
   "TC-GRN-700005 Requestor สร้าง GRN แล้วกด Create ได้สถานะ saved และ AVG ลงสต๊อกทันที",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น requestor@carmen.com; BU CARMEN-AVG (costing แบบ average — ลงสต๊อกตอน saved); E2E_DB_URL ตั้งไว้ (ตรวจ inventory transaction จาก DB)" },
+      { type: "preconditions", description: "Login เป็น requestor@carmen.com; BU CARMEN-AVG (costing แบบ average — ลงสต๊อกตอน saved); ตรวจ inventory transaction จาก API" },
       { type: "steps", description: "1. สร้าง GRN manual 1 รายการ 11110012 × 1 @50 วันที่ในงวด active\n2. กด Create\n3. รอให้ใบพ้นสถานะ draft" },
-      { type: "expected", description: "หลังบ้าน doc_status = saved, grn_no ไม่ขึ้นต้นด้วย draft, รายการ 11110012×1@50; ใน DB มี tb_good_received_note_detail_item ของใบนี้ที่ inventory_transaction_id ไม่ว่างอย่างน้อย 1 แถว" },
+      { type: "expected", description: "หลังบ้าน doc_status = saved, grn_no ไม่ขึ้นต้นด้วย draft, รายการ 11110012×1@50; inventory-transactions ของใบนี้รับเข้า 11110012 จำนวน 1" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
       { type: "note", description: "เดิม GRN.5 · ขัดกับ TC-GRN-140003 (501-grn: ยังไม่ commit ต้องไม่มี stock movement) — ต้องให้ทีมหลังบ้านยืนยันว่าพฤติกรรมของ AVG แบบไหนถูก" },
@@ -213,12 +211,10 @@ test(
     expect(g.status).toBe("saved");
     expect(g.no).not.toMatch(/^draft/);
     expect(fmt(g.lines)).toBe(fmt(lines));
-    const [tx] = sql<{ n: string }>(
-      `select count(*) n from ${SCHEMA}.tb_good_received_note_detail_item i
-       join ${SCHEMA}.tb_good_received_note_detail d on d.id = i.good_received_note_detail_id
-       where d.good_received_note_id = '${doc!.id}' and i.inventory_transaction_id is not null`,
-    );
-    expect(Number(tx.n), "an AVG GRN must post stock when saved").toBeGreaterThan(0);
-    await observed(`${g.no} · ${g.status} · ${fmt(g.lines)} · inventory transactions ${tx.n} · toast: ${(await toasts(page)).join(" / ") || "-"}`);
+    const tx = await txOfDoc(BU, doc!.id, g.no);
+    expect(tx.length, "an AVG GRN must post stock when saved").toBeGreaterThan(0);
+    expect(tx.reduce((n, t) => n + t.qty_in, 0), "stock received = GRN line qty").toBe(lines[0].qty);
+    expect(tx[0].product?.code).toBe(lines[0].product);
+    await observed(`${g.no} · ${g.status} · ${fmt(g.lines)} · inventory transactions ${tx.length} · toast: ${(await toasts(page)).join(" / ") || "-"}`);
   },
 );

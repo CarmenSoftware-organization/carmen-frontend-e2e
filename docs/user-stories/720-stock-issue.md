@@ -5,66 +5,57 @@ _Generated from `tests/720-stock-issue.spec.ts` annotations. Edit annotations, n
 **Module:** Stock Issue
 **Spec:** `tests/720-stock-issue.spec.ts`
 **Default role:** Purchase
-**Total test cases:** 25 (4 High / 16 Medium / 5 Low)
+**Total test cases:** 20 (8 High / 11 Medium / 1 Low)
 
 ## Test Cases at a Glance
 
 | TC | Title | Priority | Test Type |
 | --- | --- | --- | --- |
-| TC-SI-010001 | Happy Path - View Issue List | Medium | Happy Path |
-| TC-SI-010003 | Edge Case - No Issues | Medium | Edge Case |
-| TC-SI-010004 | Edge Case - Pagination | Medium | Edge Case |
-| TC-SI-020001 | View existing issue with all details | Medium | Happy Path |
+| TC-SI-010001 | Happy Path - View Issue List | High | Smoke |
+| TC-SI-010003 | Edge Case - ไม่มีรายการที่ตรงคำค้น แสดง empty state | Medium | Edge Case |
+| TC-SI-010004 | Edge Case - Pagination เปลี่ยนหน้าแสดงแถวชุดถัดไป | Medium | Edge Case |
+| TC-SI-020001 | View existing issue with all details | High | Smoke |
 | TC-SI-020002 | View issue with missing department assignment | Medium | Edge Case |
-| TC-SI-020003 | View issue without view permission | High | Negative |
-| TC-SI-030001 | Happy Path - Search by SR Reference Number | Medium | Happy Path |
+| TC-SI-020003 | เปิด URL ของ SR ที่คนอื่นสร้างโดยตรงไม่ได้ (ไม่เห็นข้อมูลเอกสาร) | High | Authorization |
+| TC-SI-030001 | Happy Path - Search by SR Reference Number | High | Functional |
 | TC-SI-030002 | Negative Case - Invalid Search Term | Medium | Negative |
-| TC-SI-030003 | Edge Case - Empty Search Term | Low | Edge Case |
-| TC-SI-030004 | Negative Case - No Permission | High | Negative |
-| TC-SI-030005 | Edge Case - Multiple Filters | Medium | Edge Case |
-| TC-SI-040001 | Happy Path - View Full SR from Issue Detail | Medium | Happy Path |
-| TC-SI-040002 | Negative - No SR View Permission | Medium | Negative |
-| TC-SI-040003 | Edge Case - Empty SR Reference Link | Low | Edge Case |
-| TC-SI-040004 | Negative - User at Issue Stage No Permissions | Medium | Negative |
-| TC-SI-040005 | Happy Path - Print SR | Low | Happy Path |
-| TC-SI-050001 | Happy Path: Warehouse Staff prints a stock issue document | High | Happy Path |
-| TC-SI-050002 | Negative: User without permission attempts to print | Medium | Negative |
-| TC-SI-050003 | Edge Case: Multiple items with zero quantity | Low | Edge Case |
+| TC-SI-030003 | Edge Case - ล้างคำค้นแล้วรายการกลับมาครบ | Medium | Edge Case |
+| TC-SI-030004 | Requestor ค้นหาเลข SR ของคนอื่นไม่พบ (scope เฉพาะเอกสารของตัวเอง) | High | Authorization |
+| TC-SI-030005 | Edge Case - สลับ scope (My pending) แล้วคำค้นถูกล้างและรายการเป็นของ scope ใหม่ | Medium | Edge Case |
+| TC-SI-040002 | Negative - Requestor ไม่เห็น SR ของคนอื่นใน All Documents (scope เฉพาะของตัวเอง) | High | Authorization |
+| TC-SI-040004 | Negative - SR ที่ขั้น Issue ไม่มีปุ่ม action เดินเอกสารสำหรับ Purchase | Medium | Negative |
+| TC-SI-040005 | Happy Path - Print SR เปิดหน้า report viewer | High | Functional |
+| TC-SI-050001 | Happy Path: Warehouse Staff prints a stock issue document | High | Functional |
+| TC-SI-050002 | Negative: Requestor เปิดเอกสารของคนอื่นเพื่อพิมพ์ไม่ได้ (ไม่มีปุ่ม Print) | Medium | Authorization |
+| TC-SI-050003 | Edge Case: รายการที่ยังไม่ได้ issue (Issued = 0) แสดงเป็น 0.00 | Low | Edge Case |
 | TC-SI-050004 | Negative: Issue does not exist | Medium | Negative |
-| TC-SI-050005 | Edge Case: Issue at Cancel stage | Low | Edge Case |
-| TC-SI-060001 | Happy Path - View Expense Allocation | High | Happy Path |
-| TC-SI-060002 | Negative - No Permission to View Costs | Medium | Negative |
-| TC-SI-060003 | Edge Case - SR with No Expense Allocation | Medium | Edge Case |
+| TC-SI-050005 | Edge Case: Issue at Cancel stage (SR ที่ void แล้ว) | Medium | Edge Case |
 | TC-SI-060004 | Negative - Invalid SR ID | Medium | Negative |
 
 ---
 
 ## TC-SI-010001 — Happy Path - View Issue List
 
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
+> **As a** Purchase user, **I want** the Stock Issue list page to load successfully, **so that** I can manage Stock Issue records.
 
-**Priority:** Medium · **Test Type:** Happy Path
+**Priority:** High · **Test Type:** Smoke
 
 **Preconditions**
 
-ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view และมี permission store_operations.view
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
 1. ไปที่ /store-operation/store-requisition
-2. ตรวจสอบว่า summary cards แสดงจำนวนและมูลค่ารวมที่ถูกต้อง
-3. ตรวจสอบว่า issue list ถูก filter สำหรับ Issue stage ที่มี DIRECT destinations
-4. คลิก row
-5. ตรวจสอบว่ารายละเอียด issue ที่เลือกตรงกับ row
+2. เปิด All Documents
 
 **Expected**
 
-Summary cards และ issue list แสดงข้อมูลที่ถูกต้อง ผู้ใช้สามารถดูรายละเอียดของ issues ที่เลือก
+แสดงหัวคอลัมน์ SR No./Status และแถว SR ทุกใบของ BU (เลขเอกสารตรงกับ API)
 
 ---
 
-## TC-SI-010003 — Edge Case - No Issues
+## TC-SI-010003 — Edge Case - ไม่มีรายการที่ตรงคำค้น แสดง empty state
 
 > **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -73,21 +64,20 @@ Summary cards และ issue list แสดงข้อมูลที่ถู
 
 **Preconditions**
 
-ผู้ใช้มีสิทธิ์เข้าถึง และไม่มี issues ใน Issue stage ที่มี DIRECT destinations
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. ตรวจสอบว่า summary cards แสดง 0 สำหรับทุก counts และ total value
-3. ตรวจสอบว่า issue list ว่างเปล่า
+1. เปิด All Documents
+2. ค้นหาคำที่ไม่มี SR ตรง
 
 **Expected**
 
-Summary cards และ issue list แสดง 0 counts และ empty list
+ไม่มีแถว SR และแสดงข้อความ 'No data found'
 
 ---
 
-## TC-SI-010004 — Edge Case - Pagination
+## TC-SI-010004 — Edge Case - Pagination เปลี่ยนหน้าแสดงแถวชุดถัดไป
 
 > **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -96,44 +86,37 @@ Summary cards และ issue list แสดง 0 counts และ empty list
 
 **Preconditions**
 
-ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view และมี permission store_operations.view
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; BU มี SR > 5 ใบ
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. ตรวจสอบว่า pagination controls มีอยู่
-3. กด Next หรือ Previous page button
-4. ตรวจสอบว่าหน้า issues ถัดไปหรือก่อนหน้าแสดงขึ้นมา
+1. เปิด All Documents ด้วย perpage=5
+2. กดหน้าถัดไป
 
 **Expected**
 
-Pagination controls ทำงานได้และหน้า issues ถัดไปหรือก่อนหน้าแสดงอย่างถูกต้อง
+หน้าแรกมี 5 แถว; หน้า 2 (page=2 ใน URL) มีแถวที่เหลือและเป็นคนละชุดกับหน้าแรก
 
 ---
 
 ## TC-SI-020001 — View existing issue with all details
 
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
+> **As a** Purchase user, **I want** core Stock Issue interactions to work, **so that** day-to-day usage stays smooth.
 
-**Priority:** Medium · **Test Type:** Happy Path
+**Priority:** High · **Test Type:** Smoke
 
 **Preconditions**
 
-StoreRequisition อยู่ใน Issue stage destinationLocationType เป็น DIRECT และผู้ใช้มี view permission
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; SR261100003 อยู่ที่ขั้น Issue
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. คลิก issue row หรือ reference number
-3. ตรวจสอบ header พร้อม SR reference, date และ status badge
-4. ตรวจสอบ cards ของ From Location, Issue Summary, To Location, Department และ Expense Account
-5. ตรวจสอบ items table พร้อมรายละเอียดที่ถูกต้อง
-6. ตรวจสอบ tracking info หากมี
+1. เปิด All Documents
+2. เปิด SR ที่อยู่ขั้น Issue
 
 **Expected**
 
-ระบบแสดงรายละเอียดทั้งหมดใน issue layout ตามที่คาดหวัง
+หน้ารายละเอียดแสดงเลข SR, สถานะ In progress, Request From/Deliver To ตรงกับ API และรายการสินค้าครบ
 
 ---
 
@@ -146,68 +129,56 @@ StoreRequisition อยู่ใน Issue stage destinationLocationType เป�
 
 **Preconditions**
 
-StoreRequisition อยู่ใน Issue stage destinationLocationType เป็น DIRECT ผู้ใช้มี view permission และ department ไม่ถูก assign
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; มี SR ที่ department_name ว่าง
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. คลิก issue row หรือ reference number
-3. ตรวจสอบ header พร้อม SR reference, date และ status badge
-4. ตรวจสอบ cards ของ From Location, Issue Summary, To Location และ Expense Account
-5. ตรวจสอบ items table พร้อมรายละเอียดที่ถูกต้อง
-6. ตรวจสอบ tracking info หากมี
+1. เปิดรายละเอียดของ SR ที่ไม่มี department
 
 **Expected**
 
-ระบบแสดงรายละเอียดทั้งหมดยกเว้น department card ตามที่คาดหวัง
+หน้ารายละเอียดเปิดได้ปกติ (ไม่เกิด error) และแสดงเลข SR กับรายการสินค้า
 
 ---
 
-## TC-SI-020003 — View issue without view permission
+## TC-SI-020003 — เปิด URL ของ SR ที่คนอื่นสร้างโดยตรงไม่ได้ (ไม่เห็นข้อมูลเอกสาร)
 
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
+> **As a** low-privilege user, **I should NOT** see Add/edit controls on Stock Issue, **so that** role separation is enforced.
 
-**Priority:** High · **Test Type:** Negative
+**Priority:** High · **Test Type:** Authorization
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+requestor@gmail.com StoreRequisition อยู่ใน Issue stage destinationLocationType เป็น DIRECT และผู้ใช้ไม่มี view permission
+เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. คลิก issue row หรือ reference number
-3. ตรวจสอบ error message หรือสัญญาณบอกว่าถูกจำกัดสิทธิ์
+1. เปิด /store-operation/store-requisition/<id ของ SR ที่ Purchase สร้าง> โดยตรง
 
 **Expected**
 
-ระบบจำกัดการเข้าถึงหรือแสดง error message ตามที่คาดหวัง
+หน้าแสดง error state ('Something went wrong') และไม่แสดงเลข SR หรือรายการสินค้า
 
 ---
 
 ## TC-SI-030001 — Happy Path - Search by SR Reference Number
 
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
+> **As a** Purchase user, **I want** this Stock Issue interaction to behave as expected, **so that** the workflow stays predictable.
 
-**Priority:** Medium · **Test Type:** Happy Path
+**Priority:** High · **Test Type:** Functional
 
 **Preconditions**
 
-ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กรอก search term 'SR-12345' ใน search box
-3. เลือก status filter 'All'
-4. รอให้ list อัปเดต
-5. ตรวจสอบว่า SR 'SR-12345' แสดงใน list
+1. เปิด All Documents
+2. ค้นหาเลข SR ใบหนึ่งแล้วกด Enter
 
 **Expected**
 
-SR 'SR-12345' แสดงใน list พร้อมรายละเอียดที่เกี่ยวข้องอย่างถูกต้อง
+เหลือเฉพาะแถวของ SR นั้นใบเดียว
 
 ---
 
@@ -220,70 +191,20 @@ SR 'SR-12345' แสดงใน list พร้อมรายละเอีย
 
 **Preconditions**
 
-ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กรอก search term 'InvalidSR' ใน search box
-3. เลือก status filter 'All'
-4. รอให้ list อัปเดต
-5. ตรวจสอบว่าไม่มี SRs แสดง
+1. เปิด All Documents
+2. ค้นหา '__INVALID_SR_E2E__'
 
 **Expected**
 
-ไม่มี SRs แสดงใน list
+ไม่มีแถว SR และแสดง 'No data found'
 
 ---
 
-## TC-SI-030003 — Edge Case - Empty Search Term
-
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
-
-**Priority:** Low · **Test Type:** Edge Case
-
-**Preconditions**
-
-ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view
-
-**Steps**
-
-1. ไปที่ /store-operation/store-requisition
-2. clear search term ใน search box
-3. เลือก status filter 'All'
-4. รอให้ list อัปเดต
-5. ตรวจสอบว่า SRs ทั้งหมดแสดงขึ้นมา
-
-**Expected**
-
-SRs ทั้งหมดแสดงใน list
-
----
-
-## TC-SI-030004 — Negative Case - No Permission
-
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
-
-**Priority:** High · **Test Type:** Negative
-
-**Preconditions**
-
-Login เป็น carmensoftware.dev+requestor@gmail.com และไม่มีสิทธิ์เข้าถึง Stock Issues view
-
-**Steps**
-
-1. ไปที่ /store-operation/store-requisition
-2. พยายามกรอก search term ใน search box
-
-**Expected**
-
-ผู้ใช้ถูก redirect ไปยังหน้า permission denied หรือ error message แสดงขึ้นมา
-
----
-
-## TC-SI-030005 — Edge Case - Multiple Filters
+## TC-SI-030003 — Edge Case - ล้างคำค้นแล้วรายการกลับมาครบ
 
 > **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -292,97 +213,83 @@ Login เป็น carmensoftware.dev+requestor@gmail.com และไม่ม�
 
 **Preconditions**
 
-ผู้ใช้มีสิทธิ์เข้าถึง Stock Issues view
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กรอก search term 'SR-12345' ใน search box
-3. เลือก status filter 'Active'
-4. กด dropdown 'From Location'
-5. เลือก 'Warehouse A' จาก dropdown
-6. กด dropdown 'To Location'
-7. เลือก 'Warehouse B' จาก dropdown
-8. กด dropdown 'Department'
-9. เลือก 'Sales' จาก dropdown
-10. รอให้ list อัปเดต
-11. ตรวจสอบว่า SR 'SR-12345' ที่มีสถานะ 'Active' จาก 'Warehouse A' ไปยัง 'Warehouse B' และอยู่ใน department 'Sales' แสดงขึ้นมา
+1. ค้นหาเลข SR
+2. ล้างช่องค้นหาแล้วกด Enter
 
 **Expected**
 
-SR 'SR-12345' ที่ตรงกับ filters ที่กำหนดแสดงใน list
+จำนวนแถวกลับมาเท่ากับจำนวน SR ใน API
 
 ---
 
-## TC-SI-040001 — Happy Path - View Full SR from Issue Detail
+## TC-SI-030004 — Requestor ค้นหาเลข SR ของคนอื่นไม่พบ (scope เฉพาะเอกสารของตัวเอง)
+
+> **As a** low-privilege user, **I should NOT** see Add/edit controls on Stock Issue, **so that** role separation is enforced.
+
+**Priority:** High · **Test Type:** Authorization
+
+**Preconditions**
+
+เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase
+
+**Steps**
+
+1. เปิด All Documents
+2. ค้นหาเลข SR ที่ Purchase สร้าง
+
+**Expected**
+
+ไม่มีแถว SR และแสดง 'No data found' (ไม่มีแถวรั่วมาจาก SR ของคนอื่น)
+
+---
+
+## TC-SI-030005 — Edge Case - สลับ scope (My pending) แล้วคำค้นถูกล้างและรายการเป็นของ scope ใหม่
 
 > **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
-**Priority:** Medium · **Test Type:** Happy Path
+**Priority:** Medium · **Test Type:** Edge Case
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+purchase@gmail.com มี SR view permission และ Issue view แสดงอยู่
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Full SR'
-3. ตรวจสอบว่าหน้า Store Requisition detail แสดงขึ้นมา
+1. เปิด All Documents และค้นหาเลข SR
+2. สลับไป My pending
 
 **Expected**
 
-ผู้ใช้ถูกนำทางไปยังหน้า Store Requisition detail ซึ่งสามารถดูข้อมูลที่เกี่ยวข้องทั้งหมดและดำเนินการได้หากมีสิทธิ์
+URL เป็น view=my-pending โดยไม่มี search และช่องค้นหาว่าง (การสลับ scope ล้างคำค้น)
 
 ---
 
-## TC-SI-040002 — Negative - No SR View Permission
+## TC-SI-040002 — Negative - Requestor ไม่เห็น SR ของคนอื่นใน All Documents (scope เฉพาะของตัวเอง)
 
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
+> **As a** low-privilege user, **I should NOT** see Add/edit controls on Stock Issue, **so that** role separation is enforced.
 
-**Priority:** Medium · **Test Type:** Negative
+**Priority:** High · **Test Type:** Authorization
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่มี SR view permission และ Issue view แสดงอยู่
+เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition?view=all-document
-2. ตรวจสอบว่ารายการว่างและไม่มีปุ่ม View Full SR
+1. เปิด All Documents
 
 **Expected**
 
-รายการ SR ของ requestor ว่าง (สิทธิ์ view เห็นเฉพาะใบที่ตัวเองเป็นผู้ขอ) จึงไม่มีใบให้เปิดและไม่มีปุ่ม View Full SR
+ไม่มีแถว SR (BU มี SR 7 ใบที่คนอื่นสร้าง) และแสดง 'No data found'
 
 ---
 
-## TC-SI-040003 — Edge Case - Empty SR Reference Link
-
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
-
-**Priority:** Low · **Test Type:** Edge Case
-
-**Preconditions**
-
-ผู้ใช้มี SR view permission และ Issue view แสดงพร้อม SR reference link ที่ว่างเปล่า
-
-**Steps**
-
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Full SR' (link ว่างเปล่า)
-3. ตรวจสอบว่า error message แสดงขึ้นมา
-
-**Expected**
-
-Error message แสดงว่า SR reference link ไม่ถูกต้องหรือว่างเปล่า
-
----
-
-## TC-SI-040004 — Negative - User at Issue Stage No Permissions
+## TC-SI-040004 — Negative - SR ที่ขั้น Issue ไม่มีปุ่ม action เดินเอกสารสำหรับ Purchase
 
 > **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -391,93 +298,81 @@ Error message แสดงว่า SR reference link ไม่ถูกต้�
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+purchase@gmail.com มี SR view permission และ Issue view แสดงพร้อม SR ใน Issue stage
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; SR261100003 อยู่ที่ขั้น Issue และ Purchase ไม่ใช่ผู้รับผิดชอบขั้นนี้
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Full SR'
-3. กด 'Complete'
-4. ตรวจสอบว่า error message แสดงขึ้นมา
+1. เปิดรายละเอียด SR ที่อยู่ขั้น Issue
 
 **Expected**
 
-Error message แสดงว่าผู้ใช้ไม่มีสิทธิ์ complete SR
+ไม่มีปุ่ม Issue/Approve/Reject/Submit ในหน้า (มีเพียง Edit/Duplicate/Print/Comment/Activity)
 
 ---
 
-## TC-SI-040005 — Happy Path - Print SR
+## TC-SI-040005 — Happy Path - Print SR เปิดหน้า report viewer
 
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
+> **As a** Purchase user, **I want** this Stock Issue interaction to behave as expected, **so that** the workflow stays predictable.
 
-**Priority:** Low · **Test Type:** Happy Path
+**Priority:** High · **Test Type:** Functional
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+purchase@gmail.com มี SR view และ print permission และ Issue view แสดงพร้อม SR ใน Issue stage
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Full SR'
-3. กด 'Print'
-4. ตรวจสอบว่า print dialog หรือ confirmation message แสดงขึ้นมา
+1. เปิดรายละเอียด SR
+2. กดปุ่ม Print
 
 **Expected**
 
-Print dialog หรือ confirmation message แสดงขึ้นมาเพื่อให้ผู้ใช้ print SR ได้
+ยิง GET .../store-requisitions/{id}/print-viewer สำเร็จและเปิด popup ของ report viewer
 
 ---
 
 ## TC-SI-050001 — Happy Path: Warehouse Staff prints a stock issue document
 
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
+> **As a** Purchase user, **I want** this Stock Issue interaction to behave as expected, **so that** the workflow stays predictable.
 
-**Priority:** High · **Test Type:** Happy Path
-
-**Preconditions**
-
-Issue อยู่ใน Issue/Complete stage และผู้ใช้มี view permission
-
-**Steps**
-
-1. ไปที่ /store-operation/store-requisition
-2. กด 'Print' button
-3. ตรวจสอบว่าเอกสารถูกสร้างพร้อม header, location information, items list และ signature fields
-4. Browser print dialog เปิดขึ้นมา
-
-**Expected**
-
-เอกสารถูก print สำเร็จพร้อมข้อมูลที่จำเป็นทั้งหมด
-
----
-
-## TC-SI-050002 — Negative: User without permission attempts to print
-
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
-
-**Priority:** Medium · **Test Type:** Negative
+**Priority:** High · **Test Type:** Functional
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+requestor@gmail.com Issue อยู่ใน Issue/Complete stage แต่ผู้ใช้ไม่มี view permission
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; SR ที่ขั้น Issue
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'Print' button
-3. ตรวจสอบว่าระบบปฏิเสธสิทธิ์และไม่อนุญาตให้ print
+1. เปิดรายละเอียด SR ที่ขั้น Issue
+2. กดปุ่ม Print
 
 **Expected**
 
-ระบบปฏิเสธการ print เนื่องจาก permissions ไม่เพียงพอ
+ยิง print-viewer สำเร็จ (200) และเปิดหน้า report viewer
 
 ---
 
-## TC-SI-050003 — Edge Case: Multiple items with zero quantity
+## TC-SI-050002 — Negative: Requestor เปิดเอกสารของคนอื่นเพื่อพิมพ์ไม่ได้ (ไม่มีปุ่ม Print)
+
+> **As a** low-privilege user, **I should NOT** see Add/edit controls on Stock Issue, **so that** role separation is enforced.
+
+**Priority:** Medium · **Test Type:** Authorization
+
+**Preconditions**
+
+เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase
+
+**Steps**
+
+1. เปิดรายละเอียด SR ที่ Purchase สร้างโดยตรง
+
+**Expected**
+
+แสดง error state และไม่มีปุ่ม Print
+
+---
+
+## TC-SI-050003 — Edge Case: รายการที่ยังไม่ได้ issue (Issued = 0) แสดงเป็น 0.00
 
 > **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -486,17 +381,16 @@ Login เป็น carmensoftware.dev+requestor@gmail.com Issue อยู่ใ�
 
 **Preconditions**
 
-Issue มี items หลายรายการ บางรายการมี quantity เป็นศูนย์
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; SR261100003 ยังไม่ issue สินค้าใด
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'Print' button
-3. ตรวจสอบว่าเอกสารแสดงเฉพาะ items ที่มี quantity ไม่ใช่ศูนย์
+1. เปิดรายละเอียด SR ที่ขั้น Issue
+2. ตรวจคอลัมน์ Issued ในแท็บ Items
 
 **Expected**
 
-เอกสารไม่แสดง items ที่มี quantity เป็นศูนย์
+ทุกแถวสินค้าแสดงจำนวน Issued 0.00 และตารางไม่ error
 
 ---
 
@@ -509,88 +403,19 @@ Issue มี items หลายรายการ บางรายการม
 
 **Preconditions**
 
-Issue ไม่มีอยู่ในระบบ
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'Print' button
-3. ตรวจสอบว่าระบบแสดง error message
+1. เปิด /store-operation/store-requisition/<uuid ที่ไม่มี>
 
 **Expected**
 
-ระบบแสดง error message ว่า issue ไม่มีอยู่
+แสดง error state พร้อมปุ่ม Try again และไม่มีข้อมูลเอกสาร
 
 ---
 
-## TC-SI-050005 — Edge Case: Issue at Cancel stage
-
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
-
-**Priority:** Low · **Test Type:** Edge Case
-
-**Preconditions**
-
-Issue มีอยู่แต่อยู่ใน Cancel stage
-
-**Steps**
-
-1. ไปที่ /store-operation/store-requisition
-2. กด 'Print' button
-3. ตรวจสอบว่าระบบแสดง error message
-
-**Expected**
-
-ระบบแสดง error message ว่า issue อยู่ใน Cancel stage และไม่สามารถ print ได้
-
----
-
-## TC-SI-060001 — Happy Path - View Expense Allocation
-
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
-
-**Priority:** High · **Test Type:** Happy Path
-
-**Preconditions**
-
-สถานะ SR เป็น Completed และผู้ใช้มี permission ดู costs
-
-**Steps**
-
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Expense Allocation'
-
-**Expected**
-
-รายละเอียด expense allocation แสดงขึ้นมา: Department, Expense Account, Total Value expensed และ items พร้อม individual costs
-
----
-
-## TC-SI-060002 — Negative - No Permission to View Costs
-
-> **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
-<!-- TODO: refine narrative -->
-
-**Priority:** Medium · **Test Type:** Negative
-
-**Preconditions**
-
-Login เป็น carmensoftware.dev+requestor@gmail.com สถานะ SR เป็น Completed และผู้ใช้ไม่มี permission ดู costs
-
-**Steps**
-
-1. ไปที่ /store-operation/store-requisition?view=all-document
-2. ตรวจสอบว่ารายการว่างและไม่มีปุ่ม View Expense Allocation
-
-**Expected**
-
-รายการ SR ของ requestor ว่าง จึงไม่มีใบให้เปิดและไม่มีปุ่ม View Expense Allocation (ดู costs ไม่ได้)
-
----
-
-## TC-SI-060003 — Edge Case - SR with No Expense Allocation
+## TC-SI-050005 — Edge Case: Issue at Cancel stage (SR ที่ void แล้ว)
 
 > **As a** Purchase user, **I want** this Stock Issue behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -599,16 +424,15 @@ Login เป็น carmensoftware.dev+requestor@gmail.com สถานะ SR เ
 
 **Preconditions**
 
-สถานะ SR เป็น Completed ผู้ใช้มี permission ดู costs และ SR ไม่มี expense allocation
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset; มี SR สถานะ voided
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Expense Allocation'
+1. เปิดรายละเอียด SR ที่ void
 
 **Expected**
 
-ระบบแสดง message ว่าไม่มี expense allocation
+header แสดงสถานะ Voided และไม่มีปุ่ม Edit
 
 ---
 
@@ -621,18 +445,17 @@ Login เป็น carmensoftware.dev+requestor@gmail.com สถานะ SR เ
 
 **Preconditions**
 
-ผู้ใช้มี permission ดู costs
+เข้าสู่ระบบเป็น Purchase (Warehouse/Store Staff); active BU = TEST BU; ข้อมูล SR จาก data:reset
 
 **Steps**
 
-1. ไปที่ /store-operation/store-requisition
-2. กด 'View Expense Allocation'
+1. เปิด /store-operation/store-requisition/999
 
 **Expected**
 
-ระบบแสดง message ว่า SR ID ไม่ถูกต้อง
+แสดง error state และไม่มีข้อมูลเอกสาร
 
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git c6e714b</sub>
+<sub>Last regenerated: 2026-11-21 · git 9f77b28</sub>

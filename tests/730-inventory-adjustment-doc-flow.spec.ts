@@ -1,10 +1,9 @@
 import type { Page } from "@playwright/test";
 import { test, gotoBu, expect, observed } from "./fixtures/movement.fixture";
-import { apiGet } from "./helpers/movement/api";
+import { apiGet, txOfDoc } from "./helpers/movement/api";
 import { adjustmentUrl, createAdjustment, type AdjustmentType } from "./helpers/movement/docs";
-import { schemaOf, sql } from "./helpers/movement/db";
 import { addRow, button, confirmDialog, numRe, pickLookup, toasts, typeInto } from "./helpers/movement/ui";
-import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, activePeriodDate, itemRow, nameOf, stamp } from "./helpers/movement/doc-flow";
+import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, todayInActivePeriod, itemRow, nameOf, stamp } from "./helpers/movement/doc-flow";
 
 /**
  * Inventory Adjustment doc flow (Stock In = section 70, Stock Out = section 71) —
@@ -23,7 +22,6 @@ import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, activePeriodDate, itemRow, name
  * Origin: `_movement_play/eop_bf/e2e/fe/06-adjustment.spec.ts` (SI.0–SI.5, SO.0–SO.5).
  */
 const { user: USER, loc: LOC } = DOC_FLOW_ROLE.adj;
-const SCHEMA = schemaOf(BU);
 test.use({ user: USER, bu: BU });
 // 1FO02 holds nothing until the Stock In commit: the cost estimator answers 422 "No available stock".
 test.beforeEach(({ signals }) => signals.minor(/\/cost\/products\/.+ → 422/, "location has no stock yet: cost estimator 422"));
@@ -56,7 +54,16 @@ async function byId(type: AdjustmentType, id: string) {
 
 let TODAY = "";
 test.beforeAll(async () => {
-  TODAY = await activePeriodDate(BU);
+  TODAY = (await todayInActivePeriod(BU)) ?? "";
+});
+// Data precondition (API-checked in beforeAll): the form cannot be dated beyond today (FE 90018c6d), so every case
+// that fills the date needs an active period that contains today. The two "open the create page" cases do not.
+test.beforeEach(() => {
+  const blocked = !TODAY && !/TC-IADJ-7[01]0001/.test(test.info().title);
+  const reason = `${BU} active period does not contain today — Stock In/Out cannot be dated inside it`;
+  // E2E_MOVEMENT_STRICT=1 turns the environment gap into a failure (CI that must not silently lose these cases).
+  if (blocked && process.env.E2E_MOVEMENT_STRICT === "1") throw new Error(`precondition not met: ${reason}`);
+  test.skip(blocked, reason);
 });
 
 // ── shared steps ────────────────────────────────────────────────────────────────
@@ -160,12 +167,12 @@ async function expectCommitted(page: Page, type: AdjustmentType, lines: AdjLine[
   const d = await byId(type, doc!.id);
   expect(d.status).toBe("completed");
   expect(fmtOf(type)(d.lines)).toBe(fmtOf(type)(lines));
-  const table = type === "stock-in" ? "tb_stock_in_detail" : "tb_stock_out_detail";
-  const fk = type === "stock-in" ? "stock_in_id" : "stock_out_id";
-  const [tx] = sql<{ n: string }>(`select count(*) n from ${SCHEMA}.${table} where ${fk} = '${doc!.id}' and inventory_transaction_id is not null`);
-  expect(Number(tx.n), "a committed adjustment must post stock").toBeGreaterThan(0);
+  const tx = await txOfDoc(BU, doc!.id, d.no);
+  expect(tx.length, "a committed adjustment must post stock").toBeGreaterThan(0);
+  const moved = tx.reduce((n, t) => n + (type === "stock-in" ? t.qty_in : t.qty_out), 0);
+  expect(moved, "stock moved = sum of line qty").toBe(lines.reduce((n, l) => n + l.qty, 0));
   await observed(
-    `${d.no} · ${d.status} · ${fmtOf(type)(d.lines)} · inventory transactions ${tx.n} · cost auto-filled ${doc!.autoCost.join(", ")} · toast: ${(await toasts(page)).join(" / ") || "-"}`,
+    `${d.no} · ${d.status} · ${fmtOf(type)(d.lines)} · inventory transactions ${tx.length} · cost auto-filled ${doc!.autoCost.join(", ")} · toast: ${(await toasts(page)).join(" / ") || "-"}`,
   );
 }
 
@@ -277,9 +284,9 @@ test.describe("Stock In", () => {
     "TC-IADJ-700006 FC สร้าง Stock In แล้ว Commit ได้ completed และลงสต๊อก",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น fc@carmen.com; BU CARMEN-AVG; E2E_DB_URL ตั้งไว้ (ตรวจ inventory transaction จาก DB)" },
+        { type: "preconditions", description: "Login เป็น fc@carmen.com; BU CARMEN-AVG; ตรวจ inventory transaction จาก API" },
         { type: "steps", description: "1. สร้าง Stock In ใหม่: A × 2 ต้นทุน 50, B × 2 ต้นทุน 40 ที่ 1FO02\n2. กด Commit\n3. ยืนยัน" },
-        { type: "expected", description: "หลังบ้าน doc_status = completed, รายการ 11020001×2@50, 55000001×2@40; ใน DB มี tb_stock_in_detail ของใบนี้ที่ inventory_transaction_id ไม่ว่าง (ให้ Stock Out มีของจ่าย)" },
+        { type: "expected", description: "หลังบ้าน doc_status = completed, รายการ 11020001×2@50, 55000001×2@40; inventory-transactions ของใบนี้รับเข้ารวม 4 หน่วย (ให้ Stock Out มีของจ่าย)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
         { type: "note", description: "เดิม SI.5 · ใกล้ TC-IADJ-060002 ใน gap report (เคสนี้ commit จากหน้า new โดยตรง)" },
@@ -404,9 +411,9 @@ test.describe("Stock Out", () => {
     "TC-IADJ-710006 FC สร้าง Stock Out แล้ว Commit ได้ completed และตัดสต๊อก",
     {
       annotation: [
-        { type: "preconditions", description: "TC-IADJ-700006 commit Stock In ไปแล้ว (1FO02 มี A อย่างน้อย 1); E2E_DB_URL ตั้งไว้" },
+        { type: "preconditions", description: "TC-IADJ-700006 commit Stock In ไปแล้ว (1FO02 มี A อย่างน้อย 1); ตรวจ inventory transaction จาก API" },
         { type: "steps", description: "1. สร้าง Stock Out ใหม่: A × 1 ที่ 1FO02\n2. กด Commit\n3. ยืนยัน" },
-        { type: "expected", description: "หลังบ้าน doc_status = completed, รายการ 11020001×1; ใน DB มี tb_stock_out_detail ของใบนี้ที่ inventory_transaction_id ไม่ว่าง" },
+        { type: "expected", description: "หลังบ้าน doc_status = completed, รายการ 11020001×1; inventory-transactions ของใบนี้จ่ายออกรวม 1 หน่วย" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
         { type: "note", description: "เดิม SO.5" },

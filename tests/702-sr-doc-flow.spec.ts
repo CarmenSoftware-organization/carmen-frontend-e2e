@@ -4,20 +4,21 @@ import { apiGet } from "./helpers/movement/api";
 import {
   addRow,
   answerSrDateQuestion,
+  chooseDateInDialog,
   button,
   field,
-  inputValues,
+  shownText,
   numRe,
   pickLookup,
   pickSelectIn,
   toasts,
   typeInto,
 } from "./helpers/movement/ui";
-import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, SR_TO, itemRow, stamp } from "./helpers/movement/doc-flow";
+import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, SR_TO, itemRow, srIssueWorkflowName, stamp } from "./helpers/movement/doc-flow";
 
 /**
  * SR doc flow — movement suite (opt-in: `bun run test:movement`).
- * CARMEN-AVG · requestor · workflow "SR Test Flow v2 (with Issue)" · LCX013 → 1FO02.
+ * CARMEN-AVG · requestor · workflow SR workflow (Create→HOD→Issue) · LCX013 → 1FO02.
  * draft → view → edit (header + qty) → delete → new + Submit.
  *
  * The SR product lookup = products stocked at BOTH locations ∩ the workflow's
@@ -27,7 +28,6 @@ import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, SR_TO, itemRow, stamp } from ".
  */
 const { user: USER, loc: FROM } = DOC_FLOW_ROLE.sr;
 const TO = SR_TO;
-const WF = "SR Test Flow v2 (with Issue)";
 test.use({ user: USER, bu: BU });
 test.describe.configure({ mode: "serial" });
 // The source location may hold no stock: the cost estimator answers 422 and the screen shows Total 0.00 with no warning.
@@ -75,7 +75,7 @@ async function saveAndWait(page: Page) {
 }
 
 async function fillHeader(page: Page, desc: string) {
-  await pickSelectIn(page, "Workflow", WF);
+  await pickSelectIn(page, "Workflow", await srIssueWorkflowName(BU));
   await pickLookup(page, field(page, "Request From").locator("button").first(), FROM);
   await pickLookup(page, field(page, "Deliver To (Destination)").locator("button").first(), TO);
   await page.locator("#sr-description").fill(desc);
@@ -91,8 +91,8 @@ test(
   "TC-SR-700001 Requestor สร้าง SR draft แล้วหลังบ้านเก็บคำอธิบายและรายการครบ",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG; workflow \"SR Test Flow v2 (with Issue)\" มีสินค้าแล้ว (bun run movement:setup-workflows); requestor มีคลัง LCX013 และ 1FO02" },
-      { type: "steps", description: "1. เปิด /store-operation/store-requisition/new\n2. เลือก workflow \"SR Test Flow v2 (with Issue)\", Request From LCX013, Deliver To 1FO02, ใส่คำอธิบาย\n3. Add Item: กร๊อบกรอบ รสสาหร่าย (11020001) × 3\n4. กด Save" },
+      { type: "preconditions", description: "Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว (bun run movement:setup-workflows); requestor มีคลัง LCX013 และ 1FO02" },
+      { type: "steps", description: "1. เปิด /store-operation/store-requisition/new\n2. เลือก workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev), Request From LCX013, Deliver To 1FO02, ใส่คำอธิบาย\n3. Add Item: กร๊อบกรอบ รสสาหร่าย (11020001) × 3\n4. กด Save" },
       { type: "expected", description: "Save ตอบ < 300 และ URL เปลี่ยนเป็นหน้าใบ; หลังบ้าน doc_status = draft, description ตรง และรายการ 11020001×3" },
       { type: "priority", description: "High" },
       { type: "testType", description: "CRUD" },
@@ -129,7 +129,7 @@ test(
   },
   async ({ page }) => {
     await gotoBu(page, `/store-operation/store-requisition/${draftId}`, BU);
-    await expect.poll(() => inputValues(page)).toContain(DESC);
+    await expect.poll(() => shownText(page)).toContain(DESC);
     await expect(page.getByText(FROM).first()).toBeVisible();
     await expect(page.getByText(TO).first()).toBeVisible();
     const seen: string[] = [];
@@ -201,7 +201,7 @@ test(
   "TC-SR-700005 Requestor สร้าง SR แล้ว Submit ได้เลขจริงและไปขั้น HOD",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น requestor@carmen.com; BU CARMEN-AVG; workflow \"SR Test Flow v2 (with Issue)\" ขั้นแรกคือ HOD" },
+      { type: "preconditions", description: "Login เป็น requestor@carmen.com; BU CARMEN-AVG; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) ขั้นแรกคือ HOD" },
       { type: "steps", description: "1. สร้าง SR ใหม่ 1 รายการ 11020001 × 1 แล้วกด Save\n2. กด Submit ที่หน้าใบ\n3. ยืนยันใน dialog\n4. ถ้าระบบถาม \"Which date should this carry?\" (วันนี้อยู่นอกงวด active) เลือก \"inside the open period\"" },
       { type: "expected", description: "คำตอบสุดท้ายของ submit < 300; หลังบ้าน doc_status = in_progress, sr_no ไม่ขึ้นต้นด้วย draft และ workflow_current_stage = HOD" },
       { type: "priority", description: "High" },
@@ -224,8 +224,9 @@ test(
     const dlg = page.locator("[role=alertdialog]:visible").last();
     await expect(dlg).toBeVisible();
     const dialogText = (await dlg.innerText()).replace(/\s+/g, " ");
+    // Today outside the active period → the dialog itself asks which date to use (Submit stays disabled until chosen).
+    const askedInDialog = await chooseDateInDialog(dlg);
     await dlg.getByRole("button", { name: /submit|confirm|ยืนยัน|ส่ง/i }).last().click();
-    // Today outside the active period → the system asks which date to use; answer "inside the open period".
     const q = await answerSrDateQuestion(page, await submitted, /\/store-requisitions\/.+\/submit/);
     expect(q.res.status(), JSON.stringify(q.body).slice(0, 300)).toBeLessThan(300);
     await expect.poll(async () => (await srById(id)).status, { timeout: 30_000 }).toBe("in_progress");
@@ -233,7 +234,7 @@ test(
     expect(sr.no).not.toMatch(/^draft/);
     expect(sr.stage).toBe("HOD");
     await observed(
-      `${sr.no} · ${sr.status} · stage ${sr.stage} · date question: ${q.asked ? `asked (${q.code})` : "not asked"} · ${fmt(sr.lines)} · dialog: "${dialogText.slice(0, 160)}"`,
+      `${sr.no} · ${sr.status} · stage ${sr.stage} · date question: ${askedInDialog ? "asked in the dialog" : q.asked ? `asked (${q.code})` : "not asked"} · ${fmt(sr.lines)} · dialog: "${dialogText.slice(0, 160)}"`,
     );
   },
 );

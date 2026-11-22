@@ -155,7 +155,7 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | `/procurement` | 1 | `002-spa-smoke.spec.ts` | `1204-section-landing.md` | ✅ spec |
 | `/procurement/approval` | 1 _(redirect → `/procurement/my-approval`)_ | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`301-pr.spec.ts`<br>`302-pr-creator-journey.spec.ts`<br>_+4 more_ | — | ✅ spec |
 | `/procurement/credit-note` | 3 | `002-spa-smoke.spec.ts`<br>`601-cn.spec.ts`<br>`603-cn-doc-flow.spec.ts` | — | ✅ spec |
-| `/procurement/goods-receive-note` | 3 | `002-spa-smoke.spec.ts`<br>`501-grn.spec.ts`<br>`710-wastage-reporting.spec.ts` | — | ✅ spec |
+| `/procurement/goods-receive-note` | 3 | `002-spa-smoke.spec.ts`<br>`501-grn.spec.ts` | — | ✅ spec |
 | `/procurement/goods-receive-note/from-po` | 1 | — | — | ❌ none |
 | `/procurement/my-approval` | 1 | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`301-pr.spec.ts`<br>`302-pr-creator-journey.spec.ts`<br>_+4 more_ | — | ✅ spec |
 | `/procurement/purchase-order` | 3 | `002-spa-smoke.spec.ts`<br>`401-po.spec.ts`<br>`402-po-purchaser-journey.spec.ts`<br>`403-po-approver-journey.spec.ts`<br>_+2 more_ | — | ✅ spec |

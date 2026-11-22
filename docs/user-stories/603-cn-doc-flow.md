@@ -108,13 +108,13 @@ TC-CN-700002 ผ่านแล้วในรอบเดียวกัน (se
 
 1. เปิด /procurement/credit-note/new แล้วกรอกหัวใบอ้าง GRN เดิม (ผู้ขาย C010, Reason, วันที่, ใบกำกับ FE-CN-<stamp>-DUP)
 2. กด Add Item ดู dialog Select from GRN
-3. ถ้าเลือก Ground Beef ได้: เลือก คืน 1 แล้วกด Create
+3. ดูว่าช่องของ Ground Beef (อยู่ใน CN draft อื่นแล้ว) ถูก disabled หรือไม่
 
 **Expected**
 
-dialog ปิด/ทำเครื่องหมายสินค้าที่ถูกลดหนี้แล้ว (หลังบ้านมี GET good-received-notes/:id/ref บอกให้) — ช่องของ Ground Beef ต้อง disabled; ถ้าหลุดไปถึงหลังบ้าน ข้อความต้องบอกเหตุจริง ไม่ใช่ "กรอกไม่ครบ"
+dialog ปิด/ทำเครื่องหมายสินค้าที่ถูกลดหนี้แล้ว (หลังบ้านมี GET good-received-notes/:id/ref บอกให้) — ช่องของ Ground Beef ต้อง disabled
 
-> _Note: บั๊กที่รู้อยู่ (test.fail): ณ 2026-10-02 dialog ให้เลือกได้ทุกตัว แล้วหลังบ้านตอบ 422 · เดิม CN.3 · ใกล้เคียง gap TC-CN-030007 ซึ่งครอบแค่ภายในใบเดียว_
+> _Note: suspected bug (test.fail): dialog ให้เลือกสินค้าที่ถูกลดหนี้แล้วได้ (ยังเป็นอยู่ 2026-11-22) · เดิม CN.3 · ใกล้เคียง gap TC-CN-030007 ซึ่งครอบแค่ภายในใบเดียว_
 
 ---
 
@@ -141,7 +141,7 @@ TC-CN-700002 ผ่านแล้วในรอบเดียวกัน (se
 
 Save ตอบ < 300; ใบยังเป็น draft; หลังบ้านเก็บใบกำกับใหม่ และรายการเหลือ Ground Beef×2, Pork neck tenderloin×1 (บรรทัดที่ลบต้องหายจริง)
 
-> _Note: บั๊กที่รู้อยู่ FE-3 (test.fail): หน้าบ้านส่ง credit_note_detail.remove (แบบเดียวกับทุกโมดูล) แต่หลังบ้าน CN อ่าน .delete → zod ตัดทิ้งเงียบ ๆ บรรทัดที่ลบยังอยู่ · เดิม CN.4 · TC-CN-050001 แก้ช่อง Total Amount ซึ่งไม่มีแล้ว_
+> _Note: FE-3 แก้แล้ว: FE 48edc588 ส่งบรรทัดที่ลบด้วยคีย์ credit_note_detail.delete ที่หลังบ้านอ่าน (เดิมส่ง remove แล้วบรรทัดที่ลบยังอยู่) จึงถอด test.fail ออก · เดิม CN.4 · TC-CN-050001 แก้ช่อง Total Amount ซึ่งไม่มีแล้ว_
 
 ---
 
@@ -177,7 +177,7 @@ GET ใบนั้นไม่พบแล้ว และหน้าจออ
 
 **Preconditions**
 
-TC-CN-700001 ผ่านแล้วในรอบเดียวกัน (serial) — GRN committed; E2E_DB_URL ตั้งไว้ (ตรวจ inventory transaction จาก DB)
+TC-CN-700001 ผ่านแล้วในรอบเดียวกัน (serial) — GRN committed; ตรวจ inventory transaction จาก API
 
 **Steps**
 
@@ -187,11 +187,11 @@ TC-CN-700001 ผ่านแล้วในรอบเดียวกัน (se
 
 **Expected**
 
-หลังบ้าน doc_status = completed, รายการ Ground Beef×1; ใน DB มี tb_credit_note_detail ของใบนี้ที่ inventory_transaction_id ไม่ว่าง
+หลังบ้าน doc_status = completed, รายการ Ground Beef×1; inventory-transactions ของใบนี้ตัดสต๊อก Ground Beef ออก 1
 
 > _Note: เดิม CN.6 · TC-CN-100001 กดปุ่ม Commit และคาด COMMITTED ซึ่งไม่มีแล้ว · ครอบเคส stock movement ที่ skip อยู่ (TC-CN-310001 / 280001) · ครอบ gap TC-CN-100008_
 
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-21 · git 4a3cb23</sub>

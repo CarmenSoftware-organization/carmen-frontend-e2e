@@ -32,6 +32,11 @@ export class StoreRequisitionPage extends BasePage {
     return this.page.getByRole("button", { name: /all documents?|^all$/i }).first();
   }
 
+  /** Let background lookups (e.g. the product scope of the chosen locations) finish. */
+  async waitSettled() {
+    await this.page.waitForLoadState("networkidle");
+  }
+
   async gotoNew() {
     await this.page.goto(NEW_PATH);
     await this.page.waitForLoadState("networkidle");
@@ -199,5 +204,93 @@ export class StoreRequisitionPage extends BasePage {
       .locator("[data-slot='status'], [data-slot='badge'], [class*='badge']")
       .filter({ hasText: /draft|in.progress|approved|rejected|complete|ready.*issuance/i })
       .first();
+  }
+
+  // ── Document form (new / detail) ─────────────────────────────────────
+  // FE: routes/store-operation/store-requisition (sr-request-details.tsx, sr-item-fields.tsx,
+  // sr-footer.tsx). The approve/reject/send back/issue flow is two-step: mark items in the
+  // Items toolbar (needs Edit mode + ticked rows), then the footer button decides the document.
+
+  /** Header field group by its label ("Workflow", "Request From", "Deliver To (Destination)", "Expected Delivery"). */
+  headerGroup(label: RegExp): Locator {
+    return this.page.getByRole("group").filter({ hasText: label });
+  }
+
+  workflowCombobox(): Locator {
+    return this.headerGroup(/^Workflow/).getByRole("combobox");
+  }
+
+  /** The location picker button of "Request From" / "Deliver To (Destination)". */
+  locationPicker(label: RegExp): Locator {
+    return this.headerGroup(label).getByRole("button").first();
+  }
+
+  async pickWorkflow(name: RegExp) {
+    await this.workflowCombobox().click();
+    await this.page.getByRole("option", { name }).click();
+  }
+
+  async pickLocation(label: RegExp, code: string) {
+    await this.locationPicker(label).click();
+    await this.page.getByRole("dialog").getByRole("button", { name: new RegExp(code) }).first().click();
+  }
+
+  itemsPanel(): Locator {
+    return this.page.getByRole("tabpanel", { name: "Items" });
+  }
+
+  /** Item rows of the Items tab (data rows only, the empty-state row is not counted by callers that check names). */
+  itemRows(): Locator {
+    return this.itemsPanel().locator("tbody tr");
+  }
+
+  itemRowByProduct(name: string): Locator {
+    return this.itemRows().filter({ hasText: name });
+  }
+
+  selectProductButton(row: Locator): Locator {
+    return row.getByRole("button", { name: /select product/i });
+  }
+
+  async pickProduct(row: Locator, code: string) {
+    await this.selectProductButton(row).click();
+    await this.page.getByRole("dialog").getByRole("button", { name: new RegExp(code) }).click();
+  }
+
+  qtySpinbutton(row: Locator, nth = 0): Locator {
+    return row.getByRole("spinbutton").nth(nth);
+  }
+
+  inventoryInfoButton(row: Locator): Locator {
+    return row.getByRole("button", { name: /inventory information/i });
+  }
+
+  /** Tick every item through the header checkbox + the "Select all" card of the Select Items dialog. */
+  async selectAllItems() {
+    await this.itemsPanel().getByRole("checkbox", { name: "Select all" }).click();
+    await this.page.getByRole("dialog", { name: /select items/i }).getByRole("button", { name: /^select all/i }).click();
+  }
+
+  async selectItemRow(row: Locator) {
+    await row.getByRole("checkbox", { name: "Select row" }).click();
+  }
+
+  /** Buttons of the Items toolbar (they only exist while rows are ticked). */
+  toolbarAction(name: "Approve" | "Reject" | "Send Back"): Locator {
+    return this.itemsPanel().getByRole("button", { name, exact: true });
+  }
+
+  /** Footer decision button - the last button of that name outside any dialog. */
+  footerAction(name: "Approve" | "Reject" | "Send Back" | "Issue" | "Submit"): Locator {
+    return this.page.locator("main").getByRole("button", { name, exact: true }).last();
+  }
+
+  /** The status dot of an item row; its aria-label is the status ("Pending" / "Approve" / "Reject" / "Send Back"...). */
+  rowStatus(row: Locator): Locator {
+    return row.locator("span[data-slot='tooltip-trigger'][aria-label]");
+  }
+
+  actionDialog(): Locator {
+    return this.page.getByRole("alertdialog");
   }
 }
