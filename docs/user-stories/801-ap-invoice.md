@@ -5,7 +5,7 @@ _Generated from `tests/801-ap-invoice.spec.ts` annotations. Edit annotations, no
 **Module:** Ap Invoice
 **Spec:** `tests/801-ap-invoice.spec.ts`
 **Default role:** Requestor
-**Total test cases:** 21 (16 High / 5 Medium / 0 Low)
+**Total test cases:** 21 (15 High / 6 Medium / 0 Low)
 
 ## Test Cases at a Glance
 
@@ -19,9 +19,9 @@ _Generated from `tests/801-ap-invoice.spec.ts` annotations. Edit annotations, no
 | TC-APINV-030001 | สร้างใบผ่าน UI 2 บรรทัด: ยอดที่แสดงและที่บันทึกตรง oracle สถานะ Draft | High | CRUD |
 | TC-APINV-030002 | บรรทัด Inc VAT ที่กรอกผ่าน UI: net 1,000.00 VAT 70.00 รวม 1,070.00 | Medium | Edge Case |
 | TC-APINV-040001 | แก้จำนวนบรรทัดของใบ Draft: ยอดรวมคำนวณใหม่และบันทึก | High | CRUD |
-| TC-APINV-100001 | Requestor เปิดรายละเอียดใบที่ลงบัญชีแล้ว: ไม่เห็นปุ่ม Approve และ Void | High | Authorization |
+| TC-APINV-100001 | Requestor เปิดรายละเอียดใบที่ลงบัญชีแล้ว: ไม่เห็นปุ่ม Void | High | Authorization |
 | TC-APINV-100002 | Requestor void ใบผ่าน API: ถูกปฏิเสธ 4xx และใบยังคง posted | High | Security |
-| TC-APINV-100003 | Requestor อนุมัติใบ Draft ผ่าน API: ถูกปฏิเสธ 4xx และใบยังคง draft | High | Security |
+| TC-APINV-100003 | Requestor approve ใบ Draft ผ่าน API: ถูกปฏิเสธเพราะสถานะ (409 AP_INVOICE_IMMUTABLE) ไม่ใช่สิทธิ์ และใบยังคง draft | Medium | Negative |
 | TC-APINV-200001 | ไม่เลือก vendor: บันทึกไม่ได้ และแจ้ง Select a vendor | High | Validation |
 | TC-APINV-200002 | ไม่กรอกเลข Vendor Invoice: บันทึกไม่ได้ | High | Validation |
 | TC-APINV-200003 | บรรทัดไม่มีบัญชีเดบิต: บันทึกไม่ได้ | High | Validation |
@@ -29,9 +29,9 @@ _Generated from `tests/801-ap-invoice.spec.ts` annotations. Edit annotations, no
 | TC-APINV-200005 | เลข Vendor Invoice ซ้ำของ vendor เดียวกัน: ถูกปฏิเสธ 409 | High | Negative |
 | TC-APINV-400001 | Submit ใบ Draft ผ่าน UI ลงบัญชีทันที: JV สมดุล Dr 5300 = net, Dr 1170 = VAT, Cr 2100 = รวม | High | Functional |
 | TC-APINV-400002 | JV ของใบหลายบรรทัด (3 x 333.33 + Inc VAT 1,070.00): ยอดรวมต่อบัญชีตรง oracle | High | Edge Case |
-| TC-APINV-400003 | Budget อนุมัติใบที่ลงบัญชีแล้ว: ถูกปฏิเสธ AP_INVOICE_IMMUTABLE และใบยังคง posted | Medium | Negative |
+| TC-APINV-400003 | อนุมัติใบที่ลงบัญชีแล้ว (ไม่มี workflow): ถูกปฏิเสธ AP_INVOICE_IMMUTABLE และใบยังคง posted | Medium | Negative |
 | TC-APINV-400010 | Void ใบที่ลงบัญชีแล้วและยังไม่มีการจ่าย: JV กลับรายการหักล้างของเดิมพอดี | High | Functional |
-| TC-APINV-400011 | Void ใบที่มี payment แล้ว (E2E-AP-PARTIAL): ถูกปฏิเสธ AP_INVOICE_HAS_PAYMENT ใบไม่เปลี่ยน | High | Negative |
+| TC-APINV-400011 | Void ใบที่มี payment แล้ว (ใบของเทสต์เอง จ่าย 400.00): ถูกปฏิเสธ AP_INVOICE_HAS_PAYMENT ใบไม่เปลี่ยน | High | Negative |
 
 ---
 
@@ -218,7 +218,7 @@ Admin login; ใบ Draft ที่สร้างผ่าน API มีบร�
 
 ---
 
-## TC-APINV-100001 — Requestor เปิดรายละเอียดใบที่ลงบัญชีแล้ว: ไม่เห็นปุ่ม Approve และ Void
+## TC-APINV-100001 — Requestor เปิดรายละเอียดใบที่ลงบัญชีแล้ว: ไม่เห็นปุ่ม Void
 
 > **As a** low-privilege user, **I should NOT** see Add/edit controls on Ap Invoice, **so that** role separation is enforced.
 
@@ -234,7 +234,7 @@ Requestor login (accounting viewer: ดูได้ ไม่มีสิทธ�
 
 **Expected**
 
-เห็นข้อมูลใบและสถานะ Posted แต่ไม่มีปุ่ม Approve และไม่มีปุ่ม Void
+เห็นข้อมูลใบและสถานะ Posted แต่ไม่มีปุ่ม Void (ปุ่ม Approve ไม่ปรากฏบนใบ posted อยู่แล้วทุกบทบาท จึงไม่ใช้เป็นหลักฐานสิทธิ์)
 
 ---
 
@@ -258,15 +258,16 @@ Requestor login (accounting viewer: ดูได้ ไม่มีสิทธ�
 
 ---
 
-## TC-APINV-100003 — Requestor อนุมัติใบ Draft ผ่าน API: ถูกปฏิเสธ 4xx และใบยังคง draft
+## TC-APINV-100003 — Requestor approve ใบ Draft ผ่าน API: ถูกปฏิเสธเพราะสถานะ (409 AP_INVOICE_IMMUTABLE) ไม่ใช่สิทธิ์ และใบยังคง draft
 
-> **As the** system, **I want** Ap Invoice inputs hardened against common attacks, **so that** the application stays safe.
+> **As a** Requestor user, **I want** this Ap Invoice behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
 
-**Priority:** High · **Test Type:** Security
+**Priority:** Medium · **Test Type:** Negative
 
 **Preconditions**
 
-ใบ Draft ที่ Admin สร้างผ่าน API; Requestor ไม่มีสิทธิ์อนุมัติ AP
+ใบ Draft ที่ Admin สร้างผ่าน API; Requestor เป็น viewer
 
 **Steps**
 
@@ -274,7 +275,7 @@ Requestor login (accounting viewer: ดูได้ ไม่มีสิทธ�
 
 **Expected**
 
-ตอบ 4xx (403 สิทธิ์ หรือ 409 สถานะ) ไม่ใช่ 2xx; ใบยัง draft ไม่มี JV
+ตอบ 409 รหัส AP_INVOICE_IMMUTABLE (ไม่ใช่ 403); ใบยัง draft ไม่มี JV. หมายเหตุ: gateway ไม่มี @Permission บน create/submit/approve ตั้งใจ (ap-invoice.controller.ts docblock, 'เหมือน gl-jv'; มีเฉพาะ void) จึงไม่มีการปฏิเสธด้วยสิทธิ์ให้ยืนยันบน approve; assumption: การปฏิเสธด้วยสถานะคือพฤติกรรมที่ถูกต้องของ AP ที่ไม่มี workflow
 
 ---
 
@@ -433,7 +434,7 @@ net 1,999.99 (999.99 + 1,000.00), VAT 140.00 (70.00 + 70.00), รวม 2,139.99
 
 ---
 
-## TC-APINV-400003 — Budget อนุมัติใบที่ลงบัญชีแล้ว: ถูกปฏิเสธ AP_INVOICE_IMMUTABLE และใบยังคง posted
+## TC-APINV-400003 — อนุมัติใบที่ลงบัญชีแล้ว (ไม่มี workflow): ถูกปฏิเสธ AP_INVOICE_IMMUTABLE และใบยังคง posted
 
 > **As a** Requestor user, **I want** this Ap Invoice behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -442,12 +443,12 @@ net 1,999.99 (999.99 + 1,000.00), VAT 140.00 (70.00 + 70.00), รวม 2,139.99
 
 **Preconditions**
 
-Budget เป็น approver ของบัญชี; ใบ 1 บรรทัดที่ Submit ลงบัญชีแล้ว (ไม่มี workflow)
+ใบ 1 บรรทัดที่ Submit ลงบัญชีแล้ว (AP invoice ไม่มี workflow); ทดสอบความไม่เปลี่ยนแปลงของใบ posted ไม่ใช่สิทธิ์ของ Budget (gateway ไม่มี @Permission บน approve)
 
 **Steps**
 
 1. สร้างและ Submit ใบ (Admin)
-2. Budget เรียก POST approve ผ่าน API
+2. Budget (ผู้อนุมัติฝั่งบัญชี) เรียก POST approve ผ่าน API
 
 **Expected**
 
@@ -477,7 +478,7 @@ toast Invoice voided สถานะ Void ค้าง 0.00; มี JV กลั
 
 ---
 
-## TC-APINV-400011 — Void ใบที่มี payment แล้ว (E2E-AP-PARTIAL): ถูกปฏิเสธ AP_INVOICE_HAS_PAYMENT ใบไม่เปลี่ยน
+## TC-APINV-400011 — Void ใบที่มี payment แล้ว (ใบของเทสต์เอง จ่าย 400.00): ถูกปฏิเสธ AP_INVOICE_HAS_PAYMENT ใบไม่เปลี่ยน
 
 > **As a** Requestor user, **I want** this Ap Invoice behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -486,19 +487,19 @@ toast Invoice voided สถานะ Void ค้าง 0.00; มี JV กลั
 
 **Preconditions**
 
-Admin login; E2E-AP-PARTIAL ลงบัญชีแล้ว ค้าง 670.00 มี payment 400.00
+Admin login; ใบ 3 x 333.33 (รวม 1,069.99) ที่ Submit ลงบัญชีแล้วและจ่ายบางส่วน 400.00 (payment Submit + Approve ลงบัญชี) สร้างเองต่อเคส ไม่แตะ read-set
 
 **Steps**
 
-1. เปิดหน้ารายละเอียด E2E-AP-PARTIAL
+1. เปิดหน้ารายละเอียดใบที่จ่ายบางส่วน
 2. กด Void ใส่เหตุผลแล้วยืนยัน
 3. เรียก void ผ่าน API ซ้ำเพื่ออ่านรหัสข้อผิดพลาด
 
 **Expected**
 
-backend ปฏิเสธ 409 รหัส AP_INVOICE_HAS_PAYMENT มี toast แจ้ง; ใบยัง posted ค้าง 670.00 และจำนวน JV ไม่เปลี่ยน. assumption: ใบที่มี payment void ตรง ๆ ไม่ได้ ต้องยกเลิก payment ก่อน (ตาม error code ของ BE; docs ไม่ระบุ)
+backend ปฏิเสธ 409 รหัส AP_INVOICE_HAS_PAYMENT มี toast แจ้ง; ใบยัง posted ค้าง 669.99 (1,069.99 - 400.00) และจำนวน JV ไม่เปลี่ยน. assumption: ใบที่มี payment void ตรง ๆ ไม่ได้ ต้องยกเลิก payment ก่อน (ตาม error code ของ BE; docs ไม่ระบุ)
 
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 43f0436</sub>
+<sub>Last regenerated: 2026-11-22 · git ef6c86e</sub>

@@ -2,7 +2,7 @@ import { expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { ApInvoicePage, amountOf } from "./pages/ap-invoice.page";
 import { buConfigSend, buSend } from "./helpers/bu-api";
-import { approveApDoc, createApDoc, getApDoc, seededApDoc, submitApDoc, voidApDoc } from "./helpers/ap-api";
+import { approveApDoc, approvePayment, createApDoc, createPayment, getApDoc, seededApDoc, submitApDoc, submitPayment, voidApDoc } from "./helpers/ap-api";
 import { assertAccountingReady, buDecimals, CREATOR, jvOfSource, listAllRows, today, type JvLine } from "./helpers/gl-api";
 import { docAmounts, expectBalanced, lineAmounts, netFromIncVat, round, vatOf } from "./helpers/money";
 import { expectBlocked, expectRefused, expectSaved } from "./helpers/settle";
@@ -92,15 +92,19 @@ test.describe("AP invoice (801)", () => {
       await ap.gotoList();
       await ap.search("E2E-AP-");
       const posted = docAmounts([{ qty: 3, price: 333.33 }]);
-      await expect(ap.row("E2E-AP-POSTED")).toContainText(`${fmt(posted.total)} THB`);
-      await expect(ap.row("E2E-AP-POSTED")).toContainText("Unpaid");
+      // exact cell matches: a substring match would let "0.00 THB" hit "1,070.00 THB" and "Paid" hit "Partially Paid"
+      const cell = (key: string, text: string) => ap.row(key).getByRole("cell", { name: text, exact: true });
+      await expect(cell("E2E-AP-POSTED", `${fmt(posted.total)} THB`)).toHaveCount(2); // total and open
+      await expect(cell("E2E-AP-POSTED", "Unpaid")).toHaveCount(1);
       await expect(ap.statusChip(ap.row("E2E-AP-POSTED"))).toHaveText(/posted/i);
-      await expect(ap.row("E2E-AP-INCVAT")).toContainText("1,070.00 THB");
-      await expect(ap.row("E2E-AP-PARTIAL")).toContainText("1,070.00 THB");
-      await expect(ap.row("E2E-AP-PARTIAL")).toContainText("670.00 THB");
-      await expect(ap.row("E2E-AP-PARTIAL")).toContainText("Partially Paid");
-      await expect(ap.row("E2E-AP-PAID")).toContainText("0.00 THB");
-      await expect(ap.row("E2E-AP-PAID")).toContainText("Paid");
+      await expect(cell("E2E-AP-INCVAT", "1,070.00 THB")).toHaveCount(2);
+      await expect(cell("E2E-AP-INCVAT", "Unpaid")).toHaveCount(1);
+      await expect(cell("E2E-AP-PARTIAL", "1,070.00 THB")).toHaveCount(1);
+      await expect(cell("E2E-AP-PARTIAL", "670.00 THB")).toHaveCount(1);
+      await expect(cell("E2E-AP-PARTIAL", "Partially Paid")).toHaveCount(1);
+      await expect(cell("E2E-AP-PAID", "0.00 THB")).toHaveCount(1); // the open cell only
+      await expect(cell("E2E-AP-PAID", "Paid")).toHaveCount(1);
+      await expect(cell("E2E-AP-PAID", "Partially Paid")).toHaveCount(0);
       await expect(ap.statusChip(ap.row("E2E-AP-DRAFT"))).toHaveText(/draft/i);
     },
   );
@@ -552,11 +556,11 @@ test.describe("AP invoice (801)", () => {
   );
 
   test(
-    "TC-APINV-400003 Budget อนุมัติใบที่ลงบัญชีแล้ว: ถูกปฏิเสธ AP_INVOICE_IMMUTABLE และใบยังคง posted",
+    "TC-APINV-400003 อนุมัติใบที่ลงบัญชีแล้ว (ไม่มี workflow): ถูกปฏิเสธ AP_INVOICE_IMMUTABLE และใบยังคง posted",
     {
       annotation: [
-        { type: "preconditions", description: "Budget เป็น approver ของบัญชี; ใบ 1 บรรทัดที่ Submit ลงบัญชีแล้ว (ไม่มี workflow)" },
-        { type: "steps", description: "1. สร้างและ Submit ใบ (Admin)\n2. Budget เรียก POST approve ผ่าน API" },
+        { type: "preconditions", description: "ใบ 1 บรรทัดที่ Submit ลงบัญชีแล้ว (AP invoice ไม่มี workflow); ทดสอบความไม่เปลี่ยนแปลงของใบ posted ไม่ใช่สิทธิ์ของ Budget (gateway ไม่มี @Permission บน approve)" },
+        { type: "steps", description: "1. สร้างและ Submit ใบ (Admin)\n2. Budget (ผู้อนุมัติฝั่งบัญชี) เรียก POST approve ผ่าน API" },
         {
           type: "expected",
           description:
@@ -629,14 +633,14 @@ test.describe("AP invoice (801)", () => {
   );
 
   test(
-    "TC-APINV-400011 Void ใบที่มี payment แล้ว (E2E-AP-PARTIAL): ถูกปฏิเสธ AP_INVOICE_HAS_PAYMENT ใบไม่เปลี่ยน",
+    "TC-APINV-400011 Void ใบที่มี payment แล้ว (ใบของเทสต์เอง จ่าย 400.00): ถูกปฏิเสธ AP_INVOICE_HAS_PAYMENT ใบไม่เปลี่ยน",
     {
       annotation: [
-        { type: "preconditions", description: "Admin login; E2E-AP-PARTIAL ลงบัญชีแล้ว ค้าง 670.00 มี payment 400.00" },
-        { type: "steps", description: "1. เปิดหน้ารายละเอียด E2E-AP-PARTIAL\n2. กด Void ใส่เหตุผลแล้วยืนยัน\n3. เรียก void ผ่าน API ซ้ำเพื่ออ่านรหัสข้อผิดพลาด" },
+        { type: "preconditions", description: "Admin login; ใบ 3 x 333.33 (รวม 1,069.99) ที่ Submit ลงบัญชีแล้วและจ่ายบางส่วน 400.00 (payment Submit + Approve ลงบัญชี) สร้างเองต่อเคส ไม่แตะ read-set" },
+        { type: "steps", description: "1. เปิดหน้ารายละเอียดใบที่จ่ายบางส่วน\n2. กด Void ใส่เหตุผลแล้วยืนยัน\n3. เรียก void ผ่าน API ซ้ำเพื่ออ่านรหัสข้อผิดพลาด" },
         {
           type: "expected",
-          description: "backend ปฏิเสธ 409 รหัส AP_INVOICE_HAS_PAYMENT มี toast แจ้ง; ใบยัง posted ค้าง 670.00 และจำนวน JV ไม่เปลี่ยน. assumption: ใบที่มี payment void ตรง ๆ ไม่ได้ ต้องยกเลิก payment ก่อน (ตาม error code ของ BE; docs ไม่ระบุ)",
+          description: "backend ปฏิเสธ 409 รหัส AP_INVOICE_HAS_PAYMENT มี toast แจ้ง; ใบยัง posted ค้าง 669.99 (1,069.99 - 400.00) และจำนวน JV ไม่เปลี่ยน. assumption: ใบที่มี payment void ตรง ๆ ไม่ได้ ต้องยกเลิก payment ก่อน (ตาม error code ของ BE; docs ไม่ระบุ)",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
@@ -644,7 +648,13 @@ test.describe("AP invoice (801)", () => {
     },
     async ({ page }) => {
       const ap = new ApInvoicePage(page);
-      const partial = await seededApDoc("E2E-AP-PARTIAL");
+      const total = docAmounts([{ qty: 3, price: 333.33 }]).total;
+      const partial = await createApDoc("invoice", { tag: tag("partvoid"), lines: [{ qty: 3, price: 333.33 }] });
+      expect((await submitApDoc(partial.id)).status).toBe(200);
+      const payment = await createPayment([{ id: partial.id, amount: 400 }]);
+      expect((await submitPayment(payment.id)).status).toBe(200);
+      expect((await approvePayment(payment.id)).status).toBe(200);
+      expect((await getApDoc(partial.id)).open).toBe(round(total - 400, 2));
       const jvBefore = (await jvOfSource("ap_invoice", partial.id)).length;
       await ap.gotoDetail(partial.id);
 
@@ -656,7 +666,7 @@ test.describe("AP invoice (801)", () => {
 
       const after = await getApDoc(partial.id);
       expect(after.status).toBe("posted");
-      expect(after.open).toBe(670);
+      expect(after.open).toBe(round(total - 400, 2));
       expect(after.voidGlJvId).toBeNull();
       expect((await jvOfSource("ap_invoice", partial.id)).length).toBe(jvBefore);
     },
@@ -666,12 +676,12 @@ test.describe("AP invoice (801)", () => {
 // ── 10 security ─────────────────────────────────────────────────────────
 requestorTest.describe("AP invoice (801) - Requestor (viewer)", () => {
   requestorTest(
-    "TC-APINV-100001 Requestor เปิดรายละเอียดใบที่ลงบัญชีแล้ว: ไม่เห็นปุ่ม Approve และ Void",
+    "TC-APINV-100001 Requestor เปิดรายละเอียดใบที่ลงบัญชีแล้ว: ไม่เห็นปุ่ม Void",
     {
       annotation: [
         { type: "preconditions", description: "Requestor login (accounting viewer: ดูได้ ไม่มีสิทธิ์ void/approve); E2E-AP-POSTED ลงบัญชีแล้ว" },
         { type: "steps", description: "1. เปิดหน้ารายละเอียด E2E-AP-POSTED" },
-        { type: "expected", description: "เห็นข้อมูลใบและสถานะ Posted แต่ไม่มีปุ่ม Approve และไม่มีปุ่ม Void" },
+        { type: "expected", description: "เห็นข้อมูลใบและสถานะ Posted แต่ไม่มีปุ่ม Void (ปุ่ม Approve ไม่ปรากฏบนใบ posted อยู่แล้วทุกบทบาท จึงไม่ใช้เป็นหลักฐานสิทธิ์)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
@@ -681,7 +691,6 @@ requestorTest.describe("AP invoice (801) - Requestor (viewer)", () => {
       const doc = await seededApDoc("E2E-AP-POSTED");
       await ap.gotoDetail(doc.id);
       await expect(ap.statusChip()).toHaveText(/posted/i);
-      await expect(ap.approveButton()).toHaveCount(0);
       requestorTest.fail(
         true,
         "suspected bug: view-only Requestor gets an enabled Void on a posted AP invoice - apActions() (shared/ap-status.ts) offers void on status alone and ap-invoice-detail.tsx has no permission gate; only the gateway refuses (403). See docs/superpowers/specs/2026-11-23-e2e-phase-2a-bug-list.md",
@@ -714,21 +723,25 @@ requestorTest.describe("AP invoice (801) - Requestor (viewer)", () => {
   );
 
   requestorTest(
-    "TC-APINV-100003 Requestor อนุมัติใบ Draft ผ่าน API: ถูกปฏิเสธ 4xx และใบยังคง draft",
+    "TC-APINV-100003 Requestor approve ใบ Draft ผ่าน API: ถูกปฏิเสธเพราะสถานะ (409 AP_INVOICE_IMMUTABLE) ไม่ใช่สิทธิ์ และใบยังคง draft",
     {
       annotation: [
-        { type: "preconditions", description: "ใบ Draft ที่ Admin สร้างผ่าน API; Requestor ไม่มีสิทธิ์อนุมัติ AP" },
+        { type: "preconditions", description: "ใบ Draft ที่ Admin สร้างผ่าน API; Requestor เป็น viewer" },
         { type: "steps", description: "1. Requestor เรียก POST /ap-invoice/:id/approve ผ่าน API" },
-        { type: "expected", description: "ตอบ 4xx (403 สิทธิ์ หรือ 409 สถานะ) ไม่ใช่ 2xx; ใบยัง draft ไม่มี JV" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Security" },
+        {
+          type: "expected",
+          description:
+            "ตอบ 409 รหัส AP_INVOICE_IMMUTABLE (ไม่ใช่ 403); ใบยัง draft ไม่มี JV. หมายเหตุ: gateway ไม่มี @Permission บน create/submit/approve ตั้งใจ (ap-invoice.controller.ts docblock, 'เหมือน gl-jv'; มีเฉพาะ void) จึงไม่มีการปฏิเสธด้วยสิทธิ์ให้ยืนยันบน approve; assumption: การปฏิเสธด้วยสถานะคือพฤติกรรมที่ถูกต้องของ AP ที่ไม่มี workflow",
+        },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
       ],
     },
     async () => {
       const created = await createApDoc("invoice", { tag: tag("reqapprove"), lines: [{ qty: 1, price: 100 }] });
       const res = await approveApDoc(created.id, "Requestor");
-      expect(res.status, JSON.stringify(res.body).slice(0, 200)).toBeGreaterThanOrEqual(400);
-      expect(res.status).toBeLessThan(500);
+      expect(res.status, JSON.stringify(res.body).slice(0, 200)).toBe(409);
+      expect(res.body?.error?.code).toBe("AP_INVOICE_IMMUTABLE");
       const doc = await getApDoc(created.id);
       expect(doc.status).toBe("draft");
       expect(doc.glJvId).toBeNull();
