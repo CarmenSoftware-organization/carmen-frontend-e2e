@@ -20,7 +20,9 @@ const BU = "CARMEN-AVG";
 const BACKUP = "runs/movement/workflows-backup.json";
 const SOURCE = "ทดสอบสร้าง PR";
 // The SR workflow (found by its stages — it was renamed on dev) is provisioned too, but is left alone once it has products.
-const TARGETS = ["general item", "PO inherit-sig test", await srIssueWorkflowName(BU)];
+const RESTORE = process.argv[2] === "restore";
+// Resolved lazily: `restore` reads names from the backup file and must not depend on the SR lookup (it throws on two matches).
+const TARGETS = RESTORE ? [] : ["general item", "PO inherit-sig test", await srIssueWorkflowName(BU)];
 
 async function getWorkflow(id: string) {
   const r = await apiSend("GET", `/api/config/${BU}/workflows/${id}`);
@@ -40,20 +42,19 @@ async function put(wf: any, data: unknown) {
   if (r.status !== 200) throw new Error(`PUT ${wf.name} ${r.status} ${JSON.stringify(r.body).slice(0, 400)}`);
 }
 
-const ids: Record<string, string> = {};
-for (const name of [...TARGETS, SOURCE]) ids[name] = await findId(name);
-
-if (process.argv[2] === "restore") {
+if (RESTORE) {
   if (!existsSync(BACKUP)) throw new Error(`ไม่มีไฟล์สำรอง ${BACKUP}`);
   const backup = JSON.parse(readFileSync(BACKUP, "utf8")) as Record<string, any>;
-  for (const name of TARGETS) {
-    if (!backup[name]) continue; // backed up before this target existed
-    await put(await getWorkflow(ids[name]), backup[name].data);
+  for (const name of Object.keys(backup)) {
+    await put(await getWorkflow(await findId(name)), backup[name].data);
     console.log("restored", name);
   }
   rmSync(BACKUP);
   process.exit(0);
 }
+
+const ids: Record<string, string> = {};
+for (const name of [...TARGETS, SOURCE]) ids[name] = await findId(name);
 
 const current: Record<string, any> = {};
 for (const name of TARGETS) current[name] = await getWorkflow(ids[name]);
