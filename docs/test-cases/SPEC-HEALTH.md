@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1271 |
-| **Running** | **1088** |
-| Skipped | 183 |
+| Cases declared | 1253 |
+| **Running** | **1100** |
+| Skipped | 153 |
 | Fixme | 0 |
-| **Dormant** (skipped + fixme) | **14%** |
+| **Dormant** (skipped + fixme) | **12%** |
 | Running cases asserting only through a page-object helper | 29 |
 | **Running cases asserting nothing at all** | **0** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 22 |
-| Assertions in running cases | 2801 |
+| Assertions in running cases | 2824 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -43,7 +43,6 @@ Sorted by dormant share, then by cases that assert nothing.
 
 | Spec | Run | Skip | Fixme | Dormant | Asserts nothing | Helper only | Trivial only | Guarded | Assertions | Catch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `900-period-end.spec.ts` | 5 | 30 | 0 | 86% | 0 | 0 | 0 | 0 | 16 | 0 |
 | `401-po.spec.ts` | 19 | 32 | 0 | 63% | 0 | 0 | 0 | **1** | 66 | 0 |
 | `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 141 | 0 |
@@ -95,6 +94,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `720-stock-issue.spec.ts` | 20 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 53 | 0 |
 | `721-sr-issue-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 9 | 0 | 0 | 10 | 1 |
 | `730-inventory-adjustment-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 11 | 0 | 0 | 1 | 1 |
+| `900-period-end.spec.ts` | 17 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 39 | 0 |
 | `910-period-close-prestep.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | **2** | 8 | 1 |
 | `911-period-close-blockers.spec.ts` | 1 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 2 | 0 |
 | `912-period-close-start-gate.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 9 | 0 |

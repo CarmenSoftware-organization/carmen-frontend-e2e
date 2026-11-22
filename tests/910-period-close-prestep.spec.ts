@@ -127,7 +127,7 @@ test(
       { type: "expected", description: "GET /api/<BU>/user-locations มีรหัสคลัง L และหน้า view ของผู้ใช้แสดงแถวคลัง L" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
-      { type: "note", description: "เดิม 0.1 (_movement_play specs/00-prestep) · idempotent: ผูกไว้แล้วจะไม่กด Edit/Save ซ้ำ" },
+      { type: "note", description: "ผูกคลังเป็นการตั้งค่าเริ่มต้นของ suite โดยตั้งใจ ไม่ถูกย้อนคืนหลังรัน · เดิม 0.1 (_movement_play specs/00-prestep) · idempotent: ผูกไว้แล้วจะไม่กด Edit/Save ซ้ำ" },
     ],
   },
   async ({ page }) => {

@@ -1,4 +1,4 @@
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { PeriodEndPage, LIST_PATH } from "./pages/period-end.page";
 
@@ -10,17 +10,65 @@ import { PeriodEndPage, LIST_PATH } from "./pages/period-end.page";
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 
-const SKIP_NOTE_BACKEND =
-  "Backend / system-level behavior (validation engines, transaction status checks, " +
-  "spot checks, physical counts, GL adjustments, activity log integrity). " +
-  "Cannot be exercised reliably through the UI in E2E. Verify with API/integration tests.";
+const REVIEW_PATH = `${LIST_PATH}/review`;
 
-const SKIP_NOTE_NOT_IMPLEMENTED =
-  "Sub-route / workflow not in the frontend: the module only has /inventory-management/period-end and " +
-  "/period-end/review (routes/router.tsx); closing is Start Period Close + the review page, exercised by phases 910-924. " +
-  "(no /[id], /close/[id], /period-close, /period-close-checklist, /procurement/close-workflow, " +
-  "/period-closure/active-period, /procurement/validation routes found). " +
-  "Re-enable once the UI ships.";
+type Review = {
+  can_close: boolean;
+  close_blocking: Record<"sr" | "grn" | "cn" | "stock_in" | "stock_out" | "physical_count", number>;
+  details: { transaction: Record<string, { count: number; complete_count: number; incomplete_count: number }>; physical_count: Record<string, unknown>[] };
+};
+
+/**
+ * Review page with the backend's /period-ends/review answer patched. The states under test (everything complete, a closed-out
+ * count round, a failing Close) cannot be reached on dev without the irreversible Start / Close, so the real answer is fetched and
+ * only the fields of the scenario are overridden; the FE is what is asserted.
+ */
+async function mockReview(page: Page, patch: (d: Review) => void) {
+  await page.route(/\/period-ends\/review$/, async (route) => {
+    const real = await (await route.fetch()).json();
+    patch(real.data);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(real) });
+  });
+}
+
+const allClear = (d: Review) => {
+  d.can_close = true;
+  d.close_blocking = { sr: 0, grn: 0, cn: 0, stock_in: 0, stock_out: 0, physical_count: 0 };
+  for (const t of Object.values(d.details.transaction)) Object.assign(t, { count: 4, complete_count: 4, incomplete_count: 0 });
+};
+
+const location = (i: number, done: boolean) => ({
+  id: `loc-${i}`, code: `L${i}`, name: `Location ${i}`, location_type: "inventory", physical_count_type: "yes",
+  product_counted: done ? 5 : 0, product_total: 5, physical_count_status: done ? "completed" : "pending",
+  physical_count_id: null, start_counting_at: null, completed_at: null,
+});
+
+/** Opens the review page and waits until the backend's answer is rendered (the Close button is disabled while it loads). */
+async function openReview(page: Page) {
+  await page.goto(REVIEW_PATH);
+  await expect(page.getByText(/block closing|Nothing here blocks closing/).first()).toBeVisible();
+}
+
+const closeButton = (page: Page) => page.getByRole("button", { name: "Close Period", exact: true });
+const txRow = (page: Page, module: string) => page.getByRole("button", { name: new RegExp(module) });
+
+/** Close Period pressed against a mocked answer — nothing reaches the real POST /period-ends (no irreversible close). */
+async function closeRefusedBy(page: Page, status: number, message: string) {
+  await mockReview(page, allClear);
+  await page.route(/\/period-ends$/, (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({ status, contentType: "application/json", body: JSON.stringify({ status, success: false, message }) })
+      : route.fallback(),
+  );
+  await openReview(page);
+  await closeButton(page).click();
+  const refused = page.waitForResponse((r) => /\/period-ends$/.test(r.url()) && r.request().method() === "POST");
+  await page.locator('[role="alertdialog"]').getByRole("button", { name: "Close Period", exact: true }).click();
+  expect((await refused).status(), "the mocked refusal reached the FE").toBe(status);
+  await expect(page.getByText("Period closed successfully.")).toHaveCount(0);
+  await expect(page).toHaveURL(/period-end\/review$/);
+  await page.unrouteAll({ behavior: "ignoreErrors" }); // a refetch of the mocked review may still be in flight
+}
 
 const emptyHistory = () => ({
   status: 200,
@@ -156,602 +204,259 @@ requestorTest.describe("Period End — List page — Permission denial", () => {
 });
 
 // ═════════════════════════════════════════════════════════════════════════
-// TC-PE-900002 — Period Detail (sub-route — not yet implemented)
+// Period Review page (/inventory-management/period-end/review) — the FE has no /[id] or /close/[id] routes
+// (routes/router.tsx registers only period-end and period-end/review); detail, validation and Close live on the review page.
+// Mocked states only override the one endpoint; the real Close is TC-PE-540001 (phase 924, irreversible, gated).
 // ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Period End — Detail page — Feature pending", () => {
-  purchaseTest.skip(
+purchaseTest.describe("Period End — Review page", () => {
+  purchaseTest(
     "TC-PE-020001 View period detail for open period",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ดู period detail และมี open period อยู่" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /inventory-management/period-end/12345\n2. กด 'Start Period Close'",
-        },
-        { type: "expected", description: "ระบบแสดงหน้า period detail พร้อม validation overview, adjustments tab และปุ่ม 'Start Period Close'" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และมี open period อยู่" },
+        { type: "steps", description: "1. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "หน้า Period Close Review แสดงหัวข้อ Transactions, Physical Count และปุ่ม Close Period" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
+        { type: "note", description: "เดิมเป็นหน้า /period-end/[id] (ไม่มีใน FE) — ย้ายมาตรวจหน้า review ซึ่งเป็นหน้ารายละเอียดของงวดปัจจุบัน" },
       ],
     },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-020004 View period detail with invalid period ID",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission และ period ID ที่ให้มาไม่ถูกต้อง" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /inventory-management/period-end/invalid_id\n2. ตรวจสอบว่าระบบแสดง error message หรือ redirect ไปยัง home page",
-        },
-        { type: "expected", description: "ระบบแสดง error message หรือ redirect ผู้ใช้ไปยัง home page" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
-      ],
+    async ({ page }) => {
+      await openReview(page);
+      await expect(page.getByRole("heading", { name: "Period Close Review" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 2, name: "Transactions" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 2, name: "Physical Count" })).toBeVisible();
+      await expect(closeButton(page)).toBeVisible();
     },
-    async () => {},
   );
 
-  purchaseTest.skip(
+  purchaseTest(
     "TC-PE-020005 View period detail for period with incomplete validation",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission และ period มี validation stages ที่ยังไม่สมบูรณ์" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /inventory-management/period-end/67890\n2. ตรวจสอบว่า validation overview แสดง stages ที่ยังไม่สมบูรณ์และ link 'View Full Validation Details'",
-        },
-        { type: "expected", description: "ระบบแสดงหน้า period detail พร้อม validation overview ที่บ่งชี้ stages ที่ยังไม่สมบูรณ์และ link 'View Full Validation Details'" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และมีเอกสาร GRN ค้าง (จำลองคำตอบ review)" },
+        { type: "steps", description: "1. จำลอง /period-ends/review ให้ GRN ค้าง 3 ใบ\n2. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "แสดง '3 document(s) block closing' แถว Goods Receive Notes แสดง '3 pending' และปุ่ม Close Period ถูก disable" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
       ],
     },
-    async () => {},
-  );
-});
-
-requestorTest.describe("Period End — Detail page — Permission denial — Feature pending", () => {
-  requestorTest.skip(
-    "TC-PE-020003 View period detail with no permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่มี permission ดู period detail" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /inventory-management/period-end/12345\n2. ตรวจสอบว่าระบบ redirect ไปยัง login หรือหน้า permission denied",
-        },
-        { type: "expected", description: "ระบบ redirect ผู้ใช้ไปยัง login page หรือแสดง permission denied message" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
-      ],
+    async ({ page }) => {
+      await mockReview(page, (d) => {
+        allClear(d);
+        d.can_close = false;
+        d.close_blocking.grn = 3;
+        Object.assign(d.details.transaction.grn, { count: 5, complete_count: 2, incomplete_count: 3 });
+      });
+      await openReview(page);
+      await expect(page.getByText("3 document(s) block closing")).toBeVisible();
+      await expect(txRow(page, "Goods Receive Notes")).toContainText("3 pending");
+      await expect(closeButton(page)).toBeDisabled();
     },
-    async () => {},
   );
-});
 
-// ═════════════════════════════════════════════════════════════════════════
-// TC-PE-900003 — Close Period Workflow (sub-route — not yet implemented)
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Period End — Close workflow — Feature pending", () => {
-  purchaseTest.skip(
-    "TC-PE-030001 Happy Path - Inventory Manager Completes Validation",
+  purchaseTest(
+    "TC-PE-030001 Happy Path - Close Period enabled when nothing blocks closing",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี close permission และ period อยู่ใน open หรือ in_progress" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /inventory-management/period-end/close/[id]\n2. ตรวจสอบว่า validation checklist sections แสดงขึ้นมา\n3. กด 'Validate All'\n4. ตรวจสอบว่า validations ทั้งหมดผ่าน\n5. ตรวจสอบว่าปุ่ม 'Close Period' ถูก enable",
-        },
-        { type: "expected", description: "validation sections ทั้งหมดผ่าน และปุ่ม 'Close Period' ถูก enable" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และ backend รายงาน can_close = true (จำลองคำตอบ review)" },
+        { type: "steps", description: "1. จำลอง /period-ends/review ให้ทุกโมดูลครบและ can_close = true\n2. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "แสดง 'Nothing here blocks closing' และปุ่ม Close Period ถูก enable" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
+        { type: "note", description: "เดิม Validate All แล้วปุ่ม Close enable — FE ไม่มีปุ่ม Validate All ปุ่ม Close ขึ้นกับ can_close จาก backend" },
       ],
     },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-030003 Edge Case - Period Already Closed",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และ period ถูกปิดแล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /inventory-management/period-end/close/[id]\n2. ตรวจสอบ error message สำหรับ period ที่ถูกปิดแล้ว",
-        },
-        { type: "expected", description: "Error message แสดงว่า period ถูกปิดแล้ว" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
-      ],
+    async ({ page }) => {
+      await mockReview(page, allClear);
+      await openReview(page);
+      await expect(page.getByText("Nothing here blocks closing")).toBeVisible();
+      await expect(closeButton(page)).toBeEnabled();
     },
-    async () => {},
   );
 
-  purchaseTest.skip(
-    "TC-PE-030004 Negative - Invalid Period ID",
+  purchaseTest(
+    "TC-PE-030005 Edge Case - Close Period disabled while counts and documents are outstanding",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี close permission" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /inventory-management/period-end/close/invalid_id\n2. ตรวจสอบ error message สำหรับ period ID ที่ไม่ถูกต้อง",
-        },
-        { type: "expected", description: "Error message แสดงว่า period ID ไม่ถูกต้อง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
-      ],
-    },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-030005 Edge Case - All Sections Fail Validation",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี close permission และ period อยู่ใน open หรือ in_progress" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /inventory-management/period-end/close/[id]\n2. กด 'Validate All'\n3. ตรวจสอบว่า sections ทั้งหมด validation ล้มเหลว\n4. ตรวจสอบว่าปุ่ม 'Close Period' ถูก disable",
-        },
-        { type: "expected", description: "sections ทั้งหมด validation ล้มเหลว และปุ่ม 'Close Period' ยังคง disable" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission" },
+        { type: "steps", description: "1. จำลอง /period-ends/review ให้ can_close = false (GRN ค้าง, ยังไม่นับ)\n2. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "ปุ่ม Close Period ถูก disable และ tooltip บอกว่าต้องทำรายการและนับให้ครบก่อนปิด" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
       ],
     },
-    async () => {},
-  );
-});
-
-// ═════════════════════════════════════════════════════════════════════════
-// TC-PE-900004 — Close Period Action (sub-route — not yet implemented)
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Period End — Close action — Feature pending", () => {
-  purchaseTest.skip(
-    "TC-PE-040001 Close Period - Happy Path",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี close permission สถานะ period เป็น closing และ validation stages ทั้ง 3 ผ่าน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/close-workflow\n2. กด 'Close Period' button\n3. ยืนยัน 'Close Period' dialog\n4. ตรวจสอบว่าสถานะ period อัปเดตเป็น 'closed'\n5. ตรวจสอบว่า fields closedBy และ closedAt ถูกกรอก\n6. ตรวจสอบว่า activity log entry ถูกบันทึก\n7. ตรวจสอบว่า transactions สำหรับ period นี้ถูกบล็อก\n8. ตรวจสอบว่า success message แสดง\n9. ตรวจสอบว่า redirect ไปยัง period list page",
-        },
-        { type: "expected", description: "Period ถูกปิดสำเร็จ validations ทั้งหมดผ่าน สถานะ period อัปเดต closedBy และ closedAt ถูกกรอก activity log entry ถูกบันทึก transactions ถูกบล็อก success message แสดง และผู้ใช้ถูก redirect ไปยัง period list page" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
-      ],
+    async ({ page }) => {
+      await mockReview(page, (d) => {
+        d.can_close = false;
+        d.close_blocking = { sr: 0, grn: 2, cn: 0, stock_in: 0, stock_out: 0, physical_count: 13 };
+      });
+      await openReview(page);
+      await expect(closeButton(page)).toBeDisabled();
+      await expect(closeButton(page)).toHaveAttribute("title", "All transactions must be complete and all physical counts must be completed before closing.");
     },
-    async () => {},
   );
 
-  purchaseTest.skip(
-    "TC-PE-040002 Close Period - Invalid Input",
+  purchaseTest(
+    "TC-PE-040004 Close Period - Server Error",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี close permission สถานะ period เป็น closing และ validation stages ทั้ง 3 ผ่าน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/close-workflow\n2. กด 'Close Period' button\n3. กรอก confirmation ที่ไม่ถูกต้อง\n4. ตรวจสอบว่า error message แสดง",
-        },
-        { type: "expected", description: "Error message แสดงสำหรับ input ที่ไม่ถูกต้อง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
-      ],
-    },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-040004 Close Period - Database Error",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี close permission สถานะ period เป็น closing และ validation stages ทั้ง 3 ผ่าน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/close-workflow\n2. Trigger database error\n3. กด 'Close Period' button\n4. ตรวจสอบว่า error message พร้อม retry option แสดง",
-        },
-        { type: "expected", description: "Error message พร้อม retry option แสดงเนื่องจาก database error" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และ backend รายงาน can_close = true (จำลอง)" },
+        { type: "steps", description: "1. จำลอง review ให้ปิดได้ และ POST /period-ends ตอบ 500\n2. ไปหน้า review กด Close Period แล้วยืนยัน" },
+        { type: "expected", description: "ไม่แสดง 'Period closed successfully.' และยังอยู่หน้า review (ไม่ redirect)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
       ],
     },
-    async () => {},
+    async ({ page }) => {
+      await closeRefusedBy(page, 500, "Internal server error");
+      await expect(closeButton(page)).toBeVisible();
+    },
   );
 
-  purchaseTest.skip(
+  purchaseTest(
     "TC-PE-040005 Close Period - Validation No Longer Passes",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี close permission และสถานะ period เป็น closing" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/close-workflow\n2. ทำให้ validation stage หนึ่ง fail แบบ manual\n3. กด 'Close Period' button\n4. ตรวจสอบว่า error message แสดง",
-        },
-        { type: "expected", description: "Error message แสดงบ่งชี้ว่า validation ล้มเหลว" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และ review รายงาน can_close = true แต่ POST ปฏิเสธ (จำลอง)" },
+        { type: "steps", description: "1. จำลอง review ให้ปิดได้ แต่ POST /period-ends ตอบ 422\n2. ไปหน้า review กด Close Period แล้วยืนยัน" },
+        { type: "expected", description: "ไม่แสดง 'Period closed successfully.' และยังอยู่หน้า review" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
       ],
     },
-    async () => {},
-  );
-});
-
-requestorTest.describe("Period End — Close action — Permission denial — Feature pending", () => {
-  requestorTest.skip(
-    "TC-PE-040003 Close Period - Permission Denied",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com สถานะ period เป็น closing และ validation stages ทั้ง 3 ผ่าน" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/close-workflow\n2. กด 'Close Period' button\n3. ตรวจสอบ 403 Forbidden error",
-        },
-        { type: "expected", description: "403 Forbidden error แสดงขึ้นมา" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_NOT_IMPLEMENTED },
-      ],
+    async ({ page }) => {
+      await closeRefusedBy(page, 422, "Period is not ready to close");
+      await expect(closeButton(page)).toBeVisible();
     },
-    async () => {},
   );
-});
 
-// ═════════════════════════════════════════════════════════════════════════
-// BACKEND / SYSTEM-LEVEL — all skipped
-// TC-PE-900101 transaction validation, TC-PE-900102 spot check validation,
-// TC-PE-900103 physical count validation, TC-PE-900104 activity log integrity
-// ═════════════════════════════════════════════════════════════════════════
-purchaseTest.describe("Period End — Transaction validation — Backend only", () => {
-  purchaseTest.skip(
+  purchaseTest(
     "TC-PE-310001 All transactions posted",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ทำ validation และ transactions ทั้งหมดถูก post แล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-close\n2. กด 'Run Validation'\n3. ตรวจสอบว่า transaction statuses ทั้งหมดเป็น 'Posted'",
-        },
-        { type: "expected", description: "transactions ทั้งหมดถูกรายงานว่า posted และ transactionsCommitted เป็น true" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และทุกโมดูลมีเอกสารครบ (จำลองคำตอบ review)" },
+        { type: "steps", description: "1. จำลอง /period-ends/review ให้ทุกโมดูลเสร็จครบ\n2. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "แถว GRN, Stock In, Stock Out, SR, CN แสดง 'Complete' และสรุป 'Nothing here blocks closing'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
       ],
     },
-    async () => {},
+    async ({ page }) => {
+      await mockReview(page, allClear);
+      await page.goto(REVIEW_PATH);
+      for (const m of ["Goods Receive Notes", "Stock In", "Stock Out", "Store Requisitions", "Credit Notes"]) {
+        await expect(txRow(page, m)).toContainText("Complete");
+      }
+      await expect(page.getByText("Nothing here blocks closing")).toBeVisible();
+    },
   );
 
-  purchaseTest.skip(
+  purchaseTest(
     "TC-PE-310002 Missing GRN document",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ทำ validation และเอกสาร GRN หนึ่งรายการขาดสถานะ 'Posted'" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-close\n2. กด 'Run Validation'\n3. ตรวจสอบว่าสถานะเอกสาร GRN ไม่ใช่ 'Posted'",
-        },
-        { type: "expected", description: "เอกสาร GRN ถูก flag ว่า pending และ transactionsCommitted เป็น false" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และมี GRN ค้าง 2 ใบ (จำลอง)" },
+        { type: "steps", description: "1. จำลอง review ให้ GRN ค้าง 2 ใบ\n2. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "แถว Goods Receive Notes แสดง '2 pending' แถวอื่นยัง Complete และ Close Period ถูก disable" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
       ],
     },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-310003 User without permission",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ไม่มี permission ทำ validation" },
-        {
-          type: "steps",
-          description: "1. ไปที่ /period-close\n2. กด 'Run Validation'",
-        },
-        { type: "expected", description: "ระบบปฏิเสธสิทธิ์และไม่อนุญาตให้ validation ดำเนินต่อ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
+    async ({ page }) => {
+      await mockReview(page, (d) => {
+        allClear(d);
+        d.can_close = false;
+        d.close_blocking.grn = 2;
+        Object.assign(d.details.transaction.grn, { count: 6, complete_count: 4, incomplete_count: 2 });
+      });
+      await page.goto(REVIEW_PATH);
+      await expect(txRow(page, "Goods Receive Notes")).toContainText("2 pending");
+      await expect(txRow(page, "Credit Notes")).toContainText("Complete");
+      await expect(closeButton(page)).toBeDisabled();
     },
-    async () => {},
   );
 
-  purchaseTest.skip(
-    "TC-PE-310005 Partial transaction types",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ทำ validation และ transaction types บางรายการมีสถานะ pending" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-close\n2. กด 'Run Validation'\n3. ตรวจสอบ pending statuses สำหรับแต่ละ transaction type",
-        },
-        { type: "expected", description: "Pending statuses สำหรับแต่ละ transaction type ถูกรายงาน และ transactionsCommitted เป็น false" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-});
-
-purchaseTest.describe("Period End — Spot check validation — Backend only", () => {
-  purchaseTest.skip(
-    "TC-PE-320001 Happy Path - Successful Spot Check Validation",
-    {
-      annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com ด้วย credentials ที่ถูกต้องและมี permission ทำ validation" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-close-checklist\n2. กด 'Run Validation'\n3. ระบบ query spot checks สำหรับ period date range\n4. ตรวจสอบว่า spot checks ทั้งหมดมีสถานะ 'completed'\n5. SpotChecksComplete ถูกตั้งเป็น true",
-        },
-        { type: "expected", description: "spot checks ผ่านการตรวจสอบสำเร็จและถูกทำเครื่องหมายเป็น completed ทั้งหมด" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-320004 Edge Case - No Spot Checks for Period",
-    {
-      annotation: [
-        { type: "preconditions", description: "ไม่มี spot checks ที่บันทึกไว้สำหรับ validation period" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-close-checklist\n2. กด 'Run Validation'\n3. ตรวจสอบว่าระบบแสดง message ว่าไม่มี spot checks สำหรับ period",
-        },
-        { type: "expected", description: "ระบบระบุและแสดงอย่างถูกต้องว่าไม่มี spot checks สำหรับ validation period" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-320005 Edge Case - Some Spot Checks Incomplete",
-    {
-      annotation: [
-        { type: "preconditions", description: "spot checks บางรายการถูกทำเครื่องหมายเป็น 'incomplete' สำหรับ validation period" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-close-checklist\n2. กด 'Run Validation'\n3. ตรวจสอบว่า list ของ spot checks ที่ไม่สมบูรณ์แสดงขึ้นมา\n4. ตรวจสอบว่า SpotChecksComplete ถูกตั้งเป็น false",
-        },
-        { type: "expected", description: "ระบบระบุและแสดง list ของ spot checks ที่ไม่สมบูรณ์อย่างถูกต้อง และตั้งค่า SpotChecksComplete เป็น false" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-});
-
-purchaseTest.describe("Period End — Physical count validation — Backend only", () => {
-  purchaseTest.skip(
+  purchaseTest(
     "TC-PE-330001 All Physical Counts Finalized Successfully",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ทำ validation และ period date range ถูกกำหนดแล้ว" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/validation\n2. กด 'Run Validation'\n3. ตรวจสอบว่า physical counts ทั้งหมดถูกทำเครื่องหมายเป็น 'finalized'\n4. ตรวจสอบว่า GL adjustments สำหรับแต่ละ count ถูก post",
-        },
-        { type: "expected", description: "physicalCountsFinalized เป็น true และ counts ทั้งหมดถูกทำเครื่องหมายเป็น finalized พร้อม GL adjustments ที่ถูก post" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และทุกคลังนับเสร็จ (จำลอง)" },
+        { type: "steps", description: "1. จำลอง review ให้ 2 คลังนับเสร็จ\n2. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "ส่วน Physical Count แสดง '2 of 2 completed'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
       ],
     },
-    async () => {},
+    async ({ page }) => {
+      await mockReview(page, (d) => {
+        allClear(d);
+        d.details.physical_count = [location(1, true), location(2, true)];
+      });
+      await page.goto(REVIEW_PATH);
+      await expect(page.getByText("2 of 2 completed")).toBeVisible();
+    },
   );
 
-  purchaseTest.skip(
-    "TC-PE-330002 Validation Run with No Physical Counts",
+  purchaseTest(
+    "TC-PE-330002 Review with No Physical Counts",
     {
       annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี permission ทำ validation และไม่มี physical counts สำหรับ period date range" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/validation\n2. กด 'Run Validation'\n3. ตรวจสอบว่าไม่มี physical counts แสดงรายการและไม่มี errors",
-        },
-        { type: "expected", description: "physicalCountsFinalized เป็น true และไม่มี non-finalized counts ในรายการ" },
-        { type: "priority", description: "High" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission" },
+        { type: "steps", description: "1. จำลอง review ให้ไม่มีคลังที่ต้องนับ\n2. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "แสดง 'No physical counts in this period.'" },
+        { type: "priority", description: "Medium" },
         { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
       ],
     },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-330003 Run Validation with Unauthorized User",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ไม่มี permission ทำ validation" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/validation\n2. กด 'Run Validation'\n3. ตรวจสอบว่าผู้ใช้ถูกแจ้งให้ login หรือถูกปฏิเสธสิทธิ์เข้าถึง",
-        },
-        { type: "expected", description: "ไม่สามารถทำ validation ได้และผู้ใช้ถูกปฏิเสธสิทธิ์เข้าถึง" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
+    async ({ page }) => {
+      await mockReview(page, (d) => {
+        d.details.physical_count = [];
+      });
+      await page.goto(REVIEW_PATH);
+      await expect(page.getByText("No physical counts in this period.")).toBeVisible();
     },
-    async () => {},
   );
 
-  purchaseTest.skip(
+  purchaseTest(
     "TC-PE-330004 Physical Count Status Not Finalized",
     {
       annotation: [
-        { type: "preconditions", description: "physical counts บางรายการสำหรับ period date range ยังไม่ finalized" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/validation\n2. กด 'Run Validation'\n3. ตรวจสอบว่า non-finalized counts ถูกแสดงรายการและสถานะไม่ใช่ 'finalized'\n4. ตรวจสอบว่า GL adjustments สำหรับ non-finalized counts ไม่ถูก post",
-        },
-        { type: "expected", description: "physicalCountsFinalized เป็น false และ non-finalized counts ถูกแสดงรายการพร้อม GL adjustments ที่ไม่ถูก post" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com และมี period view permission และมีคลังที่ยังนับไม่เสร็จ (จำลอง)" },
+        { type: "steps", description: "1. จำลอง review ให้ 1 จาก 2 คลังนับเสร็จ\n2. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "แสดง '1 of 2 completed'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
       ],
     },
-    async () => {},
+    async ({ page }) => {
+      await mockReview(page, (d) => {
+        d.details.physical_count = [location(1, true), location(2, false)];
+      });
+      await page.goto(REVIEW_PATH);
+      await expect(page.getByText("1 of 2 completed")).toBeVisible();
+    },
   );
 
-  purchaseTest.skip(
-    "TC-PE-330005 Period Date Range Without Physical Counts",
-    {
-      annotation: [
-        { type: "preconditions", description: "period date range ที่เลือกไม่มี physical counts" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /procurement/validation\n2. เลือก period date range\n3. กด 'Run Validation'\n4. ตรวจสอบว่าไม่มี physical counts แสดงรายการ",
-        },
-        { type: "expected", description: "physicalCountsFinalized เป็น true และไม่มี non-finalized counts ในรายการ" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
 });
 
-purchaseTest.describe("Period End — Activity log — Backend only", () => {
-  purchaseTest.skip(
-    "TC-PE-340001 Happy Path - Log Activity Entry",
+requestorTest.describe("Period End — Review page — Permission denial", () => {
+  requestorTest(
+    "TC-PE-020003 View period detail with no permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com พร้อม permissions ทำ period actions" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-closure/active-period\n2. กด 'View' button\n3. กรอก period ID\n4. กด 'Validate' button\n5. กรอก validation details ที่จำเป็น\n6. กด 'Close Period' button",
-        },
-        { type: "expected", description: "Activity log entry ถูกสร้างพร้อมรายละเอียดที่จำเป็นทั้งหมดและไม่สามารถเปลี่ยนแปลงได้" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Happy Path" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-340002 Negative - Invalid User Credentials",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ login ด้วย credentials ที่ไม่ถูกต้อง" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-closure/active-period\n2. กด 'View' button\n3. กรอก period ID\n4. กด 'Validate' button",
-        },
-        { type: "expected", description: "ผู้ใช้ถูก redirect ไปยัง login page หรือได้รับ error message" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่มี period view permission" },
+        { type: "steps", description: "1. ไปที่ /inventory-management/period-end/review" },
+        { type: "expected", description: "แสดง Permission Denied (ไม่ redirect) และไม่มีปุ่ม Close Period" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
       ],
     },
-    async () => {},
+    async ({ page }) => {
+      await page.goto(REVIEW_PATH);
+      await expect(page.getByText("Permission Denied")).toBeVisible();
+      await expect(closeButton(page)).toHaveCount(0);
+    },
   );
 
-  purchaseTest.skip(
-    "TC-PE-340003 Negative - No Permissions",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้ login โดยไม่มี permissions ทำ period actions" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-closure/active-period\n2. กด 'View' button\n3. กรอก period ID\n4. กด 'Validate' button",
-        },
-        { type: "expected", description: "ผู้ใช้ได้รับ permission denied error หรือถูก redirect ไปยังหน้าที่ถูกจำกัด" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Negative" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-340004 Edge Case - No Period ID Provided",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี credentials ที่ถูกต้องและ permissions ทำ period actions" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-closure/active-period\n2. กด 'View' button\n3. กด 'Validate' button โดยไม่กรอก period ID",
-        },
-        { type: "expected", description: "ระบบแจ้งให้ผู้ใช้กรอก period ID" },
-        { type: "priority", description: "High" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
-
-  purchaseTest.skip(
-    "TC-PE-340005 Edge Case - Timestamp Overflow",
-    {
-      annotation: [
-        { type: "preconditions", description: "ผู้ใช้มี credentials ที่ถูกต้องและ permissions ทำ period actions" },
-        {
-          type: "steps",
-          description:
-            "1. ไปที่ /period-closure/active-period\n2. กด 'View' button\n3. กรอก period ID\n4. กด 'Validate' button\n5. กรอก timestamp value สูงสุดที่เป็นไปได้",
-        },
-        { type: "expected", description: "ระบบจัดการ timestamp overflow อย่างเหมาะสม โดยอาจตัดค่าให้เป็น timestamp ที่ถูกต้อง" },
-        { type: "priority", description: "Medium" },
-        { type: "testType", description: "Edge Case" },
-        { type: "note", description: SKIP_NOTE_BACKEND },
-      ],
-    },
-    async () => {},
-  );
 });
