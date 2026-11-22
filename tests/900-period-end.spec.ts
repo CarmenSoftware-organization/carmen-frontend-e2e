@@ -1,5 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
+import { apiGet } from "./helpers/movement/api";
 import { PeriodEndPage, LIST_PATH } from "./pages/period-end.page";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -9,6 +10,7 @@ import { PeriodEndPage, LIST_PATH } from "./pages/period-end.page";
 // ─────────────────────────────────────────────────────────────────────────
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
+const adminTest = createAuthTest("carmensoftware.dev+admin@gmail.com");
 
 const REVIEW_PATH = `${LIST_PATH}/review`;
 
@@ -459,4 +461,62 @@ requestorTest.describe("Period End — Review page — Permission denial", () =>
     },
   );
 
+});
+
+// ═════════════════════════════════════════════════════════════════════════
+// Activity Monitor (/system-admin/activity-log) — Record Type filter "Period"
+// ═════════════════════════════════════════════════════════════════════════
+adminTest.describe("Period End — Activity log", () => {
+  adminTest(
+    "TC-PE-340006 Activity Monitor กรอง Record Type = Period ได้",
+    {
+      annotation: [
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com ที่เปิด Activity Monitor ได้" },
+        { type: "steps", description: "1. ไปที่ /system-admin/activity-log\n2. กด Filter แล้วเลือก Record Type = Period" },
+        { type: "expected", description: "request ส่ง entity_type=period ตอบ 200 ทุกแถวที่ได้เป็น entity_type period และตัวกรองแสดง Record Type = period" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Functional" },
+        { type: "note", description: "ส่วนที่ย้อนกลับได้ของ TC-PE-340001 (ต้องปิดงวดจริง) — อ่านอย่างเดียว ไม่ปิดงวด" },
+      ],
+    },
+    async ({ page }) => {
+      await page.goto("/system-admin/activity-log");
+      await page.getByRole("button", { name: "Filter", exact: true }).click();
+      const filtered = page.waitForResponse((r) => /\/activity-logs\?/.test(r.url()) && r.url().includes("entity_type=period"));
+      await page.getByText("Record Type").last().click();
+      await page.getByRole("option", { name: "Period", exact: true }).click();
+      const resp = await filtered;
+      expect(resp.status()).toBe(200);
+      const rows = (await resp.json()).data as { entity_type: string }[];
+      expect(rows.filter((r) => r.entity_type !== "period"), "every returned row is a period entry").toEqual([]);
+      await expect(page.getByText("Filters:")).toBeVisible();
+      await expect(page.getByText("period", { exact: true })).toBeVisible();
+    },
+  );
+
+  adminTest(
+    "TC-PE-340001 Happy Path - Log Activity Entry",
+    {
+      annotation: [
+        { type: "preconditions", description: "ปิดงวดจริงแล้วด้วย phase 924 (TC-PE-540001) และตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ของงวดที่ปิด" },
+        { type: "steps", description: "1. อ่าน /api/<BU>/activity-logs?entity_type=period เรียงใหม่สุดก่อน\n2. หาแถวของงวดที่ปิด" },
+        { type: "expected", description: "มี activity entry entity_type=period ของงวดนั้นที่ new_data.status = closed พร้อม actor_id" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+        { type: "note", description: "ต้องมีการปิดงวดจริง (ย้อนกลับไม่ได้) จึงกั้นเหมือน 924 — ไม่ปิดงวดเองในเคสนี้ ส่วนตัวกรอง Period ตรวจใน TC-PE-340006" },
+      ],
+    },
+    async () => {
+      const gate = process.env.E2E_ALLOW_IRREVERSIBLE ?? "";
+      const [bu, period] = gate.split(":");
+      adminTest.skip(!bu || !/^\d{4}$/.test(period ?? ""), "irreversible: needs E2E_ALLOW_IRREVERSIBLE=<BU>:<period>, not run in catch-up per user 2026-11-22");
+      const r = await apiGet(`/api/${bu}/activity-logs?entity_type=period&sort=-created_at&perpage=50`);
+      expect(r.status).toBe(200);
+      const entry = (r.body.data as { new_data?: { period?: string; status?: string }; actor_id?: string }[]).find(
+        (e) => e.new_data?.period === period && e.new_data?.status === "closed",
+      );
+      expect(entry, `period ${period} close entry in the activity log of ${bu}`).toBeTruthy();
+      expect(entry?.actor_id).toBeTruthy();
+    },
+  );
 });

@@ -4,8 +4,8 @@ _Generated from `tests/900-period-end.spec.ts` annotations. Edit annotations, no
 
 **Module:** Period End
 **Spec:** `tests/900-period-end.spec.ts`
-**Default role:** Purchase
-**Total test cases:** 17 (13 High / 4 Medium / 0 Low)
+**Default role:** Admin
+**Total test cases:** 19 (14 High / 5 Medium / 0 Low)
 
 ## Test Cases at a Glance
 
@@ -28,12 +28,14 @@ _Generated from `tests/900-period-end.spec.ts` annotations. Edit annotations, no
 | TC-PE-330001 | All Physical Counts Finalized Successfully | High | Happy Path |
 | TC-PE-330002 | Review with No Physical Counts | Medium | Edge Case |
 | TC-PE-330004 | Physical Count Status Not Finalized | High | Negative |
+| TC-PE-340001 | Happy Path - Log Activity Entry | High | Happy Path |
+| TC-PE-340006 | Activity Monitor กรอง Record Type = Period ได้ | Medium | Functional |
 
 ---
 
 ## TC-PE-010001 — Happy Path - View Current Period
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Happy Path
@@ -55,7 +57,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-010002 — Negative - User Without Permission
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Negative
@@ -76,7 +78,7 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 ## TC-PE-010003 — Edge Case - Empty Period History
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** Medium · **Test Type:** Edge Case
@@ -98,7 +100,7 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 ## TC-PE-010004 — Negative - No Current Period
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Negative
@@ -120,7 +122,7 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 ## TC-PE-010005 — Edge Case - Closed Current Period
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** Medium · **Test Type:** Edge Case
@@ -142,7 +144,7 @@ Current period card แสดงสถานะ Closed และปุ่ม Sta
 
 ## TC-PE-020001 — View period detail for open period
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Happy Path
@@ -165,7 +167,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-020003 — View period detail with no permission
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Negative
@@ -186,7 +188,7 @@ Login เป็น carmensoftware.dev+requestor@gmail.com แต่ไม่ม�
 
 ## TC-PE-020005 — View period detail for period with incomplete validation
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** Medium · **Test Type:** Edge Case
@@ -208,7 +210,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-030001 — Happy Path - Close Period enabled when nothing blocks closing
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Happy Path
@@ -232,7 +234,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-030005 — Edge Case - Close Period disabled while counts and documents are outstanding
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Edge Case
@@ -254,7 +256,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-040004 — Close Period - Server Error
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Edge Case
@@ -276,7 +278,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-040005 — Close Period - Validation No Longer Passes
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Negative
@@ -298,7 +300,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-310001 — All transactions posted
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Happy Path
@@ -320,7 +322,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-310002 — Missing GRN document
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Negative
@@ -342,7 +344,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-330001 — All Physical Counts Finalized Successfully
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Happy Path
@@ -364,7 +366,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-330002 — Review with No Physical Counts
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** Medium · **Test Type:** Edge Case
@@ -386,7 +388,7 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ## TC-PE-330004 — Physical Count Status Not Finalized
 
-> **As a** Purchase user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
 
 **Priority:** High · **Test Type:** Negative
@@ -406,5 +408,52 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 ---
 
+## TC-PE-340001 — Happy Path - Log Activity Entry
 
-<sub>Last regenerated: 2026-11-22 · git ed69a2f</sub>
+> **As a** Admin user, **I want** this Period End behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** High · **Test Type:** Happy Path
+
+**Preconditions**
+
+ปิดงวดจริงแล้วด้วย phase 924 (TC-PE-540001) และตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ของงวดที่ปิด
+
+**Steps**
+
+1. อ่าน /api/<BU>/activity-logs?entity_type=period เรียงใหม่สุดก่อน
+2. หาแถวของงวดที่ปิด
+
+**Expected**
+
+มี activity entry entity_type=period ของงวดนั้นที่ new_data.status = closed พร้อม actor_id
+
+> _Note: ต้องมีการปิดงวดจริง (ย้อนกลับไม่ได้) จึงกั้นเหมือน 924 — ไม่ปิดงวดเองในเคสนี้ ส่วนตัวกรอง Period ตรวจใน TC-PE-340006_
+
+---
+
+## TC-PE-340006 — Activity Monitor กรอง Record Type = Period ได้
+
+> **As a** Admin user, **I want** to filter the Period End list, **so that** I can narrow results to relevant records.
+
+**Priority:** Medium · **Test Type:** Functional
+
+**Preconditions**
+
+Login เป็น carmensoftware.dev+admin@gmail.com ที่เปิด Activity Monitor ได้
+
+**Steps**
+
+1. ไปที่ /system-admin/activity-log
+2. กด Filter แล้วเลือก Record Type = Period
+
+**Expected**
+
+request ส่ง entity_type=period ตอบ 200 ทุกแถวที่ได้เป็น entity_type period และตัวกรองแสดง Record Type = period
+
+> _Note: ส่วนที่ย้อนกลับได้ของ TC-PE-340001 (ต้องปิดงวดจริง) — อ่านอย่างเดียว ไม่ปิดงวด_
+
+---
+
+
+<sub>Last regenerated: 2026-11-22 · git 0f6affd</sub>
