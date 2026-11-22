@@ -11,6 +11,7 @@ import type { SeedResult } from "../seed-master/types";
 import { getPasswordFor } from "../../tests/test-users";
 import { parseResetArgs, resetHelpText, type ResetArgs } from "./cli";
 import { resolveResetConfig, type ResetConfig } from "./config";
+import { DEFAULT_CURRENCY_CODE, loadCoaFixture, seedBuCurrency, seedChartOfAccounts } from "./bu-base";
 import { seedMappings } from "./mappings";
 import { seedAccess } from "./access";
 import { seedPeriod, planPeriod } from "./period";
@@ -105,6 +106,8 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log(`reset: would POST /api-system/tenant/resets/${env.buId}${args.skipReset ? " (skipped: --skip-reset)" : ""}`);
     const master = masterStep(await seedMaster(admin, true, cfg));
     log(`master: would create ${master.created}, ${master.skipped} already present`);
+    log(`bu-currency: would PATCH /api/business-units default_currency_id to the ${DEFAULT_CURRENCY_CODE} row`);
+    log(`coa: would POST ${loadCoaFixture().length} accounts unless their codes exist`);
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
     log("access: would POST each account's missing role (requestor, hod, purchase, fc/gm/owner/storemanager → Approval, budget → Accounting) and set THB as the BU's default currency if none is set");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
@@ -142,6 +145,14 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
   if (results[0].failed.length > 0) {
     log(printSummary(masterResults));
     log(summaryTable(results));
+    return 1;
+  }
+  results.push(await seedBuCurrency(sessions, cfg));
+  results.push(await seedChartOfAccounts(sessions, cfg));
+  if (results.slice(-2).some((r) => r.failed.length > 0)) {
+    // Mappings, workflows and documents on a BU without a currency / COA only make a second mess.
+    log(summaryTable(results));
+    log("✗ BU base (default currency / chart of accounts) failed — stopping before mappings and workflows");
     return 1;
   }
   const mappings = await seedMappings(sessions, cfg, env.userIds);

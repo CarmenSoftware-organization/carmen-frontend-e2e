@@ -30,3 +30,8 @@ export function fakeBackend(
   const writes = () => calls.filter((c) => c.method !== "GET").map(({ caller: _c, ...rest }) => rest);
   return { fetchFn, calls, writes, writesBy: () => calls.filter((c) => c.method !== "GET") };
 }
+
+/** Profile answer for a BU whose default currency resolves (what verifyDataset's BU-base check reads). */
+export const healthyProfile = {
+  data: { business_unit: [{ code: "GR2VYNKQ", config: { default_currency_id: "c-thb", default_currency: { code: "THB" } } }] },
+};
