@@ -5,7 +5,7 @@
 | Date | 2026-11-22 |
 | Branch | `chore/e2e-catchup-close-phase-1` (PR stack #87 → #88 → #89 → #90 → #91 → #92 → #93 → this PR) |
 | Dev backend | API `v4.0.13-build.20261112.f529576a9` (dev CI deploys have been blocked by billing, so dev may lag BE `main`) |
-| Source of truth | every `test.fail(` in `tests/` (53 sites, 53 TC-IDs). A `test.fail` reports **passed** while the bug exists and turns **red ("unexpectedly passed")** once it is fixed — drop the marker then. |
+| Source of truth | every `test.fail(` in `tests/` (56 pin sites incl. fixture forms such as `hodTest.fail(`; the run numbers below count only pins in the default run). A `test.fail` reports **passed** while the bug exists and turns **red ("unexpectedly passed")** once it is fixed — drop the marker then. |
 
 Each row is one cause; several TC-IDs may share it. "Repro" is what the pinned test does, so
 `bun run test -- tests/<spec> -g <TC-ID>` reproduces it on dev after `bun run data:reset --yes`.
