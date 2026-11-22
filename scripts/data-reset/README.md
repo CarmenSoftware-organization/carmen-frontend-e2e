@@ -23,7 +23,14 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
 2. reset (deploy token เท่านั้น ไม่ใช้ token ของ user)
 3. master data — ชุด sample ของ `seed:master` (`sample_seed_data/Preconfig_CARMEN_AVG.xlsx`, 50 แถวต่อชนิด)
 3b. ตั้งค่าตัว BU: `default_currency_id` ชี้แถว THB ที่เพิ่งสร้าง (reset สร้างสกุลเงินใหม่ id ใหม่ แต่แถว BU ยังถือ id เก่า → ทุกหน้าขึ้นแถบ "default currency ... no longer exists")
-   และผังบัญชีขั้นต่ำ 13 บัญชีจาก `fixtures/chart-of-accounts.json` (workbook ไม่มี COA และ reset ล้างตารางนี้) — `verify-dataset` เช็คทั้งสองอย่าง
+   และผังบัญชี 18 บัญชีจาก `fixtures/chart-of-accounts.json` (workbook ไม่มี COA และ reset ล้างตารางนี้) — `verify-dataset` เช็คทั้งสองอย่าง
+3c. ฐานบัญชี AP + GL (`accounting.ts`, ขั้น `accounting` — ล้มแล้วหยุดก่อน mappings): ไม่มีขั้นนี้ AP / JV post ไม่ได้
+   (`GL_PERIOD_NOT_OPEN` / `GL_SETTING_ACCOUNT_MISSING`) — เขียน `gl_setting` (บัญชีเจ้าหนี้ / VAT ซื้อ / WHT / เงินมัดจำ /
+   FX กำไร-ขาดทุน, `ap_auto_from_grn: false`, `fiscal_year_start_month: 1`) ผ่าน `PUT /app-config/gl_setting`,
+   สร้างปี GL 13 งวด (`POST /gl-periods/years`) ถ้ายังไม่มีงวดเปิดที่ครอบวันนี้, บัญชีธนาคาร `E2E-BANK` ผูก COA 1110,
+   tax profile `Vat 7%` ผูก 1170 (แก้เฉพาะบัญชี ไม่แตะชื่อ/อัตรา) กับ `WHT 3%` (wht, ภ.ง.ด.53) ผูก 2150,
+   และ `ap_chart_of_accounts_id` = 2100 ให้ทุก vendor — ทุกอย่างข้ามถ้าค่าตรงอยู่แล้ว (reset ล้างทั้งหมด จึงสร้างใหม่ทุกรอบ)
+   role / workflow ของ AP + JV ยังไม่อยู่ในขั้นนี้
 4. ผูก user: ทุกบัญชีอยู่แผนกแรก (เรียงตาม code) โดย hod เป็นหัวหน้า, owner อยู่แผนกที่สอง (hod เป็นหัวหน้าด้วย —
    PR ของแผนกที่ไม่มี HOD ส่งไม่ได้ backend ตอบ 503), ทุกบัญชีได้ทุก location
    สิทธิ์ (`access.ts`): ให้ application role ที่ยังไม่มี — requestor → Requestor, hod → HOD, purchase → Purchase,

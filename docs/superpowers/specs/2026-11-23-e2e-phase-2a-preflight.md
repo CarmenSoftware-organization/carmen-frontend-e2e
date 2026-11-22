@@ -124,3 +124,19 @@ inv:9 says Deposit, Debit Note and Credit Note are opened "per release decision"
 Task 1/2 must check each type: POST a draft with `doc_type` = deposit | debit_note | credit_note, record whether it is
 accepted, and delete the draft afterwards. This preflight did not do it (read-only). If a type is refused, report it;
 do not skip silently.
+
+## 6. After Task 1 (`data:reset --yes` on TEST BU, 2026-11-23)
+
+`data:reset --yes` exits 0 with `accounting  created 55  skipped 0  failed 0` (1 gl_setting + 1 GL year + 1 bank
+account + 2 tax profiles + 50 vendors). A full reset empties the BU, so idempotency was checked by calling
+`seedAccountingBase` alone on the seeded BU: `created 0, skipped 55, failed 0`.
+
+| Item | After |
+|---|---|
+| COA | 18 accounts: the 13 existing kept as is, plus 1110 Bank - Current Account, 1180 Advance Deposit to Vendors, 2150 Withholding Tax Payable, 4300 Realized FX Gain, 5400 Realized FX Loss |
+| `gl_setting` | exists: `fiscal_year_start_month 1`, AP control (2100), input VAT (1170), WHT payable (2150), advance deposit (1180), realized FX gain (4300) / loss (5400), `ap_auto_from_grn false` |
+| GL periods | 13 for fiscal year 2026, open (`POST /api/config/:bu/gl-periods/years`) |
+| Bank accounts | `E2E-BANK` (THB) -> COA 1110 |
+| Tax profiles | `None` (unchanged), `Vat 7%` -> 1170, `WHT 3%` (wht, rate 3, pnd_53) -> 2150 |
+| Vendors | all 50 seeded vendors have `ap_chart_of_accounts_id` = 2100 |
+| Not done here (Task 2) | AP / JV roles and workflows |

@@ -1,18 +1,23 @@
 {
-  "_comment": "Minimal chart of accounts for TEST BU — the seed workbook has no COA sheet and a reset empties tb_account_code. Enough for the COA / account-mapping specs and the PR/PO/GRN account pickers.",
+  "_comment": "Chart of accounts for TEST BU — the seed workbook has no COA sheet and a reset empties tb_account_code. Covers the COA / account-mapping specs, the PR/PO/GRN account pickers and the AP + GL posting accounts (AP control, input VAT, WHT payable, advance deposit, bank, realized FX) that accounting.ts wires into gl_setting.",
   "accounts": [
     { "code": "1100", "description_1": "Cash and Bank", "category": "asset", "nature": "debit", "type": "balance_sheet" },
+    { "code": "1110", "description_1": "Bank - Current Account", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "1140", "description_1": "Inventory - Food", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "1150", "description_1": "Inventory - Beverage", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "1160", "description_1": "Inventory - Supplies", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "1170", "description_1": "Input VAT", "category": "asset", "nature": "debit", "type": "balance_sheet" },
+    { "code": "1180", "description_1": "Advance Deposit to Vendors", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "2100", "description_1": "Accounts Payable", "category": "liability", "nature": "credit", "type": "balance_sheet" },
     { "code": "2110", "description_1": "Accrued Expenses", "category": "liability", "nature": "credit", "type": "balance_sheet" },
+    { "code": "2150", "description_1": "Withholding Tax Payable", "category": "liability", "nature": "credit", "type": "balance_sheet" },
     { "code": "3100", "description_1": "Retained Earnings", "category": "equity", "nature": "credit", "type": "balance_sheet" },
     { "code": "4100", "description_1": "Food Sales", "category": "revenue", "nature": "credit", "type": "income_statement" },
     { "code": "4200", "description_1": "Beverage Sales", "category": "revenue", "nature": "credit", "type": "income_statement" },
+    { "code": "4300", "description_1": "Realized FX Gain", "category": "revenue", "nature": "credit", "type": "income_statement" },
     { "code": "5100", "description_1": "Cost of Food", "category": "expense", "nature": "debit", "type": "income_statement" },
     { "code": "5200", "description_1": "Cost of Beverage", "category": "expense", "nature": "debit", "type": "income_statement" },
-    { "code": "5300", "description_1": "Operating Supplies Expense", "category": "expense", "nature": "debit", "type": "income_statement" }
+    { "code": "5300", "description_1": "Operating Supplies Expense", "category": "expense", "nature": "debit", "type": "income_statement" },
+    { "code": "5400", "description_1": "Realized FX Loss", "category": "expense", "nature": "debit", "type": "income_statement" }
   ]
 }
