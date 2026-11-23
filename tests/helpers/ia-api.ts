@@ -1,4 +1,6 @@
 import { expect, type Locator } from "@playwright/test";
+import { BU_CODE } from "../test-users";
+import { calcMethod as costingCalcMethod, costLayers as costingLayers, stockAt as costingStockAt } from "./costing";
 import { typeInto } from "./movement/ui";
 import { buConfigSend, buSend, type ApiResult, type Role } from "./bu-api";
 
@@ -88,39 +90,18 @@ export async function listIa(type: IaType, opts: { status?: string; search?: str
   return opts.status ? out.filter((d) => d.doc_status === opts.status) : out;
 }
 
-/**
- * Live stock of a product at a location as of a day, from `GET /inventory-info/:product/:location?at_date=`.
- * `qty` = on_hand_qty. The endpoint exposes no total value, so `value` = sum(balance_qty x cost_per_unit)
- * over its `cost_layers` ledger (in rows positive, out rows negative balance_qty, so it nets to the stock value).
- */
-export async function stockAt(productId: string, locationId: string, atDate: string): Promise<{ qty: number; value: number }> {
-  const d = must("inventory-info", await buSend(ROLE, "GET", `/inventory-info/${productId}/${locationId}?at_date=${atDate}`)).body?.data;
-  const layers: any[] = d?.cost_layers ?? [];
-  const value = layers.reduce((n, l) => n + Number(l.balance_qty ?? 0) * Number(l.cost_per_unit ?? 0), 0);
-  return { qty: Number(d?.on_hand_qty ?? 0), value };
-}
+/** Live stock at a location as of a day on the default TEST BU; see `costing.stockAt`. */
+export const stockAt = (productId: string, locationId: string, atDate: string) => costingStockAt(productId, locationId, atDate, BU_CODE);
 
 /**
- * What an issue draws from, as `{qty, cost}` layers, as of `atDate`.
- * `cost_layers` of `GET /inventory-info/...` is NOT a list of remaining lots: it is a ledger of every lot ever posted
- * (adjustment_in rows keep their full balance_qty even after an issue or a void, adjustment_out rows carry a negative one),
- * so only its signed sum is meaningful (see `stockAt`). For the "average" method the BE prices an issue at the pooled
- * average, so one pooled layer (on-hand qty at value / on-hand) is the correct oracle input. Per-lot remaining qty for "fifo"
- * cannot be derived from that ledger: it throws instead of returning a wrong oracle.
+ * What an issue draws from on the default TEST BU, as `{qty, cost}` layers, as of `atDate`; see `costing.costLayers`.
+ * Single-location wrapper: the pool is that one location.
  */
-export async function costLayers(productId: string, locationId: string, atDate: string): Promise<Array<{ qty: number; cost: number }>> {
-  const method = await calcMethod();
-  if (method !== "average") throw new Error(`ia-api: costLayers cannot read per-lot remaining qty for the ${method} method from inventory-info (ledger, not lots)`);
-  const s = await stockAt(productId, locationId, atDate);
-  return s.qty > 0 ? [{ qty: s.qty, cost: s.value / s.qty }] : [];
-}
+export const costLayers = (productId: string, locationId: string, atDate: string) =>
+  costingLayers({ productId, locationIds: [locationId], sourceLocationId: locationId, atDate, bu: BU_CODE });
 
-/** The BU's cost method, from `GET /inventory-transactions/calculation-method` -> `data.calculation_method`. */
-export async function calcMethod(): Promise<"average" | "fifo"> {
-  const m = must("calculation-method", await buSend(ROLE, "GET", "/inventory-transactions/calculation-method")).body?.data?.calculation_method;
-  if (m === "average" || m === "fifo") return m;
-  throw new Error(`ia-api: unsupported calculation_method ${JSON.stringify(m)} (oracle knows average / fifo)`);
-}
+/** The default TEST BU's cost method; see `costing.calcMethod`. */
+export const calcMethod = () => costingCalcMethod(BU_CODE);
 
 /**
  * Undo everything one spec left. Lists both types by description tag (`${IA_TAG} <spec>`, filtered
