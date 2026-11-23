@@ -13,6 +13,7 @@ import { refId } from "./refs";
 import type { RowLedger } from "./row-ledger";
 import { createDoc, transition, why } from "./transition";
 import { localDate } from "../period";
+import { TEST_BUS } from "../../../tests/test-users";
 
 const STOREMANAGER = "carmensoftware.dev+storemanager@gmail.com";
 // Same defaults the FE form starts from (routes/system-admin/interface/pos/pos-simphony-form.tsx).
@@ -96,7 +97,12 @@ export async function seedPos(sessions: Sessions, cfg: ResetConfig, ctx: SeedCon
     result.failed.push("no open inventory period — pos stock not posted");
     return result;
   }
-  const plan = planPos(ctx, start);
+  // FIFO refuses a stock-in dated before the latest receipt of the same product/location in the
+  // period, and the stock step has already received some of these products today — so on a FIFO BU
+  // the opening stock goes in today. Average BUs keep the period start (141 reads that BU).
+  // BU FIFO ห้ามลง stock-in ย้อนก่อนใบรับล่าสุด — ขั้น stock รับไปแล้ววันนี้ จึงลงวันนี้แทน
+  const fifo = TEST_BUS.find((b) => b.code === cfg.buCode)?.method === "fifo";
+  const plan = planPos(ctx, fifo ? ctx.today : start);
   const admin = await sessions.client(cfg.adminEmail);
   const bu = cfg.buCode;
 

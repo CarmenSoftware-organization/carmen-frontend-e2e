@@ -168,7 +168,8 @@ export async function seedDocFlow(sessions: Sessions, cfg: ResetConfig, ctx: See
   }
 
   // Step 2c: the SR picker must now offer all four between the pair.
-  const lookup = await admin.get(`/api/config/${bu}/products-location-workflow/${pair[0]}/${pair[1]}/${ctx.workflows.sr}`);
+  // The lookup pages at 10 rows and rejects perpage > 100, so filter to the doc-flow codes instead.
+  const lookup = await admin.get(`/api/config/${bu}/products-location-workflow/${pair[0]}/${pair[1]}/${ctx.workflows.sr}?search=E2E-DF`);
   const offered = new Set(rowsOf<Row>(lookup.body).map((r) => String(r.product_code)));
   const absent = DF_PRODUCTS.filter((c) => !offered.has(c));
   if (!lookup.ok || absent.length > 0) {

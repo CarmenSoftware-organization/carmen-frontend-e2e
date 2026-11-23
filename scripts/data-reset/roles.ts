@@ -12,6 +12,28 @@ interface Role { id: string; name: string; description?: string }
 interface RoleDetail { permissions?: Array<{ permission_id: string; resource: string; action: string; is_granted: boolean }> }
 interface CatalogRow { id: string; resource: string; action: string }
 
+/**
+ * The backend writes a role's permissions one row at a time inside a 5 s interactive transaction;
+ * Purchase (the largest role) ran out of time on 2026-11-24 ("expired transaction ... 5025 ms").
+ * So permissions go in slices: the POST carries the first one, PUTs add the rest.
+ * backend เขียนสิทธิ์ทีละแถวใน transaction 5 วินาที — role ใหญ่ต้องแบ่งใส่เป็นชุด
+ */
+const PERMISSION_CHUNK = 20;
+const chunks = <T>(xs: T[]): T[][] => {
+  const out: T[][] = [];
+  for (let i = 0; i < xs.length; i += PERMISSION_CHUNK) out.push(xs.slice(i, i + PERMISSION_CHUNK));
+  return out;
+};
+
+/** PUT `ids` onto a role slice by slice; returns the failure text of the first slice that fails. */
+async function addPermissions(admin: ApiClient, path: string, ids: string[]): Promise<string | undefined> {
+  for (const slice of chunks(ids)) {
+    const res = await admin.put(path, { permissions: { add: slice } });
+    if (!res.ok) return `PUT ${path} → ${res.status} ${JSON.stringify(res.body?.message ?? "")}`;
+  }
+  return undefined;
+}
+
 async function listRoles(admin: ApiClient, bu: string): Promise<Role[] | string> {
   const path = `/api/config/${bu}/application-roles?perpage=100`;
   const res = await admin.get(path);
@@ -95,11 +117,18 @@ export async function copyRolesFromSource(sessions: Sessions, cfg: ResetConfig):
     const wantIds = wantKeys.filter((k) => catalog.has(k)).map((k) => catalog.get(k)!);
     const mine = existing.find((r) => r.name === role.name);
     if (!mine) {
+      const [first = [], ...rest] = chunks(wantIds);
       const res = await admin.post(base, {
-        application_role_name: role.name, description: role.description ?? "", is_active: true, permissions: { add: wantIds },
+        application_role_name: role.name, description: role.description ?? "", is_active: true, permissions: { add: first },
       });
-      if (res.ok) result.created += 1;
-      else result.failed.push(`POST ${base} (${role.name}) → ${res.status} ${JSON.stringify(res.body?.message ?? "")}`);
+      const newId = (res.body?.data as { id?: string } | undefined)?.id;
+      if (!res.ok || !newId) {
+        result.failed.push(`POST ${base} (${role.name}) → ${res.status} ${JSON.stringify(res.body?.message ?? "")}`);
+        continue;
+      }
+      const failed = await addPermissions(admin, `${base}/${newId}`, rest.flat());
+      if (failed) result.failed.push(`${role.name}: created with only part of its permissions — ${failed}`);
+      else result.created += 1;
       continue;
     }
     const haveKeys = await grantedKeys(admin, cfg.buCode, mine.id);
@@ -113,9 +142,9 @@ export async function copyRolesFromSource(sessions: Sessions, cfg: ResetConfig):
       result.skipped += 1;
       continue;
     }
-    const res = await admin.put(`${base}/${mine.id}`, { permissions: { add: missing } });
-    if (res.ok) result.created += 1;
-    else result.failed.push(`PUT ${base}/${mine.id} (${role.name}) → ${res.status}`);
+    const failed = await addPermissions(admin, `${base}/${mine.id}`, missing);
+    if (failed) result.failed.push(`${role.name}: ${failed}`);
+    else result.created += 1;
   }
   return result;
 }
