@@ -3,7 +3,7 @@ import { createSessions } from "../../scripts/data-reset/sessions";
 import type { ResetConfig } from "../../scripts/data-reset/config";
 
 const cfg: ResetConfig = {
-  backendUrl: "http://h", xAppId: "app", buCode: "GR2VYNKQ", deployToken: "t",
+  backendUrl: "http://h", xAppId: "app", buCode: "BU-GR2VYNKQ", deployToken: "t",
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 

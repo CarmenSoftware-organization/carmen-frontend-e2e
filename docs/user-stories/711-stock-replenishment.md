@@ -58,7 +58,7 @@ _Generated from `tests/711-stock-replenishment.spec.ts` annotations. Edit annota
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment
 
 **Steps**
 
@@ -78,7 +78,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -99,7 +99,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -120,7 +120,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -141,7 +141,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -162,7 +162,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080
 
 **Steps**
 
@@ -184,7 +184,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -205,7 +205,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -225,7 +225,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment
 
 **Steps**
 
@@ -245,7 +245,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -266,7 +266,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment
 
 **Steps**
 
@@ -275,7 +275,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Expected**
 
-ยิง GET /api/GR2VYNKQ/stock-replenishments สำเร็จ (200)
+ยิง GET /api/BU-GR2VYNKQ/stock-replenishments สำเร็จ (200)
 
 ---
 
@@ -287,7 +287,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080
 
 **Steps**
 
@@ -308,7 +308,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080
 
 **Steps**
 
@@ -329,7 +329,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีสินค้าที่มี local_name
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีสินค้าที่มี local_name
 
 **Steps**
 
@@ -350,7 +350,7 @@ URL ตรงกับ path; หัวข้อและคำอธิบาย
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -371,7 +371,7 @@ checkbox ถูกเลือก; แถบล่างแสดง '1 item sel
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -391,7 +391,7 @@ checkbox ถูกเลือก; แถบล่างแสดง '1 item sel
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; location แรกมีสินค้า >= 2
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; location แรกมีสินค้า >= 2
 
 **Steps**
 
@@ -412,7 +412,7 @@ checkbox บนแถบหัว location เป็น mixed (aria-checked='mix
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location
 
 **Steps**
 
@@ -432,7 +432,7 @@ checkbox บนแถบหัว location เป็น mixed (aria-checked='mix
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -453,7 +453,7 @@ checkbox บนแถบหัว location เป็น mixed (aria-checked='mix
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -474,7 +474,7 @@ checkbox บนแถบหัว location เป็น mixed (aria-checked='mix
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; role Purchase เริ่ม workflow PR ได้
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; role Purchase เริ่ม workflow PR ได้
 
 **Steps**
 
@@ -495,7 +495,7 @@ checkbox บนแถบหัว location เป็น mixed (aria-checked='mix
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -516,7 +516,7 @@ checkbox บนแถบหัว location เป็น mixed (aria-checked='mix
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; location แรกมีสินค้า >= 2
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; location แรกมีสินค้า >= 2
 
 **Steps**
 
@@ -538,7 +538,7 @@ dialog แสดง '2 items' ก่อนลบ; หลังลบเหลื
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; role Purchase เริ่ม workflow SR ได้
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; role Purchase เริ่ม workflow SR ได้
 
 **Steps**
 
@@ -559,7 +559,7 @@ dialog แสดง '2 items' ก่อนลบ; หลังลบเหลื
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location
 
 **Steps**
 
@@ -581,7 +581,7 @@ dialog แสดง '2 items' ก่อนลบ; หลังลบเหลื
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล
 
 **Steps**
 
@@ -663,7 +663,7 @@ dialog ปิด; จำนวน PR ใน BU ไม่เปลี่ยน (A
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; Purchase เริ่ม workflow PR ได้ (สร้าง PR จริงใน TEST BU)
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; Purchase เริ่ม workflow PR ได้ (สร้าง PR จริงใน TEST BU)
 
 **Steps**
 
@@ -686,7 +686,7 @@ toast 'Created 1 purchase request(s)'; dialog ปิด; จำนวน PR ใ�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location (ต้นทาง/ปลายทาง); Purchase เริ่ม workflow SR ได้ (สร้าง SR จริงใน TEST BU)
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location (ต้นทาง/ปลายทาง); Purchase เริ่ม workflow SR ได้ (สร้าง SR จริงใน TEST BU)
 
 **Steps**
 
@@ -709,7 +709,7 @@ toast สร้างสำเร็จ; dialog ปิด; จำนวน SR �
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location; Purchase เริ่ม workflow PR ได้ (สร้าง PR จริงใน TEST BU)
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location; Purchase เริ่ม workflow PR ได้ (สร้าง PR จริงใน TEST BU)
 
 **Steps**
 
@@ -732,7 +732,7 @@ wizard บอก '2 purchase requests will be created'; หลังกด Creat
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; endpoint ถูก mock ให้ตอบ data=[]
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; endpoint ถูก mock ให้ตอบ data=[]
 
 **Steps**
 
@@ -753,7 +753,7 @@ wizard บอก '2 purchase requests will be created'; หลังกด Creat
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location
 
 **Steps**
 
@@ -798,7 +798,7 @@ wizard บอก '2 purchase requests will be created'; หลังกด Creat
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment
+เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment
 
 **Steps**
 

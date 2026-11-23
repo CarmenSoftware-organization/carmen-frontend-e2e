@@ -621,7 +621,7 @@ test.describe("Department — Smoke & CRUD", () => {
     "TC-DEP-040004 ย้ายสมาชิกออก/กลับเข้า department members แล้วบันทึกคงอยู่",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; BU BU-GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user" },
         { type: "steps", description: "1. เปิด department แรกจาก list แล้วกด Edit\n2. ย้ายสมาชิกคนแรกจาก Department Members กลับไป Available Users\n3. Save แล้ว reload เปิด Edit ดูว่ามี user ใน Available\n4. ย้าย user กลับเข้า Department Members แล้ว Save (คืนค่าเดิม)" },
         { type: "expected", description: "การย้ายสมาชิกถูกบันทึกจริง (user ปรากฏใน Available หลัง reload) และย้ายกลับแล้ว Available กลับเป็นว่างเหมือนเดิม" },
         { type: "priority", description: "Medium" },
@@ -672,7 +672,7 @@ test.describe("Department — Smoke & CRUD", () => {
     "TC-DEP-040005 assign user เป็น Head of Department",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; BU BU-GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user" },
         { type: "steps", description: "1. เปิด department แรกจาก list แล้วกด Edit\n2. ใน section 'Head of Department' เลือก user ตัวแรกแล้วย้ายไปขวา\n3. Save\n4. reload เช็คว่า user ปรากฏใน HOD\n5. เปิด Edit ย้าย user กลับออกแล้ว Save (คืนค่าเดิม)" },
         { type: "expected", description: "user ที่ถูก assign แสดงใน section HOD หลัง reload และคืนค่าเดิมได้" },
         { type: "priority", description: "Low" },

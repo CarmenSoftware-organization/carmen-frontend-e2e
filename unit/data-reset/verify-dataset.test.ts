@@ -80,9 +80,9 @@ describe("seedAllDocuments", () => {
 
   it("fails one step, not the run, when the context cannot be resolved", async () => {
     const results = await seedAllDocuments(createSessions(cfg, fakeBackend({}).fetchFn), cfg, users, new Date(), {
-      context: async () => { throw new Error("no Purchase Request workflow in GR2VYNKQ"); },
+      context: async () => { throw new Error("no Purchase Request workflow in BU-GR2VYNKQ"); },
     });
-    expect(results).toEqual([{ step: "documents", created: 0, skipped: 0, failed: ["no Purchase Request workflow in GR2VYNKQ"] }]);
+    expect(results).toEqual([{ step: "documents", created: 0, skipped: 0, failed: ["no Purchase Request workflow in BU-GR2VYNKQ"] }]);
   });
 });
 
@@ -91,12 +91,12 @@ describe("verifyDataset BU base", () => {
     path === "/api/purchase-requests" || path.endsWith("/purchase-requests") || path.endsWith("/store-requisitions")
       ? { data: [], paginate: { total: 99 } }
       : { data: Array.from({ length: 30 }, () => ({ workflow_current_stage: "x" })), paginate: { total: 99 } };
-  const profileWith = (config: object) => ({ data: { business_unit: [{ code: "GR2VYNKQ", config }] } });
+  const profileWith = (config: object) => ({ data: { business_unit: [{ code: "BU-GR2VYNKQ", config }] } });
 
   it("flags a default currency id that no longer resolves", async () => {
     const backend = fakeBackend({ "GET /api/user/profile": profileWith({ default_currency_id: "old", default_currency: null }) }, listAnswer);
     const { short } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger());
-    expect(short).toContain("BU default currency: old no longer exists in GR2VYNKQ");
+    expect(short).toContain("BU default currency: old no longer exists in BU-GR2VYNKQ");
   });
 
   it("flags a BU with no default currency and an empty chart of accounts", async () => {
@@ -105,7 +105,7 @@ describe("verifyDataset BU base", () => {
       listAnswer,
     );
     const { short } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger());
-    expect(short).toContain("BU default currency: not set on GR2VYNKQ");
+    expect(short).toContain("BU default currency: not set on BU-GR2VYNKQ");
     expect(short).toContain("Chart of accounts: expected ≥ 1 account, found 0");
   });
 });

@@ -8,7 +8,7 @@ import { TEST_USERS } from "../../tests/test-users";
 import { fakeBackend } from "./fake-backend";
 
 const cfg: ResetConfig = {
-  backendUrl: "http://h", xAppId: "app", buCode: "GR2VYNKQ", deployToken: "t",
+  backendUrl: "http://h", xAppId: "app", buCode: "BU-GR2VYNKQ", deployToken: "t",
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 const short = (email: string) => email.split("+")[1].split("@")[0];
@@ -53,44 +53,44 @@ describe("planRoleAssignments", () => {
 });
 
 describe("planDefaultCurrency", () => {
-  const bu = { id: "bu1", code: "GR2VYNKQ", doc_version: 2, default_currency_id: null };
+  const bu = { id: "bu1", code: "BU-GR2VYNKQ", doc_version: 2, default_currency_id: null };
   const currencies = [{ id: "c-usd", code: "USD" }, { id: "c-thb", code: "THB" }];
 
   it("sets THB when the BU has no default currency", () => {
-    expect(planDefaultCurrency(bu, currencies, "GR2VYNKQ")).toEqual({
+    expect(planDefaultCurrency(bu, currencies, "BU-GR2VYNKQ")).toEqual({
       body: { id: "bu1", doc_version: 2, default_currency_id: "c-thb" },
     });
   });
 
   it("leaves a BU that already has a default currency alone", () => {
-    expect(planDefaultCurrency({ ...bu, default_currency_id: "c-usd" }, currencies, "GR2VYNKQ")).toEqual({ body: null });
+    expect(planDefaultCurrency({ ...bu, default_currency_id: "c-usd" }, currencies, "BU-GR2VYNKQ")).toEqual({ body: null });
   });
 
   it("replaces a default currency that no longer exists — the reset re-creates currencies with new ids", () => {
-    expect(planDefaultCurrency({ ...bu, default_currency_id: "c-gone" }, currencies, "GR2VYNKQ")).toEqual({
+    expect(planDefaultCurrency({ ...bu, default_currency_id: "c-gone" }, currencies, "BU-GR2VYNKQ")).toEqual({
       body: { id: "bu1", doc_version: 2, default_currency_id: "c-thb" },
     });
   });
 
   it("refuses when the admin's default BU is not TEST BU — the PATCH writes the caller's default BU", () => {
-    expect(planDefaultCurrency({ ...bu, code: "OTHER" }, currencies, "GR2VYNKQ")).toEqual({
-      problem: "admin's default BU is OTHER, not GR2VYNKQ — refusing to set its currency",
+    expect(planDefaultCurrency({ ...bu, code: "OTHER" }, currencies, "BU-GR2VYNKQ")).toEqual({
+      problem: "admin's default BU is OTHER, not BU-GR2VYNKQ — refusing to set its currency",
     });
   });
 
   it("reports a BU without a THB currency", () => {
-    expect(planDefaultCurrency(bu, [{ id: "c-usd", code: "USD" }], "GR2VYNKQ")).toEqual({
-      problem: "no THB currency in GR2VYNKQ to make the default",
+    expect(planDefaultCurrency(bu, [{ id: "c-usd", code: "USD" }], "BU-GR2VYNKQ")).toEqual({
+      problem: "no THB currency in BU-GR2VYNKQ to make the default",
     });
   });
 });
 
 describe("seedAccess", () => {
-  const base = "/api/config/GR2VYNKQ";
+  const base = "/api/config/BU-GR2VYNKQ";
   const routes = {
     [`GET ${base}/application-roles`]: { data: roles },
     [`GET ${base}/user-application-roles`]: { data: [{ user_id: "id-purchase", role_ids: ["r-Purchase"] }] },
-    [`GET /api/business-units`]: { data: { id: "bu1", code: "GR2VYNKQ", doc_version: 2, default_currency_id: null } },
+    [`GET /api/business-units`]: { data: { id: "bu1", code: "BU-GR2VYNKQ", doc_version: 2, default_currency_id: null } },
     [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
   };
 
@@ -118,13 +118,13 @@ describe("seedAccess", () => {
         (body as { user_id: string }).user_id === "id-requestor" ? { __status: 403 } : { data: {} },
     });
     const result = await seedAccess(createSessions(cfg, backend.fetchFn), cfg, userIds);
-    expect(result.failed).toEqual(["requestor: POST /api/config/GR2VYNKQ/user-application-roles → 403"]);
+    expect(result.failed).toEqual(["requestor: POST /api/config/BU-GR2VYNKQ/user-application-roles → 403"]);
     expect(result.created).toBe(7);
   });
 });
 
 describe("seedAccountingRoles", () => {
-  const base = "/api/config/GR2VYNKQ";
+  const base = "/api/config/BU-GR2VYNKQ";
   // The BU's "Accounting" role lists every permission in the catalog (granted or not) — ids come from it.
   const catalogKeys = [...ACCOUNTING_APPROVER_KEYS, "accounting.ar.view"];
   const catalog = catalogKeys.map((k) => {

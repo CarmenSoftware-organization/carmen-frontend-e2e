@@ -27,7 +27,7 @@ import { uid } from "./helpers/test-data";
 import { InventoryAdjustmentPage } from "./pages/inventory-adjustment.page";
 
 /**
- * Inventory Adjustment stock / cost outcomes: Stock In (section 80), Stock Out (81) and what a void leaves behind (82) on the TEST BU (GR2VYNKQ) as Admin.
+ * Inventory Adjustment stock / cost outcomes: Stock In (section 80), Stock Out (81) and what a void leaves behind (82) on the TEST BU (BU-GR2VYNKQ) as Admin.
  * Money and stock are asserted through the API (inventory-info on-hand and cost layers, the document's stock-movements),
  * never through toasts. Every figure is a delta of a live read taken just before the action, so leftover layers of an
  * earlier run (or 731 sharing E2E-IA-A / E2E-IA-B) cannot break a re-run. `cleanupIaRun("732")` (afterAll) voids what this

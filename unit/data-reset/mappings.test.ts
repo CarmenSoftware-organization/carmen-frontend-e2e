@@ -12,7 +12,7 @@ import { TEST_USERS } from "../../tests/test-users";
 import { fakeBackend } from "./fake-backend";
 
 const cfg: ResetConfig = {
-  backendUrl: "http://h", xAppId: "app", buCode: "GR2VYNKQ", deployToken: "t",
+  backendUrl: "http://h", xAppId: "app", buCode: "BU-GR2VYNKQ", deployToken: "t",
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 const userIds = Object.fromEntries(TEST_USERS.map((u) => [u.email, `id-${u.email.split("+")[1].split("@")[0]}`]));
@@ -66,7 +66,7 @@ describe("checkMasterShape", () => {
 });
 
 describe("ensureFirstVendorReady", () => {
-  const base = "/api/config/GR2VYNKQ";
+  const base = "/api/config/BU-GR2VYNKQ";
   const list = { data: [{ id: "v2", code: "B002" }, { id: "v1", code: "A023" }] };
   const admin = async (backend: ReturnType<typeof fakeBackend>) =>
     createSessions(cfg, backend.fetchFn).client(cfg.adminEmail);
@@ -136,7 +136,7 @@ describe("ensureFirstVendorReady", () => {
 });
 
 describe("seedMappings", () => {
-  const base = "/api/config/GR2VYNKQ";
+  const base = "/api/config/BU-GR2VYNKQ";
   const routes = {
     [`GET ${base}/departments`]: { data: [{ id: "dB", code: "B", name: "Bar" }, { id: "dA", code: "A", name: "Admin" }] },
     [`GET ${base}/locations`]: { data: [{ id: "l1", code: "L1" }, { id: "l2", code: "L2" }] },

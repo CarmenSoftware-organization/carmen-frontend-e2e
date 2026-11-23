@@ -24,7 +24,7 @@ import { expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Import POS (Simphony) on the TEST BU (GR2VYNKQ): upload, refusals, cancel.
+// Import POS (Simphony) on the TEST BU (BU-GR2VYNKQ): upload, refusals, cancel.
 //
 // Store key E2E-140; sale days saleDay(140, 1..6) count forward from the start of the open inventory period, so the
 // spec never shares a day with 141. Case -> day: 01 -> 1, 02 duplicate -> 2, 03 posted day -> 3, 03 pending day -> 4.

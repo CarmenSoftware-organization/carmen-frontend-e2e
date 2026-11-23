@@ -5,7 +5,7 @@ import { createSessions } from "../../scripts/data-reset/sessions";
 import { fakeBackend } from "./fake-backend";
 import { cfg } from "./docs-fixtures";
 
-const doc = "/api/GR2VYNKQ/purchase-requests/pr1";
+const doc = "/api/BU-GR2VYNKQ/purchase-requests/pr1";
 
 async function admin(routes: Record<string, unknown>) {
   const backend = fakeBackend(routes);
@@ -57,8 +57,8 @@ describe("transition", () => {
 
 describe("createDoc", () => {
   it("returns the new id and document number", async () => {
-    const { client } = await admin({ "POST /api/GR2VYNKQ/purchase-requests": { data: { id: "pr9", pr_no: "PR2611001" } } });
-    expect(await createDoc(client, "/api/GR2VYNKQ/purchase-requests", {})).toEqual({
+    const { client } = await admin({ "POST /api/BU-GR2VYNKQ/purchase-requests": { data: { id: "pr9", pr_no: "PR2611001" } } });
+    expect(await createDoc(client, "/api/BU-GR2VYNKQ/purchase-requests", {})).toEqual({
       ok: true, status: 200, id: "pr9", no: "PR2611001",
     });
   });

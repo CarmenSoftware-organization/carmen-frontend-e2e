@@ -17,4 +17,4 @@ export const TEST_PASSWORD = "12345678";
 export function getPasswordFor(email: string): string {
   return TEST_USERS.find((u) => u.email === email)?.password ?? TEST_PASSWORD;
 }
-export const BU_CODE = "GR2VYNKQ";
+export const BU_CODE = "BU-GR2VYNKQ";

@@ -8,8 +8,8 @@ import { createSessions } from "../../scripts/data-reset/sessions";
 import { fakeBackend, healthyProfile } from "./fake-backend";
 import { cfg, ctx, email } from "./docs-fixtures";
 
-const bu = "/api/GR2VYNKQ";
-const c = "/api/config/GR2VYNKQ";
+const bu = "/api/BU-GR2VYNKQ";
+const c = "/api/config/BU-GR2VYNKQ";
 type Doc = Record<string, any>;
 const cents = (n: number) => Math.round(n * 100) / 100;
 

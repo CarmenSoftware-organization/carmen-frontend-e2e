@@ -5,11 +5,11 @@ import type { ResetConfig } from "../../scripts/data-reset/config";
 import { fakeBackend } from "./fake-backend";
 
 const cfg: ResetConfig = {
-  backendUrl: "http://h", xAppId: "app", buCode: "GR2VYNKQ", deployToken: "t",
+  backendUrl: "http://h", xAppId: "app", buCode: "BU-GR2VYNKQ", deployToken: "t",
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
-const current = "/api/GR2VYNKQ/inventory-periods/current";
-const create = "/api/GR2VYNKQ/inventory-periods";
+const current = "/api/BU-GR2VYNKQ/inventory-periods/current";
+const create = "/api/BU-GR2VYNKQ/inventory-periods";
 
 describe("planPeriod", () => {
   it("uses the Bangkok calendar month", () => {

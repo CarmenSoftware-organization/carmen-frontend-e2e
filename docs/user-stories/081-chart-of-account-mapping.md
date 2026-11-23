@@ -35,7 +35,7 @@ _Generated from `tests/081-chart-of-account-mapping.spec.ts` annotations. Edit a
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+admin@gmail.com; active BU = GR2VYNKQ; BU มีแถว account mapping อย่างน้อย 1 แถว
+Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BU-GR2VYNKQ; BU มีแถว account mapping อย่างน้อย 1 แถว
 
 **Steps**
 

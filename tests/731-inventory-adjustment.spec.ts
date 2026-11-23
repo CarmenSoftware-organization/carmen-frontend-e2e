@@ -7,7 +7,7 @@ import { uid } from "./helpers/test-data";
 import { InventoryAdjustmentPage } from "./pages/inventory-adjustment.page";
 
 /**
- * Inventory Adjustment doc flow (Stock In = section 70, Stock Out = section 71) on the TEST BU (GR2VYNKQ) as Admin.
+ * Inventory Adjustment doc flow (Stock In = section 70, Stock Out = section 71) on the TEST BU (BU-GR2VYNKQ) as Admin.
  * Moved from the opt-in movement suite (730, CARMEN-AVG) into the main suite. Products E2E-IA-A / E2E-IA-B at their single
  * location and the reasons E2E-IA-IN / E2E-IA-OUT come from `data:reset` (step `ia`); `assertIaReady()` fails loudly when
  * any of it is missing. Every document carries `E2E-IA 731 ...` in its description so `cleanupIaRun("731")` (afterAll) can
@@ -230,7 +230,7 @@ test.describe("Stock In", () => {
     "TC-IADJ-700001 FC เปิดหน้าสร้าง Stock In ได้โดยไม่ขึ้น Permission Denied",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น Admin (carmensoftware.dev+admin@gmail.com); BU TEST (GR2VYNKQ); role มีคีย์ย่อย inventory_management.stock_in.create และ inventory_adjustment.create" },
+        { type: "preconditions", description: "Login เป็น Admin (carmensoftware.dev+admin@gmail.com); BU TEST (BU-GR2VYNKQ); role มีคีย์ย่อย inventory_management.stock_in.create และ inventory_adjustment.create" },
         { type: "steps", description: "1. เปิด /inventory-management/inventory-adjustment/new?type=stock-in\n2. รอหน้าโหลด" },
         { type: "expected", description: "ไม่มีกล่อง alert \"Permission Denied\" และช่อง #inv-adj-description แสดง" },
         { type: "priority", description: "High" },

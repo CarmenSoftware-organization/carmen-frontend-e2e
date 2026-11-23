@@ -8,7 +8,7 @@ import { expectBalanced, lineAmounts, round } from "./helpers/money";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// GRN -> AP invoice auto-creation on the TEST BU (GR2VYNKQ), switch `gl_setting.ap_auto_from_grn`.
+// GRN -> AP invoice auto-creation on the TEST BU (BU-GR2VYNKQ), switch `gl_setting.ap_auto_from_grn`.
 //
 // Every case clones the seeded draft GRN (2 lines x 3 @ 100.00, AP post type, no tax), saves and commits it. A commit moves
 // stock, which is allowed here (TEST BU only; data:reset wipes it). With the switch on the BE raises and posts a `grn_auto`

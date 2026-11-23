@@ -5,7 +5,7 @@ import { accountCode, assertAccountingReady, getGlSettingValue } from "./helpers
 import { field } from "./helpers/movement/ui";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Accounting settings + dashboards smoke on the TEST BU (GR2VYNKQ). Read-only: nothing here writes (the one write is
+// Accounting settings + dashboards smoke on the TEST BU (BU-GR2VYNKQ). Read-only: nothing here writes (the one write is
 // the Requestor's refused PUT of the value it just read, so even a bug would leave the value as it was).
 //
 // /accounting/settings edits the BU's `gl_setting` app-config row; the AP / JV specs depend on its accounts, so the

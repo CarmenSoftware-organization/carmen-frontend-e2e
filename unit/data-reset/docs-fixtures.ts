@@ -4,7 +4,7 @@ import type { SeedContext } from "../../scripts/data-reset/docs/context";
 import { TEST_USERS } from "../../tests/test-users";
 
 export const cfg: ResetConfig = {
-  backendUrl: "http://h", xAppId: "app", buCode: "GR2VYNKQ", deployToken: "t",
+  backendUrl: "http://h", xAppId: "app", buCode: "BU-GR2VYNKQ", deployToken: "t",
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 

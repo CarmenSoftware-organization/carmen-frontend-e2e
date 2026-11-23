@@ -34,7 +34,7 @@ _Generated from `tests/731-inventory-adjustment.spec.ts` annotations. Edit annot
 
 **Preconditions**
 
-Login เป็น Admin (carmensoftware.dev+admin@gmail.com); BU TEST (GR2VYNKQ); role มีคีย์ย่อย inventory_management.stock_in.create และ inventory_adjustment.create
+Login เป็น Admin (carmensoftware.dev+admin@gmail.com); BU TEST (BU-GR2VYNKQ); role มีคีย์ย่อย inventory_management.stock_in.create และ inventory_adjustment.create
 
 **Steps**
 

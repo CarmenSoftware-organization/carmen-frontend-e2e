@@ -11,7 +11,7 @@ describe("seedBuCurrency", () => {
   it("repoints a stale default currency at the new THB row", async () => {
     const backend = fakeBackend({
       [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
-      "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 4, default_currency_id: "c-old" } },
+      "GET /api/business-units": { data: { id: "bu-1", code: "BU-GR2VYNKQ", doc_version: 4, default_currency_id: "c-old" } },
       "PATCH /api/business-units": { data: {} },
     });
     const r = await seedBuCurrency(sessionsOf(backend), cfg);
@@ -24,7 +24,7 @@ describe("seedBuCurrency", () => {
   it("does nothing when the BU already points at THB", async () => {
     const backend = fakeBackend({
       [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
-      "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 4, default_currency_id: "c-thb" } },
+      "GET /api/business-units": { data: { id: "bu-1", code: "BU-GR2VYNKQ", doc_version: 4, default_currency_id: "c-thb" } },
     });
     const r = await seedBuCurrency(sessionsOf(backend), cfg);
     expect(r.skipped).toBe(1);

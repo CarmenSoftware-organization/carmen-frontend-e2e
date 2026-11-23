@@ -33,7 +33,7 @@ export function resetHelpText(): string {
   return [
     "Usage: bun run data:reset [--dry-run] [--yes] [--skip-reset] [--verbose]",
     "",
-    "Wipes TEST BU (GR2VYNKQ) on the dev backend and rebuilds the standard dataset.",
+    "Wipes TEST BU (BU-GR2VYNKQ) on the dev backend and rebuilds the standard dataset.",
     "  --dry-run     read-only: print every planned write, call nothing that writes",
     "  --yes         required for a live run against a non-localhost backend",
     "  --skip-reset  seed onto an already-reset BU (refused if it holds any PR)",

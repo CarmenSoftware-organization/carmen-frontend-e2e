@@ -91,7 +91,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010001 หน้า list Wastage Reporting โหลดสำเร็จ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); BU มี license store_operations.wastage_reporting" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); BU มี license store_operations.wastage_reporting" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting" },
         { type: "expected", description: "URL ตรงกับ path; หัวข้อ 'Wastage Reporting' และคำอธิบาย 'within 30 days' แสดง; toolbar มีช่องค้นหา; มีกลุ่มปุ่มสถานะ All / Expired / Expiring; ไม่มีปุ่ม Filter/View/Add" },
         { type: "priority", description: "High" },
@@ -116,7 +116,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010002 คอลัมน์ตาราง (วันหมดอายุ/สินค้า/สถานที่/lot/GRN/จำนวนคงเหลือ/ต้นทุน/มูลค่า) แสดงครบ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); viewport 1920x1080 (ตารางแสดงครบทุกคอลัมน์)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); viewport 1920x1080 (ตารางแสดงครบทุกคอลัมน์)" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting\n2. ตรวจหัวตารางและเซลล์ของ lot ตัวอย่าง" },
         { type: "expected", description: "หัวตารางมี Expiry Date, Product, Location, Lot No., GRN No., Remaining Qty, Cost/Unit, Remaining Value และแถวแสดงค่าของ lot" },
         { type: "priority", description: "Medium" },
@@ -142,7 +142,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010004 ค้นหาด้วยการกด Enter ในช่อง Search ส่งคำค้นไปกรองที่ API",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting\n2. พิมพ์ 'E2E Product 2' ลงช่อง Search\n3. กด Enter" },
         { type: "expected", description: "URL เพิ่ม search=<คำค้น>; ยิง request ใหม่พร้อม search=<คำค้น>" },
         { type: "priority", description: "Medium" },
@@ -165,7 +165,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010005 ค้นหาคำที่ไม่มีต้องแสดง empty state",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); ใช้ API จริง" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); ใช้ API จริง" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting\n2. พิมพ์คำค้นที่ไม่มีในระบบแล้วกด Enter" },
         { type: "expected", description: "ตารางไม่มีแถว lot และแสดง empty state 'Nothing matches “<คำค้น>”' พร้อมปุ่ม Clear search" },
         { type: "priority", description: "Medium" },
@@ -187,7 +187,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010006 ตัวกรองสถานะ (Expired / Expiring) แบบ segmented กรองรายการได้จริง",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture มี lot หมดอายุ 1 และใกล้หมด 1" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture มี lot หมดอายุ 1 และใกล้หมด 1" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting\n2. กดปุ่ม Expired ในกลุ่มสถานะ" },
         { type: "expected", description: "URL เป็น ?status=expired; ยิง request พร้อม status=expired; ปุ่ม Expired ถูกเลือก; ตารางเหลือเฉพาะ lot ที่หมดอายุ" },
         { type: "priority", description: "High" },
@@ -211,7 +211,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010007 pagination เปลี่ยนหน้าได้และ request ส่งหน้าใหม่",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture 12 lot (perpage 10 → 2 หน้า)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture 12 lot (perpage 10 → 2 หน้า)" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting\n2. กดปุ่มหน้าถัดไป" },
         { type: "expected", description: "URL เพิ่ม page=2; ยิง request page=2; ตารางแสดงเฉพาะ lot ลำดับที่ 11-12" },
         { type: "priority", description: "Low" },
@@ -236,7 +236,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010008 summary bar แสดงจำนวน All/Expired/Expiring และมูลค่าที่เสี่ยง",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture หมดอายุ 1 ใกล้หมด 1 (มูลค่ารวม 200)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture หมดอายุ 1 ใกล้หมด 1 (มูลค่ารวม 200)" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting\n2. ตรวจแถบสถานะเหนือตาราง" },
         { type: "expected", description: "ปุ่ม All=2, Expired=1, Expiring=1 และ Value at risk แสดง 200" },
         { type: "priority", description: "High" },
@@ -258,7 +258,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010009 กดปุ่ม All ล้างตัวกรองสถานะที่เลือกไว้",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
         { type: "steps", description: "1. เปิดหน้าพร้อม ?status=expired\n2. กดปุ่ม All" },
         { type: "expected", description: "URL ไม่มี status; ตารางกลับมาแสดงทุกสถานะ; request ถัดมาไม่มี status" },
         { type: "priority", description: "Medium" },
@@ -282,7 +282,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010010 ตารางเรียงตามวันหมดอายุตายตัว — ไม่มีปุ่ม sort และ API ไม่ได้รับ sort",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting?sort=expired_at:desc\n2. ตรวจหัวตารางและ request" },
         { type: "expected", description: "หัวคอลัมน์ไม่มีปุ่ม sort; request ไป API ไม่มีพารามิเตอร์ sort" },
         { type: "priority", description: "Medium" },
@@ -304,7 +304,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010012 ปุ่ม Clear search ใน empty state คืนรายการทั้งหมด",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); ใช้ API จริง" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); ใช้ API จริง" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting?search=SAMPLE\n2. กดปุ่ม Clear search" },
         { type: "expected", description: "ช่องค้นหาว่าง และ search ถูกล้างจาก URL" },
         { type: "priority", description: "Low" },
@@ -325,9 +325,9 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-010050 request ของหน้านี้ไปที่ BU ที่ active (TEST BU)",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); ผู้ใช้ผูกกับ TEST BU" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); ผู้ใช้ผูกกับ TEST BU" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting\n2. ตรวจ URL ของ request รายการ lot" },
-        { type: "expected", description: "ยิง GET /api/GR2VYNKQ/wastage-reporting สำเร็จ (200)" },
+        { type: "expected", description: "ยิง GET /api/BU-GR2VYNKQ/wastage-reporting สำเร็จ (200)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -345,7 +345,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-020001 กด GRN No. เปิดใบ GRN ต้นทาง",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
         { type: "steps", description: "1. ไปที่ /store-operation/wastage-reporting\n2. กดที่ GRN No. ของ lot" },
         { type: "expected", description: "นำทางไปยัง /procurement/goods-receive-note/{grn_id} ของ lot นั้น" },
         { type: "priority", description: "High" },
@@ -365,7 +365,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-020003 คลิกเซลล์อื่นหรือตัวแถวไม่นำทางออกจากหน้า",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)" },
         { type: "steps", description: "1. คลิกที่เซลล์ Product และ Location\n2. ตรวจสอบ URL" },
         { type: "expected", description: "URL ยังคงเป็น /store-operation/wastage-reporting" },
         { type: "priority", description: "Low" },
@@ -427,7 +427,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-100003 BU ที่มี license wastage_reporting เข้าหน้าและโหลดข้อมูลได้",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); license store_operations.wastage_reporting ของ TEST BU" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); license store_operations.wastage_reporting ของ TEST BU" },
         { type: "steps", description: "1. เข้า /store-operation/wastage-reporting" },
         { type: "expected", description: "หน้าเปิดตามปกติ (ไม่มีกล่องปฏิเสธ license) และ endpoint ตอบ 200" },
         { type: "priority", description: "Low" },
@@ -447,7 +447,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-900001 mobile: ตารางเป็นการ์ดเซลล์เดียว (สินค้า+GRN) และหน้าไม่ล้นแนวนอน",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); viewport 375x667" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); viewport 375x667" },
         { type: "steps", description: "1. เปิด /store-operation/wastage-reporting ด้วย viewport 375x667" },
         { type: "expected", description: "แถวแสดงสินค้า/คลัง/lot/GRN ในเซลล์เดียว; ไม่มีหัวตาราง Cost/Unit; scrollWidth ของหน้าไม่เกินความกว้างจอ" },
         { type: "priority", description: "Low" },
@@ -472,7 +472,7 @@ test.describe("Wastage Reporting — Store Operations", () => {
     "TC-WAST-900002 API ล้มเหลวต้องแสดง ErrorState พร้อมปุ่มลองใหม่",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ)" },
         { type: "steps", description: "1. ตั้ง route interception ให้ endpoint ตอบ 500\n2. เปิด /store-operation/wastage-reporting\n3. ปลด interception แล้วกดปุ่มลองใหม่" },
         { type: "expected", description: "แสดง ErrorState พร้อมปุ่ม Try again และกดลองใหม่แล้วหัวข้อหน้า+ตารางกลับมา" },
         { type: "priority", description: "Medium" },

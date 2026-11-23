@@ -312,7 +312,7 @@ Discard dialog ปรากฏ; หลังยืนยันกลับ view 
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user
+Login เป็น carmensoftware.dev+admin@gmail.com; BU BU-GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user
 
 **Steps**
 
@@ -335,7 +335,7 @@ Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department �
 
 **Preconditions**
 
-Login เป็น carmensoftware.dev+admin@gmail.com; BU GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user
+Login เป็น carmensoftware.dev+admin@gmail.com; BU BU-GR2VYNKQ; department แรกในรายการ (data:reset) มีสมาชิกครบทุก user
 
 **Steps**
 
