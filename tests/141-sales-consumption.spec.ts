@@ -710,7 +710,7 @@ test.describe("Sales Consumption (141)", () => {
         {
           type: "expected",
           description:
-            "verify: ที่ location ที่สองแถว P4 ขึ้น Short (ที่เหลือ Yes), location แรกทุกแถว Yes; verify (API) รายงานสินค้าที่ขาดแยก location มีเฉพาะ P4 ที่ location ที่สอง; post ถูกปฏิเสธ 422 SALES_CONSUMPTION_VERIFY_FAILED (spec §4.2: ขาดแม้ location เดียว = ไม่มีใบไหนออก; คำตอบของ post เองไม่ระบุสินค้า รายการอยู่ที่ผล verify); ไม่มี Stock Out สำหรับ SC นี้ SC ยัง pending; on-hand P1-P4 ทั้งสอง location เท่าเดิม",
+            "verify: ที่ location ที่สองแถว P4 ขึ้น Short (ที่เหลือ Yes), location แรกทุกแถว Yes; verify (API) รายงานสินค้าที่ขาดแยก location มีเฉพาะ P4 ที่ location ที่สอง; post ถูกปฏิเสธ 422 SALES_CONSUMPTION_VERIFY_FAILED (spec §4.2: ขาดแม้ location เดียว = ไม่มีใบไหนออก; การที่คำตอบของ post ไม่ระบุสินค้าที่ขาดแยก location แยกเป็น TC-SC-040003); ไม่มี Stock Out สำหรับ SC นี้ SC ยัง pending; on-hand P1-P4 ทั้งสอง location เท่าเดิม",
         },
         { type: "priority", description: "Critical" },
         { type: "testType", description: "Negative" },
@@ -736,13 +736,45 @@ test.describe("Sales Consumption (141)", () => {
       const v2 = await scVerify(s.id);
       expect(v2.status, `verify: ${JSON.stringify(v2.body).slice(0, 300)}`).toBe(200);
       const p = await scPost(s.id, Number((await detail(s.id)).doc_version));
-      expectRefusal(p, 422, ["SALES_CONSUMPTION_VERIFY_FAILED", "STOCK_OUT_INSUFFICIENT_STOCK"]);
+      expectRefusal(p, 422, "SALES_CONSUMPTION_VERIFY_FAILED");
       // the short list (per location) comes with the verify answer: only P4 at the second location is short
       const shortList = (v2.body.data.groups as any[]).flatMap((g) => g.products.filter((x: any) => x.short > 0).map((x: any) => `${g.location_id}:${x.product_id}`));
       expect(shortList).toEqual([`${locs.second.id}:${products[3].id}`]);
       expect(await liveStockOuts(s.id)).toEqual([]);
       expect((await detail(s.id)).status).toBe("pending");
       await expectDeltas(s.d, before, new Map());
+    },
+  );
+
+  test(
+    "TC-SC-040003 post ที่ถูกปฏิเสธเพราะสต็อกไม่พอ ต้องระบุสินค้าที่ขาดแยก location ในคำตอบ (spec §4.2)",
+    {
+      annotation: [
+        { type: "preconditions", description: "Admin login บน TEST BU; ร้าน E2E-141 วัน 7 import O1/I1 x1 และ O2/I2 x N โดย N = ceil((on-hand P4 ที่ location ที่สอง ณ วันขาย + 1) / 3); verify แล้วขึ้นขาด (API)" },
+        { type: "steps", description: "1. verify (API) ได้ผลขาด P4 ที่ location ที่สอง\n2. ยิง POST post ทาง API\n3. อ่านเนื้อหาคำตอบ" },
+        {
+          type: "expected",
+          description: "post ถูกปฏิเสธ 422 SALES_CONSUMPTION_VERIFY_FAILED และเนื้อหาคำตอบระบุ P4 ที่ location ที่สอง (feature spec §4.2: ขาดแม้ location เดียว = ไม่มีใบไหนออก คืนรายการสินค้าที่ขาดแยก location). BE จริงตอบเฉพาะข้อความ ไม่ระบุสินค้า จึง pin เป็น suspected bug (test.fail)",
+        },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async () => {
+      const d = day(7);
+      const have = await onHand(products[3].id, locs.second.id, d);
+      const qty = Math.ceil((have + 1) / 3);
+      const s = await prepare("short-list", 7, [line("O1", "I1", 1), line("O2", "I2", qty)]);
+      const v = await scVerify(s.id);
+      expect(v.status, `verify: ${JSON.stringify(v.body).slice(0, 300)}`).toBe(200);
+      const p = await scPost(s.id, Number((await detail(s.id)).doc_version));
+      expectRefusal(p, 422, "SALES_CONSUMPTION_VERIFY_FAILED");
+      expect(await liveStockOuts(s.id)).toEqual([]);
+
+      test.fail(true, "suspected bug: post VERIFY_FAILED does not list short products per location (feature spec §4.2)");
+      const body = JSON.stringify(p.body);
+      expect(body, "names P4").toContain(products[3].id);
+      expect(body.includes(locs.second.id) || body.includes(locs.second.code), "names the second location").toBe(true);
     },
   );
 

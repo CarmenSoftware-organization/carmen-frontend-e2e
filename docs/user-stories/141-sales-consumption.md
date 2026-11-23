@@ -5,7 +5,7 @@ _Generated from `tests/141-sales-consumption.spec.ts` annotations. Edit annotati
 **Module:** Sales Consumption
 **Spec:** `tests/141-sales-consumption.spec.ts`
 **Default role:** Admin
-**Total test cases:** 14 (10 High / 0 Medium / 0 Low / 4 unset)
+**Total test cases:** 15 (10 High / 1 Medium / 0 Low / 4 unset)
 
 ## Test Cases at a Glance
 
@@ -23,6 +23,7 @@ _Generated from `tests/141-sales-consumption.spec.ts` annotations. Edit annotati
 | TC-SC-030002 | verify: ทุกแถววัตถุดิบ OK ตาม location; แก้บรรทัดหลัง verify แล้วผลตรวจหาย post ถูกปฏิเสธจนกว่าจะ verify ใหม่ | High | Functional |
 | TC-SC-040001 | post วันที่มีบรรทัดสอง location ผ่านหน้าเว็บ: Stock Out 2 ใบ (SALE, ใบละ location, วันที่ = วันขาย) ยอดตามสูตร และ on-hand ลดตามนั้น | Critical | Happy Path |
 | TC-SC-040002 | สต็อก P4 ไม่พอที่ location ที่สอง: verify ขึ้นขาดเฉพาะ location นั้น, post ถูกปฏิเสธ, ไม่มี Stock Out และ on-hand ไม่เปลี่ยน | Critical | Negative |
+| TC-SC-040003 | post ที่ถูกปฏิเสธเพราะสต็อกไม่พอ ต้องระบุสินค้าที่ขาดแยก location ในคำตอบ (spec §4.2) | Medium | Negative |
 | TC-SC-050001 | post ซ้ำหลัง post สำเร็จ: ถูกปฏิเสธ จำนวน Stock Out และ on-hand ไม่เปลี่ยน | Critical | Negative |
 | TC-SC-050002 | post พร้อมกันสองคำขอ (doc_version เดียวกัน): สำเร็จ 2xx เพียงหนึ่ง และเกิด Stock Out ชุดเดียว | Critical | Negative |
 
@@ -302,7 +303,30 @@ Admin login บน TEST BU; ร้าน E2E-141 วัน 5 import O1/I1 x1 แ
 
 **Expected**
 
-verify: ที่ location ที่สองแถว P4 ขึ้น Short (ที่เหลือ Yes), location แรกทุกแถว Yes; verify (API) รายงานสินค้าที่ขาดแยก location มีเฉพาะ P4 ที่ location ที่สอง; post ถูกปฏิเสธ 422 SALES_CONSUMPTION_VERIFY_FAILED (spec §4.2: ขาดแม้ location เดียว = ไม่มีใบไหนออก; คำตอบของ post เองไม่ระบุสินค้า รายการอยู่ที่ผล verify); ไม่มี Stock Out สำหรับ SC นี้ SC ยัง pending; on-hand P1-P4 ทั้งสอง location เท่าเดิม
+verify: ที่ location ที่สองแถว P4 ขึ้น Short (ที่เหลือ Yes), location แรกทุกแถว Yes; verify (API) รายงานสินค้าที่ขาดแยก location มีเฉพาะ P4 ที่ location ที่สอง; post ถูกปฏิเสธ 422 SALES_CONSUMPTION_VERIFY_FAILED (spec §4.2: ขาดแม้ location เดียว = ไม่มีใบไหนออก; การที่คำตอบของ post ไม่ระบุสินค้าที่ขาดแยก location แยกเป็น TC-SC-040003); ไม่มี Stock Out สำหรับ SC นี้ SC ยัง pending; on-hand P1-P4 ทั้งสอง location เท่าเดิม
+
+---
+
+## TC-SC-040003 — post ที่ถูกปฏิเสธเพราะสต็อกไม่พอ ต้องระบุสินค้าที่ขาดแยก location ในคำตอบ (spec §4.2)
+
+> **As a** Admin user, **I want** this Sales Consumption behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Medium · **Test Type:** Negative
+
+**Preconditions**
+
+Admin login บน TEST BU; ร้าน E2E-141 วัน 7 import O1/I1 x1 และ O2/I2 x N โดย N = ceil((on-hand P4 ที่ location ที่สอง ณ วันขาย + 1) / 3); verify แล้วขึ้นขาด (API)
+
+**Steps**
+
+1. verify (API) ได้ผลขาด P4 ที่ location ที่สอง
+2. ยิง POST post ทาง API
+3. อ่านเนื้อหาคำตอบ
+
+**Expected**
+
+post ถูกปฏิเสธ 422 SALES_CONSUMPTION_VERIFY_FAILED และเนื้อหาคำตอบระบุ P4 ที่ location ที่สอง (feature spec §4.2: ขาดแม้ location เดียว = ไม่มีใบไหนออก คืนรายการสินค้าที่ขาดแยก location). BE จริงตอบเฉพาะข้อความ ไม่ระบุสินค้า จึง pin เป็น suspected bug (test.fail)
 
 ---
 
@@ -351,4 +375,4 @@ Admin login บน TEST BU; ร้าน E2E-141 วัน 6 import O1/I1 x2 แ
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git 370cdd9</sub>
+<sub>Last regenerated: 2026-11-23 · git 2a33953</sub>
