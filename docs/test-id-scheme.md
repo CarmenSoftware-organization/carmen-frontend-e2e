@@ -47,6 +47,8 @@ Strict regex: `^TC-[A-Z]{2,5}-\d{6}$`
 | `101-product-category.spec.ts` | `CAT` | 01–15, 20–29, 90 | Multi-prefix collapse (CATEG/PRODU/RECIP) |
 | `121-recipe-equipment-category.spec.ts` | `RECC` | 01–05, 10, 20, 90 | CRUD + security (graduated draft — runtime-unverified) |
 | `131-equipment-category.spec.ts` | `EQPC` | 01–05, 10, 20, 90 | CRUD + security (graduated draft — runtime-unverified) |
+| `140-import-pos.spec.ts` | `IPOS` | 01–03 | Import POS (Simphony) on TEST BU: upload through the page with raw lines and SC link, brand upload buttons (01), refusals: duplicate / empty / multi-day / Micros check (02), cancel import: pending day and posted day (03) |
+| `141-sales-consumption.spec.ts` | `SC` | 01–07 | Sales Consumption on TEST BU: blocking lines (01), overrides (02), verify on-hand (03), post and Stock Outs (04), double post (05), void and late lines (06), calendar (07) |
 | `150-vendor.spec.ts` | `VEN` | 01, 03–05, 10–19, 20 | CRUD + security |
 | `159-pl.spec.ts` | `PL` | 01–08, 90 | CRUD + sub-journeys + edge cases |
 | `160-pl-template.spec.ts` | `PT` | 01–06, 20, 90 | CRUD + sub-journeys + edge cases |

@@ -69,6 +69,13 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
      `E2E-JV-POSTED` (Dr 5300 / Cr 1110 250.00), `E2E-JVT-1` (template) — ใบจ่ายเงินสร้างโดย admin อนุมัติโดย budget,
      ต้องมี Payment Type (`E2E-PT`) ซึ่ง reset ล้างทิ้ง จึงสร้างให้ · ยอดรวมและยอดค้างเทียบกับที่คำนวณจากบรรทัดของตัวเอง
      ไม่ใช่ค่าที่ backend ตอบ — ถ้า dev ปฏิเสธ deposit / debit note / credit note จะแจ้งสถานะ+body แล้วข้ามแถวนั้น ไม่ปลอม
+7b. ฐาน POS / Sales Consumption (`docs/pos.ts`, ขั้น `pos` ต่อจาก `stock`):
+   - เปิด Simphony: app-config `interface_pos_simphony` = `{ enabled: true }` (อ่านค่าเดิมก่อน คงฟิลด์อื่นไว้)
+   - recipe `E2E-POS-A` (P1 × 2, P2 × 1) และ `E2E-POS-B` (P3 × 1, P4 × 3) โดย P1–P4 = สินค้า 4 ตัวสุดท้ายของ context (p7–p10)
+     หน่วย = หน่วยคลังของสินค้า · dataset หลักไม่มี recipe category / cuisine จึงสร้าง `E2E-POS` / `E2E POS` ให้ (ถ้ายังไม่มี)
+   - ใบรับเข้าที่ commit แล้ว `STD pos.stock.l1` / `STD pos.stock.l2`: P1–P4 จำนวน 500 ต้นทุน 10 ที่ location แรก / ที่สอง
+     ลงวันที่ **วันแรกของงวดที่เปิดอยู่** (อ่านจาก `inventory-periods/current`) ไม่ใช่วันนี้
+   - p7–p8 ซ้อนกับ `stock.on-hand.*` และ p9 ซ้อนกับ lot หมดอายุของ `stock.*` (ไม่มีสินค้าว่าง 4 ตัวติดกัน) — spec ที่อ่านยอดต้องดูเป็นส่วนต่างเสมอ
 8. ตรวจนับทั้ง BU เทียบตาราง (`verify-dataset.ts`) — แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้ แล้วจบด้วย exit 1
 
 ## ถ้า reset ตอบ 504 / timeout

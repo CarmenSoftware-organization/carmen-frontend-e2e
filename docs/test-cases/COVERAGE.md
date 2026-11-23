@@ -8,9 +8,9 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 
 | Status | Meaning | Modules |
 | --- | --- | --- |
-| ✅ spec | an automated Playwright spec drives this module | 54 |
+| ✅ spec | an automated Playwright spec drives this module | 57 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 39 |
-| ❌ none | neither — this is the coverage gap | 30 |
+| ❌ none | neither — this is the coverage gap | 27 |
 
 ## *
 
@@ -97,7 +97,7 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
 | `/inventory-management` | 1 | — | `1204-section-landing.md` | 📄 catalog |
-| `/inventory-management/inventory-adjustment` | 3 | — | — | ❌ none |
+| `/inventory-management/inventory-adjustment` | 3 | `141-sales-consumption.spec.ts` | — | ✅ spec |
 | `/inventory-management/period-end` | 2 | `900-period-end.spec.ts`<br>`914-period-close-out-of-period-docs.spec.ts`<br>`918-period-close-start.spec.ts`<br>`920-period-close-close-gate.spec.ts`<br>_+2 more_ | — | ✅ spec |
 | `/inventory-management/physical-count` | 5 | — | `750-physical-count.md` | 📄 catalog |
 | `/inventory-management/spot-check` | 5 | — | `760-spot-check.md` | 📄 catalog |
@@ -131,10 +131,10 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | `/operation-plan/cuisine` | 3 | `111-cuisine.spec.ts` | — | ✅ spec |
 | `/operation-plan/equipment` | 3 | — | `130-equipment.md` | 📄 catalog |
 | `/operation-plan/equipment-category` | 1 | `131-equipment-category.spec.ts` | — | ✅ spec |
-| `/operation-plan/import-pos` | 1 | — | — | ❌ none |
+| `/operation-plan/import-pos` | 1 | `140-import-pos.spec.ts` | — | ✅ spec |
 | `/operation-plan/recipe` | 4 | — | `120-recipe.md` | 📄 catalog |
 | `/operation-plan/recipe-equipment-category` | 1 | `121-recipe-equipment-category.spec.ts` | — | ✅ spec |
-| `/operation-plan/sales-consumption` | 2 | — | — | ❌ none |
+| `/operation-plan/sales-consumption` | 2 | `141-sales-consumption.spec.ts` | — | ✅ spec |
 
 ## pl
 

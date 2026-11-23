@@ -55,6 +55,7 @@ describe("seedAllDocuments", () => {
     const results = await seedAllDocuments(createSessions(cfg, fakeBackend({}).fetchFn), cfg, users, new Date("2026-11-05T03:00:00Z"), {
       context: async () => ctx,
       stock: step("stock"),
+      pos: step("pos"),
       prTemplate: step("pr-template"),
       purchaseRequests: step("purchase-requests", { reservedForPo: "pr-x" }),
       purchaseOrders: step("purchase-orders", { forGrn: { full: "a", partial: "b" } }),
@@ -63,7 +64,7 @@ describe("seedAllDocuments", () => {
       pricing: step("pricing"),
       verify: async () => ({ short: ["PR draft: expected ≥ 3, found 0 (seeded: none)"], table: "" }),
     });
-    expect(order).toEqual(["stock", "pr-template", "purchase-requests", "purchase-orders", "receiving", "store-requisitions", "pricing"]);
+    expect(order).toEqual(["stock", "pos", "pr-template", "purchase-requests", "purchase-orders", "receiving", "store-requisitions", "pricing"]);
     expect(results.at(-1)).toEqual({ step: "verify", created: 0, skipped: 0, failed: ["PR draft: expected ≥ 3, found 0 (seeded: none)"] });
   });
 

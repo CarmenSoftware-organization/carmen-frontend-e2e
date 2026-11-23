@@ -84,10 +84,14 @@ async function send<T>(
   body?: unknown,
 ): Promise<ApiResult<T>> {
   const { url, appId } = await (backend ??= resolveBackend());
+  const form = body instanceof FormData;
+  const headers: Record<string, string> = { "x-app-id": appId, Authorization: `Bearer ${await tokenFor(role)}` };
+  // multipart: fetch sets Content-Type with the boundary itself
+  if (!form) headers["Content-Type"] = "application/json";
   const r = await fetch(fullPath(url), {
     method,
-    headers: { "Content-Type": "application/json", "x-app-id": appId, Authorization: `Bearer ${await tokenFor(role)}` },
-    body: body === undefined ? undefined : JSON.stringify(body),
+    headers,
+    body: body === undefined ? undefined : form ? body : JSON.stringify(body),
   });
   const text = await r.text();
   let parsed: unknown = null;
@@ -108,6 +112,10 @@ export const buSend = <T = any>(role: Role, method: Method, path: string, body?:
 /** Config endpoints live under `/api/config/<BU>/...` (extra-cost-types, tax profiles ...). */
 export const buConfigSend = <T = any>(role: Role, method: Method, path: string, body?: unknown) =>
   send<T>(role, method, (u) => `${u}/api/config/${BU_CODE}${path}`, body);
+
+/** Multipart upload (`FormData`) under the BU — same token / backend resolution as `buSend`, no JSON content-type. */
+export const buSendForm = <T = any>(role: Role, path: string, form: FormData) =>
+  send<T>(role, "POST", (u) => `${u}/api/${BU_CODE}${path}`, form);
 
 export const buGet = <T = any>(role: Role, path: string) => buSend<T>(role, "GET", path);
 

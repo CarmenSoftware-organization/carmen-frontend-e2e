@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1334 |
-| **Running** | **1181** |
+| Cases declared | 1363 |
+| **Running** | **1210** |
 | Skipped | 153 |
 | Fixme | 0 |
 | **Dormant** (skipped + fixme) | **11%** |
 | Running cases asserting only through a page-object helper | 29 |
-| **Running cases asserting nothing at all** | **0** |
+| **Running cases asserting nothing at all** | **1** |
 | Running cases whose assertions are all trivial | 0 |
-| Running cases behind an in-body skip guard | 23 |
-| Assertions in running cases | 3283 |
+| Running cases behind an in-body skip guard | 25 |
+| Assertions in running cases | 3482 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -48,6 +48,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 145 | 0 |
 | `301-pr.spec.ts` | 59 | 47 | 0 | 44% | 0 | 0 | 0 | 0 | 120 | 0 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
+| `141-sales-consumption.spec.ts` | 21 | 0 | 0 | 0% | **1** | 0 | 0 | **2** | 139 | 0 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `010-department.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 57 | 2 |
 | `020-unit.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 32 | 0 |
@@ -71,6 +72,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `111-cuisine.spec.ts` | 17 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 36 | 4 |
 | `121-recipe-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
 | `131-equipment-category.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
+| `140-import-pos.spec.ts` | 8 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 60 | 0 |
 | `150-vendor.spec.ts` | 31 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 57 | 1 |
 | `159-pl.spec.ts` | 22 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 52 | 0 |
 | `160-pl-template.spec.ts` | 32 | 0 | 0 | 0% | 0 | 7 | 0 | 0 | 54 | 0 |

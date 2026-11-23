@@ -109,6 +109,36 @@ async function verifyAccountingSet(
   return { lines, short };
 }
 
+/**
+ * Read back what the pos step promises: Simphony enabled, both recipes, the SALE adjustment type and
+ * the two opening stock-ins completed. Only runs when the pos step recorded its stock rows.
+ */
+async function verifyPos(admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<RowLedger["rows"]>): Promise<{ lines: string[]; short: string[] }> {
+  const lines: string[] = [];
+  const short: string[] = [];
+  if (!seeded["pos.stock.l1"] && !seeded["pos.stock.l2"]) return { lines, short };
+  const bu = cfg.buCode;
+  const check = (row: string, ok: boolean, detail: string) => {
+    lines.push(`${row.padEnd(22)}${String(1).padStart(5)}${String(ok ? 1 : 0).padStart(7)}${ok ? "" : "  ✗"}`);
+    if (!ok) short.push(`${row}: ${detail}`);
+  };
+  const status = await admin.get(`/api/${bu}/pos-sales/status`);
+  const brands: unknown = status.body?.data?.enabled_brands;
+  check("pos.simphony-enabled", Array.isArray(brands) && brands.includes("simphony"), `enabled_brands is ${JSON.stringify(brands)} (HTTP ${status.status})`);
+  const recipes = new Set((await listAll(admin, `/api/config/${bu}/recipes`)).map((r) => r.name));
+  const missing = ["E2E-POS-A", "E2E-POS-B"].filter((n) => !recipes.has(n));
+  check("pos.recipes", missing.length === 0, `missing recipe ${missing.join(", ")}`);
+  const stockIns = new Map((await listAll(admin, `/api/${bu}/stock-ins`)).map((d) => [String(d.si_no), d]));
+  for (const row of ["pos.stock.l1", "pos.stock.l2"]) {
+    const no = seeded[row]?.docNos[0];
+    const doc = no ? stockIns.get(no) : undefined;
+    check(row, doc?.doc_status === "completed", `expected a completed stock-in, found ${doc ? doc.doc_status : "none"}${no ? ` (${no})` : ""}`);
+  }
+  const adjustments = await listAll(admin, `/api/config/${bu}/adjustment-types`);
+  check("adjustment.sale", adjustments.some((a) => a.code === "SALE"), "adjustment type SALE not found");
+  return { lines, short };
+}
+
 export async function verifyDataset(
   sessions: Sessions, cfg: ResetConfig, ledger: RowLedger,
 ): Promise<{ short: string[]; table: string }> {
@@ -136,5 +166,8 @@ export async function verifyDataset(
   const accounting = await verifyAccountingSet(admin, cfg, seeded);
   lines.push(...accounting.lines);
   short.push(...accounting.short);
+  const pos = await verifyPos(admin, cfg, seeded);
+  lines.push(...pos.lines);
+  short.push(...pos.short);
   return { short, table: lines.join("\n") };
 }
