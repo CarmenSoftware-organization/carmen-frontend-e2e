@@ -106,18 +106,19 @@ async function send<T>(
 type Method = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
 /** `path` is relative to the BU: `/purchase-request-templates` -> `/api/<BU>/purchase-request-templates`. */
-export const buSend = <T = any>(role: Role, method: Method, path: string, body?: unknown) =>
-  send<T>(role, method, (u) => `${u}/api/${BU_CODE}${path}`, body);
+export const buSend = <T = any>(role: Role, method: Method, path: string, body?: unknown, bu: string = BU_CODE) =>
+  send<T>(role, method, (u) => `${u}/api/${bu}${path}`, body);
 
 /** Config endpoints live under `/api/config/<BU>/...` (extra-cost-types, tax profiles ...). */
-export const buConfigSend = <T = any>(role: Role, method: Method, path: string, body?: unknown) =>
-  send<T>(role, method, (u) => `${u}/api/config/${BU_CODE}${path}`, body);
+export const buConfigSend = <T = any>(role: Role, method: Method, path: string, body?: unknown, bu: string = BU_CODE) =>
+  send<T>(role, method, (u) => `${u}/api/config/${bu}${path}`, body);
 
 /** Multipart upload (`FormData`) under the BU — same token / backend resolution as `buSend`, no JSON content-type. */
-export const buSendForm = <T = any>(role: Role, path: string, form: FormData) =>
-  send<T>(role, "POST", (u) => `${u}/api/${BU_CODE}${path}`, form);
+export const buSendForm = <T = any>(role: Role, path: string, form: FormData, bu: string = BU_CODE) =>
+  send<T>(role, "POST", (u) => `${u}/api/${bu}${path}`, form);
 
-export const buGet = <T = any>(role: Role, path: string) => buSend<T>(role, "GET", path);
+export const buGet = <T = any>(role: Role, path: string, bu: string = BU_CODE) =>
+  buSend<T>(role, "GET", path, undefined, bu);
 
 /** The role's permission keys from /api/user/profile (for "no role gate" claims). */
 export async function profilePermissions(role: Role): Promise<unknown> {
