@@ -242,7 +242,7 @@ test.describe("AP payment approvals (804)", () => {
       expect(r.status).toBeLessThan(500);
       test.fail(
         true,
-        `suspected bug: the same user (Budget) submits a payment voucher and approves it, and the backend posts it - the oracle requires a maker-checker 403 (pay:253). See ${BUG_LIST}`,
+        `needs product decision: the same user (Budget) submits a payment voucher and approves it, and the backend posts it - the oracle requires a maker-checker 403 (pay:253); owner 2026-11-23: maker-checker belongs to the workflow, which is not designed yet. See ${BUG_LIST}`,
       );
       expect(r.status).toBe(403);
       expect(await paymentStatus(p.id)).toBe("in_review");
