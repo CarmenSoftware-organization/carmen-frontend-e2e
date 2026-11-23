@@ -37,7 +37,6 @@ export interface WorkflowTemplate {
 
 export interface WorkflowFixture {
   note: string;
-  bu_code: "BU-GR2VYNKQ";
   workflows: WorkflowTemplate[];
 }
 

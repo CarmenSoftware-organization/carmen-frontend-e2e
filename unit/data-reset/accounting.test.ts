@@ -171,7 +171,7 @@ describe("seedAccountingBase", () => {
     const backend = fakeBackend(routes());
     const { runDataReset } = await import("../../scripts/data-reset/index");
     const code = await runDataReset(
-      { dryRun: true, yes: false, skipReset: false, verbose: false, help: false }, cfg,
+      { dryRun: true, yes: false, skipReset: false, verbose: false, help: false, bu: "BU-GR2VYNKQ" }, cfg,
       { fetchFn: backend.fetchFn, now, log: () => {}, seedMaster: async () => [], seedDocuments: async () => [] },
     );
     expect(code).toBeLessThanOrEqual(1);

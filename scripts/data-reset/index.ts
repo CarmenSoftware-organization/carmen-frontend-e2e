@@ -8,7 +8,7 @@ import { parseArgs as parseSeedArgs, printSummary, resolveEnabled, resolveWorkbo
 import { runSeed } from "../seed-master/orchestrator";
 import { extractRows, readWorkbookFile } from "../seed-master/parser";
 import type { SeedResult } from "../seed-master/types";
-import { getPasswordFor } from "../../tests/test-users";
+import { BU_CODE, TEST_BUS, getPasswordFor } from "../../tests/test-users";
 import { parseResetArgs, resetHelpText, type ResetArgs } from "./cli";
 import { resolveResetConfig, type ResetConfig } from "./config";
 import { DEFAULT_CURRENCY_CODE, loadCoaFixture, seedBuCurrency, seedChartOfAccounts } from "./bu-base";
@@ -100,7 +100,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     env.problems.forEach((p) => log(`  ✗ ${p}`));
     return 1;
   }
-  log("step 0: 9 accounts in the BU, purchase permissions present");
+  log(`step 0: 9 accounts in ${cfg.buCode}, default ${BU_CODE}, cost method ${TEST_BUS.find((b) => b.code === cfg.buCode)?.method}, purchase permissions present`);
   const admin = await sessions.client(cfg.adminEmail);
 
   if (args.dryRun) {
@@ -190,7 +190,13 @@ async function main(): Promise<void> {
     console.log(resetHelpText());
     process.exit(0);
   }
-  process.exit(await runDataReset(args, resolveResetConfig()));
+  const targets = args.bu === "all" ? TEST_BUS.map((b) => b.code) : [args.bu];
+  for (const [i, code] of targets.entries()) {
+    if (targets.length > 1) console.log(`\n=== BU ${i + 1}/${targets.length} ===`);
+    const exit = await runDataReset(args, resolveResetConfig(process.env, code));
+    if (exit !== 0) process.exit(exit);
+  }
+  process.exit(0);
 }
 
 if (import.meta.main) {

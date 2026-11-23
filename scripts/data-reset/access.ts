@@ -8,6 +8,7 @@ import { TEST_USERS } from "../../tests/test-users";
 import type { ResetConfig } from "./config";
 import type { Sessions } from "./sessions";
 import { rowsOf, type StepResult } from "./step-result";
+import { withAdminDefaultBu } from "./bu-base";
 
 const email = (local: string) => `carmensoftware.dev+${local}@gmail.com`;
 const localPart = (account: string) => account.split("+")[1].split("@")[0];
@@ -104,16 +105,18 @@ export async function seedAccess(
     else result.failed.push(`${nameOf.get(plan.user_id)}: POST ${path} → ${res.status}`);
   }
 
-  const bu = ((await admin.get("/api/business-units")).body as { data?: BusinessUnit })?.data;
-  const currencies = rowsOf<{ id: string; code: string }>((await admin.get(`${base}/currencies?perpage=100`)).body);
-  const currency = bu ? planDefaultCurrency(bu, currencies, cfg.buCode) : { problem: "cannot read admin's default BU" };
-  if ("problem" in currency) result.failed.push(currency.problem);
-  else if (currency.body) {
-    const res = await admin.patch("/api/business-units", currency.body);
-    if (res.ok) result.created += 1;
-    else result.failed.push(`PATCH /api/business-units → ${res.status}`);
-  } else result.skipped += 1;
-  return result;
+  return withAdminDefaultBu(sessions, cfg, result, async () => {
+    const bu = ((await admin.get("/api/business-units")).body as { data?: BusinessUnit })?.data;
+    const currencies = rowsOf<{ id: string; code: string }>((await admin.get(`${base}/currencies?perpage=100`)).body);
+    const currency = bu ? planDefaultCurrency(bu, currencies, cfg.buCode) : { problem: "cannot read admin's default BU" };
+    if ("problem" in currency) result.failed.push(currency.problem);
+    else if (currency.body) {
+      const res = await admin.patch("/api/business-units", currency.body);
+      if (res.ok) result.created += 1;
+      else result.failed.push(`PATCH /api/business-units → ${res.status}`);
+    } else result.skipped += 1;
+    return result;
+  });
 }
 
 /**

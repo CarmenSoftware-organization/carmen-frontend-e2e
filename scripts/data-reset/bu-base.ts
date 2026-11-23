@@ -6,7 +6,9 @@
 // สิ่งที่ reset ทิ้งไว้พังที่ตัว BU: default_currency_id ชี้ id เก่า และผังบัญชีว่าง (workbook ไม่มี COA)
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { BU_CODE } from "../../tests/test-users";
 import type { ResetConfig } from "./config";
+import { findBuId } from "./reset";
 import type { Sessions } from "./sessions";
 import { rowsOf, type StepResult } from "./step-result";
 
@@ -25,10 +27,56 @@ export function loadCoaFixture(): CoaFixtureAccount[] {
   return JSON.parse(readFileSync(path, "utf8")).accounts as CoaFixtureAccount[];
 }
 
+/**
+ * `PATCH /api/business-units` writes the caller's default BU and refuses any other id
+ * (409 BUSINESS_UNIT_NOT_CURRENT). For a target other than BU_CODE, switch the admin session's
+ * default to it, run `fn`, and always switch back to BU_CODE; a failed restore is a loud failure.
+ * For BU_CODE itself nothing is switched.
+ * เขียนได้เฉพาะ BU default ของ admin — BU อื่นต้องสลับ default ไปก่อนแล้วคืนเป็น BU_CODE เสมอ
+ */
+export async function withAdminDefaultBu<T extends StepResult>(
+  sessions: Sessions, cfg: ResetConfig, result: T, fn: () => Promise<T>,
+): Promise<T> {
+  if (cfg.buCode === BU_CODE) return fn();
+  const admin = await sessions.client(cfg.adminEmail);
+  const profile = await admin.get("/api/user/profile");
+  if (!profile.ok) {
+    result.failed.push(`GET /api/user/profile → ${profile.status} — cannot switch default BU to ${cfg.buCode}`);
+    return result;
+  }
+  let targetId: string;
+  let homeId: string;
+  try {
+    targetId = findBuId(profile.body, cfg.buCode);
+    homeId = findBuId(profile.body, BU_CODE);
+  } catch (err) {
+    result.failed.push(err instanceof Error ? err.message : String(err));
+    return result;
+  }
+  const switchTo = (id: string) => admin.post("/api/business-units/default", { tenant_id: id });
+  const first = await switchTo(targetId);
+  if (!first.ok) {
+    result.failed.push(`POST /api/business-units/default (${cfg.buCode}) → ${first.status}`);
+    return result;
+  }
+  try {
+    return await fn();
+  } finally {
+    const back = await switchTo(homeId);
+    if (!back.ok) {
+      result.failed.push(`RESTORE FAILED: POST /api/business-units/default (${BU_CODE}) → ${back.status} — admin's default BU is still ${cfg.buCode}; switch it back by hand`);
+    }
+  }
+}
+
 /** Point the BU's default currency at the THB row the master seed just created. */
 export async function seedBuCurrency(sessions: Sessions, cfg: ResetConfig): Promise<StepResult> {
-  const admin = await sessions.client(cfg.adminEmail);
   const result: StepResult = { step: "bu-currency", created: 0, skipped: 0, failed: [] };
+  return withAdminDefaultBu(sessions, cfg, result, () => seedBuCurrencyInner(sessions, cfg, result));
+}
+
+async function seedBuCurrencyInner(sessions: Sessions, cfg: ResetConfig, result: StepResult): Promise<StepResult> {
+  const admin = await sessions.client(cfg.adminEmail);
   const list = await admin.get(`/api/config/${cfg.buCode}/currencies?perpage=100`);
   const currency = rowsOf<{ id: string; code: string }>(list.body).find((c) => c.code === DEFAULT_CURRENCY_CODE);
   if (!currency) {

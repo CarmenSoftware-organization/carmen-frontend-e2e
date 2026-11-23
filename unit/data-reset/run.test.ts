@@ -12,7 +12,7 @@ const cfg: ResetConfig = {
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 const args = (over: Partial<ResetArgs> = {}): ResetArgs => ({
-  dryRun: false, yes: true, skipReset: false, verbose: false, help: false, ...over,
+  dryRun: false, yes: true, skipReset: false, verbose: false, help: false, bu: "BU-GR2VYNKQ", ...over,
 });
 const base = "/api/config/BU-GR2VYNKQ";
 const now = new Date("2026-11-05T03:00:00Z");
@@ -24,6 +24,7 @@ function routes(over: Record<string, unknown> = {}) {
   const coa = accountingCodes.map((code) => ({ id: `coa-${code}`, code }));
   let generated = false;
   return {
+    "GET /api/BU-GR2VYNKQ/inventory-transactions/calculation-method": { data: { calculation_method: "average" } },
     "GET /api/BU-GR2VYNKQ/inventory-periods": () => ({
       data: [
         { fiscal_year: 2026, fiscal_month: 11, status: "open" },

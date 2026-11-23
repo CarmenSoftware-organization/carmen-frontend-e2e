@@ -1,7 +1,7 @@
 // scripts/data-reset/verify-env.ts
 // Step 0: what the reset keeps (platform schema) must already be right — check it, never change it.
 // ขั้น 0: สิ่งที่ reset เก็บไว้ (schema กลาง) ต้องถูกอยู่แล้ว — ตรวจอย่างเดียว ไม่แก้
-import { TEST_USERS } from "../../tests/test-users";
+import { BU_CODE, TEST_BUS, TEST_USERS } from "../../tests/test-users";
 import type { ResetConfig } from "./config";
 import { findBuId } from "./reset";
 import type { Sessions } from "./sessions";
@@ -35,12 +35,25 @@ export function checkMembership(email: string, profileBody: unknown, buCode: str
   const units = dataOf<{ business_unit?: ProfileUnit[] }>(profileBody)?.business_unit ?? [];
   const target = units.find((u) => u.code === buCode);
   if (!target) return `${email}: not a member of ${buCode}`;
-  if (target.is_default) return null;
-  // An account whose only BU is the target lands in it anyway (dev: purchase, requestor).
-  // บัญชีที่มี BU เดียวคือ TEST BU จะเข้า BU นั้นอยู่แล้ว แม้ is_default เป็น false
-  const otherDefault = units.find((u) => u.is_default);
-  if (!otherDefault) return null;
-  return `${email}: default BU is ${otherDefault.code}, not ${buCode}`;
+  // The default BU must be BU_CODE for every target (data:reset never changes other accounts'
+  // default); an account with no BU marked default lands in its BU anyway (dev: purchase, requestor).
+  // BU หลักของบัญชีต้องเป็น BU_CODE เสมอ (ไม่ว่าจะ reset BU ไหน) หรือไม่มี BU ใดถูกตั้งเป็น default
+  const currentDefault = units.find((u) => u.is_default);
+  if (!currentDefault || currentDefault.code === BU_CODE) return null;
+  return `${email}: default BU is ${currentDefault.code}, not ${BU_CODE}`;
+}
+
+/** The BU's inventory cost method (as admin) must be the one its TEST_BUS entry promises. */
+export async function calcMethodProblem(sessions: Sessions, cfg: ResetConfig): Promise<string | null> {
+  const want = TEST_BUS.find((b) => b.code === cfg.buCode)?.method;
+  const admin = await sessions.client(cfg.adminEmail);
+  const path = `/api/${cfg.buCode}/inventory-transactions/calculation-method`;
+  const res = await admin.get(path);
+  if (!res.ok) return `GET ${path} → ${res.status}`;
+  const body = (res.body as { data?: unknown })?.data ?? res.body;
+  const got = typeof body === "string" ? body : (body as { calculation_method?: string; method?: string })?.calculation_method ?? (body as { method?: string })?.method;
+  if (got !== want) return `${cfg.buCode}: calculation method is ${String(got)}, expected ${want}`;
+  return null;
 }
 
 export function missingPermissions(roles: Array<{ permissions: Permission[] }>, required: string[]): string[] {
@@ -95,6 +108,8 @@ export async function verifyEnvironment(
     if (problem) problems.push(problem);
     if (email === cfg.adminEmail && !problem) buId = findBuId(res.body, cfg.buCode);
   }
+  const calc = await calcMethodProblem(sessions, cfg);
+  if (calc) problems.push(calc);
   if (userIds[PURCHASE_EMAIL]) problems.push(...(await purchaseProblems(sessions, cfg, userIds[PURCHASE_EMAIL])));
   if (!buId && !problems.some((p) => p.startsWith(cfg.adminEmail))) {
     problems.push(`${cfg.adminEmail}: could not resolve the id of ${cfg.buCode}`);
