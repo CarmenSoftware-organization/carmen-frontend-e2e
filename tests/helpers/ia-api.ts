@@ -89,7 +89,7 @@ export async function listIa(type: IaType, opts: { status?: string; search?: str
 /**
  * Live stock of a product at a location as of a day, from `GET /inventory-info/:product/:location?at_date=`.
  * `qty` = on_hand_qty. The endpoint exposes no total value, so `value` = sum(balance_qty x cost_per_unit)
- * over its `cost_layers` (the same layers `costLayers` returns).
+ * over its `cost_layers` ledger (in rows positive, out rows negative balance_qty, so it nets to the stock value).
  */
 export async function stockAt(productId: string, locationId: string, atDate: string): Promise<{ qty: number; value: number }> {
   const d = must("inventory-info", await buSend(ROLE, "GET", `/inventory-info/${productId}/${locationId}?at_date=${atDate}`)).body?.data;
@@ -99,16 +99,18 @@ export async function stockAt(productId: string, locationId: string, atDate: str
 }
 
 /**
- * Remaining qty per cost layer, oldest first, as of `atDate`. Source: `cost_layers` of
- * `GET /inventory-info/:product/:location?at_date=` (`balance_qty` = what is left of the lot, `cost_per_unit` = lot cost);
- * layers with nothing left are dropped. Ordered by lot_at_date then lot_no.
+ * What an issue draws from, as `{qty, cost}` layers, as of `atDate`.
+ * `cost_layers` of `GET /inventory-info/...` is NOT a list of remaining lots: it is a ledger of every lot ever posted
+ * (adjustment_in rows keep their full balance_qty even after an issue or a void, adjustment_out rows carry a negative one),
+ * so only its signed sum is meaningful (see `stockAt`). For the "average" method the BE prices an issue at the pooled
+ * average, so one pooled layer (on-hand qty at value / on-hand) is the correct oracle input. Per-lot remaining qty for "fifo"
+ * cannot be derived from that ledger: it throws instead of returning a wrong oracle.
  */
 export async function costLayers(productId: string, locationId: string, atDate: string): Promise<Array<{ qty: number; cost: number }>> {
-  const d = must("inventory-info", await buSend(ROLE, "GET", `/inventory-info/${productId}/${locationId}?at_date=${atDate}`)).body?.data;
-  return ((d?.cost_layers ?? []) as any[])
-    .filter((l) => Number(l.balance_qty) > 0)
-    .sort((a, b) => String(a.lot_at_date).localeCompare(String(b.lot_at_date)) || String(a.lot_no).localeCompare(String(b.lot_no)))
-    .map((l) => ({ qty: Number(l.balance_qty), cost: Number(l.cost_per_unit) }));
+  const method = await calcMethod();
+  if (method !== "average") throw new Error(`ia-api: costLayers cannot read per-lot remaining qty for the ${method} method from inventory-info (ledger, not lots)`);
+  const s = await stockAt(productId, locationId, atDate);
+  return s.qty > 0 ? [{ qty: s.qty, cost: s.value / s.qty }] : [];
 }
 
 /** The BU's cost method, from `GET /inventory-transactions/calculation-method` -> `data.calculation_method`. */

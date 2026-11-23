@@ -97,7 +97,7 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
 | `/inventory-management` | 1 | — | `1204-section-landing.md` | 📄 catalog |
-| `/inventory-management/inventory-adjustment` | 3 | `141-sales-consumption.spec.ts` | — | ✅ spec |
+| `/inventory-management/inventory-adjustment` | 3 | `141-sales-consumption.spec.ts`<br>`731-inventory-adjustment.spec.ts`<br>`732-inventory-adjustment-stock.spec.ts` | — | ✅ spec |
 | `/inventory-management/period-end` | 2 | `900-period-end.spec.ts`<br>`914-period-close-out-of-period-docs.spec.ts`<br>`918-period-close-start.spec.ts`<br>`920-period-close-close-gate.spec.ts`<br>_+2 more_ | — | ✅ spec |
 | `/inventory-management/physical-count` | 5 | — | `750-physical-count.md` | 📄 catalog |
 | `/inventory-management/spot-check` | 5 | — | `760-spot-check.md` | 📄 catalog |

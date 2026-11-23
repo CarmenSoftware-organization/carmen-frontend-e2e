@@ -8,8 +8,8 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1363 |
-| **Running** | **1210** |
+| Cases declared | 1382 |
+| **Running** | **1229** |
 | Skipped | 153 |
 | Fixme | 0 |
 | **Dormant** (skipped + fixme) | **11%** |
@@ -17,7 +17,7 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | **Running cases asserting nothing at all** | **1** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 25 |
-| Assertions in running cases | 3482 |
+| Assertions in running cases | 3606 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -95,7 +95,8 @@ Sorted by dormant share, then by cases that assert nothing.
 | `711-stock-replenishment.spec.ts` | 36 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 110 | 0 |
 | `720-stock-issue.spec.ts` | 20 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 53 | 0 |
 | `721-sr-issue-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 9 | 0 | 0 | 10 | 1 |
-| `730-inventory-adjustment-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 11 | 0 | 0 | 1 | 1 |
+| `731-inventory-adjustment.spec.ts` | 12 | 0 | 0 | 0% | 0 | 11 | 0 | 0 | 4 | 0 |
+| `732-inventory-adjustment-stock.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 121 | 0 |
 | `801-ap-invoice.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 115 | 0 |
 | `802-ap-doc-types.spec.ts` | 10 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 51 | 0 |
 | `803-ap-payment.spec.ts` | 10 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 55 | 0 |

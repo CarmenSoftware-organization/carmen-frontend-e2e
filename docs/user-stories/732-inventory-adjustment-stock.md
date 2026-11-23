@@ -5,7 +5,7 @@ _Generated from `tests/732-inventory-adjustment-stock.spec.ts` annotations. Edit
 **Module:** Inventory Adjustment — Stock and Cost
 **Spec:** `tests/732-inventory-adjustment-stock.spec.ts`
 **Default role:** Admin
-**Total test cases:** 10 (4 High / 1 Medium / 0 Low / 5 unset)
+**Total test cases:** 19 (8 High / 1 Medium / 0 Low / 10 unset)
 
 ## Test Cases at a Glance
 
@@ -21,6 +21,15 @@ _Generated from `tests/732-inventory-adjustment-stock.spec.ts` annotations. Edit
 | TC-IADJ-800008 | FC Commit Stock In ต้นทุนติดลบต้องถูกปฏิเสธ | High | Negative |
 | TC-IADJ-800009 | FC Commit Stock In บรรทัดจำนวน 0 ต้องถูกปฏิเสธ | High | Negative |
 | TC-IADJ-800010 | FC Stock In ลงวันแรกของงวดถัดไปที่สร้างล่วงหน้า (AVG: completed แต่ยังไม่ลงสต๊อก) | Medium | Functional |
+| TC-IADJ-810001 | FC Commit Stock Out จากหน้าจอแล้ว on-hand ลดและมูลค่าลดตามต้นทุนที่วิธีคิดต้นทุนกำหนด | Critical | Functional |
+| TC-IADJ-810002 | FC Commit Stock Out เกิน on-hand ถูกปฏิเสธ สต๊อกไม่เปลี่ยนและใบยังเป็น draft | Critical | Negative |
+| TC-IADJ-810003 | FC Stock Out 2 บรรทัดสินค้าเดียวกันที่รวมกันเกิน on-hand ถูกปฏิเสธทั้งใบ | Critical | Negative |
+| TC-IADJ-810004 | FC Stock Out ลงวันที่นอกงวดปัจจุบันถูกปฏิเสธและสต๊อกไม่เปลี่ยน | High | Negative |
+| TC-IADJ-810005 | FC Commit Stock Out ซ้ำ (ต่อเนื่องและพร้อมกัน) ตัดสต๊อกครั้งเดียว | Critical | Concurrency |
+| TC-IADJ-810006 | FC Void Stock Out ที่ commit แล้วคืนจำนวนและมูลค่ากลับเท่าก่อน commit | Critical | Functional |
+| TC-IADJ-810007 | FC Stock Out ที่ completed แล้วแก้/ลบไม่ได้ และ void ซ้ำถูกปฏิเสธ | High | Negative |
+| TC-IADJ-820001 | FC Stock In ที่ void แล้วยังต้องเห็นได้ในระบบ (อ่านได้ สถานะ voided อยู่ในตัวกรอง Voided) | High | Functional |
+| TC-IADJ-820002 | FC Stock Out ที่ void แล้วยังต้องเห็นได้ในระบบ (อ่านได้ สถานะ voided อยู่ในตัวกรอง Voided) | High | Functional |
 
 ---
 
@@ -277,5 +286,235 @@ AVG: ใบ completed และ on-hand ที่วันนั้นและ�
 
 ---
 
+## TC-IADJ-810001 — FC Commit Stock Out จากหน้าจอแล้ว on-hand ลดและมูลค่าลดตามต้นทุนที่วิธีคิดต้นทุนกำหนด
 
-<sub>Last regenerated: 2026-11-23 · git dd0b200</sub>
+> **As a** FC user, **I want** this Inventory Adjustment — Stock and Cost interaction to behave as expected, **so that** the workflow stays predictable.
+
+**Priority:** Critical · **Test Type:** Functional
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; เหตุผล E2E-IA-OUT; ลง Stock In E2E-IA-B 2 ชั้น (10 @ 10.00 แล้ว 10 @ 20.00) ทาง API; อ่านชั้นต้นทุน วิธีคิดต้นทุน และสต๊อก (on-hand, มูลค่า) สดก่อนกด Commit
+
+**Steps**
+
+1. เปิดหน้าสร้าง Stock Out
+2. Date = วันนี้, Reason E2E IA stock out, Location ของ E2E-IA-B
+3. Add Item: E2E-IA-B จำนวน 15
+4. อ่านยอด Grand Total ของฟอร์ม (ต้นทุนประเมิน)
+5. กด Commit แล้วยืนยัน
+6. อ่านสต๊อกและ stock-movements ของใบจาก API
+
+**Expected**
+
+ยอด Grand Total ก่อน Commit = ต้นทุนที่คำนวณจากชั้นสด (±0.01); ใบเป็น completed; on-hand ลด 15; ต้นทุนใน movement = ต้นทุนที่คำนวณ; มูลค่าลดเท่ากับต้นทุนนั้น
+
+> _Note: ค่าคาดหวังมาจาก expectedIssueCost(ชั้นต้นทุนสด, 15, วิธีคิดต้นทุนของ BU) ไม่ใช่ตัวเลขตายตัว · ส่วนต่างของค่าที่อ่านสดก่อน/หลัง_
+
+---
+
+## TC-IADJ-810002 — FC Commit Stock Out เกิน on-hand ถูกปฏิเสธ สต๊อกไม่เปลี่ยนและใบยังเป็น draft
+
+> **As a** FC user, **I want** this Inventory Adjustment — Stock and Cost behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Critical · **Test Type:** Negative
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; ลง Stock In E2E-IA-B 2 ชั้นทาง API; อ่าน on-hand สดของ E2E-IA-B
+
+**Steps**
+
+1. API: สร้าง Stock Out E2E-IA-B จำนวน on-hand + 1 (หลังบ้านอาจปฏิเสธตั้งแต่สร้าง draft หรือตอน commit) แล้ว PATCH commit ถ้าสร้างได้
+2. อ่านสต๊อกและสถานะใบ
+3. หน้าจอ: สร้าง Stock Out จำนวน on-hand + 1 กด Commit แล้วยืนยัน
+
+**Expected**
+
+API: 4xx STOCK_OUT_INSUFFICIENT_STOCK และข้อความระบุ E2E-IA-B; on-hand ไม่เปลี่ยน; ถ้าสร้างใบได้ ใบยัง draft. หน้าจอ: แสดง error และยังอยู่ที่หน้าฟอร์มสร้าง
+
+> _Note: ส่วนต่างสดก่อน/หลัง ไม่ใช้ค่าสัมบูรณ์_
+
+---
+
+## TC-IADJ-810003 — FC Stock Out 2 บรรทัดสินค้าเดียวกันที่รวมกันเกิน on-hand ถูกปฏิเสธทั้งใบ
+
+> **As a** FC user, **I want** this Inventory Adjustment — Stock and Cost behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Critical · **Test Type:** Negative
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; ลง Stock In E2E-IA-B 2 ชั้นทาง API; อ่าน on-hand สด
+
+**Steps**
+
+1. สร้าง Stock Out draft ทาง API 2 บรรทัดของ E2E-IA-B บรรทัดละ ceil(on-hand/2)+1 (แต่ละบรรทัดพอจ่ายได้เดี่ยว ๆ แต่รวมกันเกิน)
+2. PATCH commit
+3. อ่านสต๊อก
+
+**Expected**
+
+ถูกปฏิเสธ 4xx STOCK_OUT_INSUFFICIENT_STOCK; ใบยัง draft; on-hand ไม่เปลี่ยน
+
+> _Note: Review Focus 4: ตรวจรวมทั้งใบ ไม่ใช่ทีละบรรทัด_
+
+---
+
+## TC-IADJ-810004 — FC Stock Out ลงวันที่นอกงวดปัจจุบันถูกปฏิเสธและสต๊อกไม่เปลี่ยน
+
+> **As a** FC user, **I want** this Inventory Adjustment — Stock and Cost behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** High · **Test Type:** Negative
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; ลง Stock In E2E-IA-B ทาง API; อ่านงวดจาก GET /inventory-periods
+
+**Steps**
+
+1. เลือกวันในงวดเปิดอื่นที่ไม่ใช่งวดปัจจุบัน ถ้าไม่มีใช้วันก่อนวันเริ่มของงวดเปิดแรกสุด
+2. สร้าง Stock Out E2E-IA-B × 1 ลงวันนั้นทาง API
+3. ถ้าสร้างได้ PATCH commit
+4. อ่านสต๊อก
+
+**Expected**
+
+ขั้นสร้างหรือ commit ตอบ 4xx STOCK_OUT_DATE_NOT_CURRENT_PERIOD หรือ STOCK_OUT_NO_OPEN_PERIOD; ไม่มีใบ completed; on-hand ไม่เปลี่ยน
+
+> _Note: เส้นทาง API เท่านั้น · ไม่มีงวดเปิดเลย = ล้มพร้อมเหตุผล ไม่ข้าม · เคสนี้ไม่ปิดและไม่สร้างงวด_
+
+---
+
+## TC-IADJ-810005 — FC Commit Stock Out ซ้ำ (ต่อเนื่องและพร้อมกัน) ตัดสต๊อกครั้งเดียว
+
+> **As a** FC user, **I want** this Inventory Adjustment — Stock and Cost behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Critical · **Test Type:** Concurrency
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; ลง Stock In E2E-IA-B 2 ชั้นทาง API; Stock Out draft 3 ใบ (E2E-IA-B × 2); อ่านสต๊อกก่อนแต่ละใบ
+
+**Steps**
+
+(ต่อเนื่อง) commit แล้ว commit ซ้ำ
+(a) ยิง commit 2 คำขอพร้อมกันด้วย doc_version เดียวกัน
+(b) ยิง commit 2 คำขอพร้อมกันโดยไม่ส่ง doc_version แล้ว commit ที่ถูกต้องอีกครั้ง
+
+**Expected**
+
+ต่อเนื่อง: ครั้งสอง 4xx STOCK_OUT_ONLY_DRAFT_COMMITTABLE; ทุกแบบ on-hand ลด 2 ครั้งเดียว และมี movement 1 บรรทัด
+(b) คำขอที่ไม่มี doc_version ถูกปฏิเสธ 4xx และไม่มี movement
+
+> _Note: R6: DTO บังคับ doc_version เป็นจำนวนเต็ม จึงทดสอบ (b) เป็น 'ไม่มี doc_version ต้องไม่ตัดอะไร'. ถ้า (b) ตัดซ้ำ = บั๊ก (ปักหมุด เหมือน 800004)_
+
+---
+
+## TC-IADJ-810006 — FC Void Stock Out ที่ commit แล้วคืนจำนวนและมูลค่ากลับเท่าก่อน commit
+
+> **As a** FC user, **I want** this Inventory Adjustment — Stock and Cost interaction to behave as expected, **so that** the workflow stays predictable.
+
+**Priority:** Critical · **Test Type:** Functional
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; ลง Stock In E2E-IA-B 2 ชั้นทาง API; อ่านสต๊อก (on-hand และมูลค่า) ก่อน commit Stock Out
+
+**Steps**
+
+1. สร้าง Stock Out E2E-IA-B × 15 ทาง API แล้ว commit
+2. อ่านสต๊อก
+3. Void ใบ (void_reason + doc_version ปัจจุบัน)
+4. อ่านสต๊อก
+
+**Expected**
+
+หลัง commit on-hand −15; หลัง void ส่วนต่างเทียบก่อน commit เป็น 0 ทั้งจำนวนและมูลค่า (คืนที่ต้นทุนที่ตัดไป)
+
+> _Note: ส่วนต่างของค่าที่อ่านสด ไม่ใช้ค่าสัมบูรณ์_
+
+---
+
+## TC-IADJ-810007 — FC Stock Out ที่ completed แล้วแก้/ลบไม่ได้ และ void ซ้ำถูกปฏิเสธ
+
+> **As a** FC user, **I want** this Inventory Adjustment — Stock and Cost behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** High · **Test Type:** Negative
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; ลง Stock In E2E-IA-B 2 ชั้นทาง API; Stock Out E2E-IA-B × 1 commit แล้ว
+
+**Steps**
+
+1. PATCH save (เปลี่ยนคำอธิบาย) ใบที่ completed
+2. DELETE ใบที่ completed
+3. Void ใบ
+4. Void ซ้ำ
+
+**Expected**
+
+save → 4xx STOCK_OUT_COMPLETED_NO_UPDATE; delete → 4xx STOCK_OUT_COMPLETED_NO_DELETE; void ครั้งแรกสำเร็จ; void ซ้ำ → 4xx
+
+> _Note: เส้นทาง API เท่านั้น (หน้าจอไม่แสดงปุ่มแก้/ลบของใบ completed)_
+
+---
+
+## TC-IADJ-820001 — FC Stock In ที่ void แล้วยังต้องเห็นได้ในระบบ (อ่านได้ สถานะ voided อยู่ในตัวกรอง Voided)
+
+> **As a** FC user, **I want** to filter the Inventory Adjustment — Stock and Cost list, **so that** I can narrow results to relevant records.
+
+**Priority:** High · **Test Type:** Functional
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; Stock In E2E-IA-B × 5 ต้นทุน 9 ทาง API commit แล้ว และหน้ารายการเห็นใบในตัวกรอง Completed
+
+**Steps**
+
+1. Void ใบ
+2. GET /stock-ins/:id
+3. ดึงรายการ doc_status=voided ทาง API
+4. เปิดหน้ารายการด้วยตัวกรอง Voided ค้นด้วยเลขที่ใบ
+
+**Expected**
+
+GET ตอบ 200 และ doc_status = voided; รายการ voided ทาง API มีใบนี้; หน้ารายการตัวกรอง Voided แสดงเลขที่ใบ
+
+> _Note: ผู้ใช้ตัดสิน 23 พ.ย.: ใบที่ void แล้วหายไป = บั๊ก (void ทำ soft-delete, stock-in.service.ts:1889-1900) — ปักหมุด test.fail หลัง void สำเร็จ_
+
+---
+
+## TC-IADJ-820002 — FC Stock Out ที่ void แล้วยังต้องเห็นได้ในระบบ (อ่านได้ สถานะ voided อยู่ในตัวกรอง Voided)
+
+> **As a** FC user, **I want** to filter the Inventory Adjustment — Stock and Cost list, **so that** I can narrow results to relevant records.
+
+**Priority:** High · **Test Type:** Functional
+
+**Preconditions**
+
+Login เป็น Admin; BU TEST; ลง Stock In E2E-IA-B 2 ชั้นทาง API; Stock Out E2E-IA-B × 3 commit แล้ว และหน้ารายการเห็นใบในตัวกรอง Completed
+
+**Steps**
+
+1. Void ใบ
+2. GET /stock-outs/:id
+3. ดึงรายการ doc_status=voided ทาง API
+4. เปิดหน้ารายการด้วยตัวกรอง Voided ค้นด้วยเลขที่ใบ
+
+**Expected**
+
+GET ตอบ 200 และ doc_status = voided; รายการ voided ทาง API มีใบนี้; หน้ารายการตัวกรอง Voided แสดงเลขที่ใบ
+
+> _Note: ผู้ใช้ตัดสิน 23 พ.ย.: ใบที่ void แล้วหายไป = บั๊ก — ปักหมุด test.fail หลัง void สำเร็จ_
+
+---
+
+
+<sub>Last regenerated: 2026-11-23 · git 40f23c6</sub>

@@ -321,4 +321,4 @@ TC-IADJ-700006 commit Stock In ไปแล้ว (คลังมี E2E-IA-A �
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git e942985</sub>
+<sub>Last regenerated: 2026-11-23 · git 40f23c6</sub>
