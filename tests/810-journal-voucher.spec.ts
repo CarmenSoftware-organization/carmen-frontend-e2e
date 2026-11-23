@@ -36,7 +36,7 @@ import { uid } from "./helpers/test-data";
 // Oracle points: reverse = posted manual JV only, creates a linked mirror JV with sides swapped (jv:247, jv:221-222);
 // void "keeps a reason" (jv:246, the doc does not say the reason is required: the BE refuses a missing one, asserted
 // as observed behaviour); AP/AR/inventory JVs are immutable projections, corrected from the source owner (jv:315).
-// Divergences from jv:241 / jv:246 are pinned `test.fail` with "needs product decision:" (bug list section 2).
+// Divergence from jv:241 is pinned `test.fail` with "needs product decision:" (bug list section 2). Owner 2026-11-23: void is for posted JVs only; a draft is deleted instead (TC-JV-040004/040005).
 // Auto-reverse (jv:300) and Schedule Post run from a scheduler, not on demand: out of scope, no case.
 // ─────────────────────────────────────────────────────────────────────────
 const test = createAuthTest("carmensoftware.dev+admin@gmail.com");
@@ -427,7 +427,7 @@ test.describe("Journal voucher (810)", () => {
   );
 
   test(
-    "TC-JV-040004 Void JV ที่ยังเป็นร่าง: oracle อนุญาต (jv:246) แต่ BE ปฏิเสธ 409 GL_JV_IMMUTABLE",
+    "TC-JV-040004 Void JV ที่ยังเป็นร่างถูกปฏิเสธ 409 GL_JV_IMMUTABLE: ฉบับร่างใช้ลบแทน void",
     {
       annotation: [
         { type: "preconditions", description: "JV ของเทสต์เอง draft (ยังไม่ Submit)" },
@@ -435,7 +435,7 @@ test.describe("Journal voucher (810)", () => {
         {
           type: "expected",
           description:
-            "200 และ jv_status void. rule: Void ใช้ได้ในสถานะ draft / submitted / scheduled / post_failed (jv:246), ส่วน posted ใช้ Reverse (jv:247). pinned: BE void ได้เฉพาะ JV ที่ posted; draft และ in_review ได้ 409 GL_JV_IMMUTABLE",
+            "409 รหัส GL_JV_IMMUTABLE; JV ยัง draft ไม่มี void_at. rule (owner 2026-11-23): void ใช้กับ JV ที่ลงบัญชีแล้วเท่านั้น ฉบับร่างให้ลบแทน (TC-JV-040005) ซึ่งต่างจาก jv:246 ที่ให้ void ฉบับร่างได้",
         },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
@@ -444,11 +444,35 @@ test.describe("Journal voucher (810)", () => {
     async () => {
       const jv = await createManualJv(BALANCED, tag("voiddraft"));
       const r = await voidJv(jv.id, "e2e");
-      expect(r.status, "void call did not get a real answer from the BE").not.toBe(401);
-      expect(r.status).toBeLessThan(500);
-      test.fail(true, `needs product decision: jv:246 allows void of a draft JV, the BE answers 409 GL_JV_IMMUTABLE. See ${BUG_LIST}`);
-      expect(r.status).toBe(200);
-      expect((await getJv(jv.id)).jv_status).toBe("void");
+      expect(r.status).toBe(409);
+      expect(r.body?.error?.code).toBe("GL_JV_IMMUTABLE");
+      const d = await getJv(jv.id);
+      expect(d.jv_status).toBe("draft");
+      expect(d.void_at ?? null).toBeNull();
+    },
+  );
+
+  test(
+    "TC-JV-040005 ลบ JV ฉบับร่างได้: DELETE สำเร็จแล้วเปิดใบนั้นไม่เจอ",
+    {
+      annotation: [
+        { type: "preconditions", description: "JV ของเทสต์เอง draft (ยังไม่ Submit); Admin" },
+        { type: "steps", description: "1. DELETE gl-jv/:id\n2. GET gl-jv/:id" },
+        {
+          type: "expected",
+          description:
+            "DELETE ตอบ 2xx; GET ใบเดิมหลังลบไม่คืนเอกสาร (404). rule (owner 2026-11-23): JV ฉบับร่างให้ลบได้ ส่วน void ใช้กับ JV ที่ลงบัญชีแล้ว",
+        },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
+      ],
+    },
+    async () => {
+      const jv = await createManualJv(BALANCED, tag("deldraft"));
+      const del = await buSend(CREATOR, "DELETE", `/gl-jv/${jv.id}`);
+      expect(del.status, JSON.stringify(del.body?.error ?? null)).toBeLessThan(300);
+      const after = await buSend(CREATOR, "GET", `/gl-jv/${jv.id}`);
+      expect(after.status).toBe(404);
     },
   );
 
