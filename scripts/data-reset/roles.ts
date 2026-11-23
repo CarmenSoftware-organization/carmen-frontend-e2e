@@ -32,10 +32,13 @@ async function grantedKeys(admin: ApiClient, bu: string, roleId: string): Promis
   return (detail?.permissions ?? []).filter((p) => p.is_granted).map((p) => `${p.resource}.${p.action}`);
 }
 
-async function targetCatalog(admin: ApiClient, bu: string): Promise<Map<string, string>> {
+async function targetCatalog(admin: ApiClient, bu: string): Promise<Map<string, string> | string> {
   const ids = new Map<string, string>();
   for (let page = 1; page <= 20; page++) {
-    const rows = rowsOf<CatalogRow>((await admin.get(`/api/config/${bu}/permissions?perpage=100&page=${page}`)).body);
+    const path = `/api/config/${bu}/permissions?perpage=100&page=${page}`;
+    const res = await admin.get(path);
+    if (!res.ok) return `GET ${path} → ${res.status}`;
+    const rows = rowsOf<CatalogRow>(res.body);
     for (const p of rows) ids.set(`${p.resource}.${p.action}`, p.id);
     if (rows.length < 100) break;
   }
@@ -69,6 +72,10 @@ export async function copyRolesFromSource(sessions: Sessions, cfg: ResetConfig):
     return result;
   }
   const catalog = await targetCatalog(admin, cfg.buCode);
+  if (typeof catalog === "string") {
+    result.failed.push(`cannot read ${cfg.buCode}'s permission catalog: ${catalog}`);
+    return result;
+  }
   const existing = await listRoles(admin, cfg.buCode);
   if (typeof existing === "string") {
     result.failed.push(`cannot read ${cfg.buCode}'s roles: ${existing}`);
@@ -81,7 +88,10 @@ export async function copyRolesFromSource(sessions: Sessions, cfg: ResetConfig):
       continue;
     }
     const absent = wantKeys.filter((k) => !catalog.has(k));
-    if (absent.length > 0) result.failed.push(`${role.name}: not in ${cfg.buCode}'s permission catalog: ${absent.join(", ")}`);
+    if (absent.length > 0) {
+      result.failed.push(`${role.name}: not in ${cfg.buCode}'s permission catalog: ${absent.join(", ")} — not copied`);
+      continue;
+    }
     const wantIds = wantKeys.filter((k) => catalog.has(k)).map((k) => catalog.get(k)!);
     const mine = existing.find((r) => r.name === role.name);
     if (!mine) {
