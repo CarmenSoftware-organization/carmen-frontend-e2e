@@ -82,6 +82,11 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    - ผูกกับ location แรก (1AG01) **ที่เดียว** และ **ไม่สร้างใบรับเข้า** — สต๊อกเริ่มที่ 0 ให้ spec ทดสอบต้นทุนของ adjustment
    - ประเภทปรับปรุง active 2 ตัว (ซ้ำได้ ใช้ code เป็นกุญแจ): `E2E-IA-IN` (stock_in) / `E2E-IA-OUT` (stock_out) — spec เลือกด้วย code ไม่พึ่ง EOP-* / SALE
    - verify: `ia.adjustment-types` (มีทั้งสองตัวและ active) · `ia.products` (มีทั้งสองรหัส) · `ia.no-stock` (`inventory-info` on-hand ของทั้งสองที่ location นั้น = 0)
+7d. ฐาน doc-flow (`docs/doc-flow.ts`, ขั้น `doc-flow` ต่อจาก `ia`):
+   - สินค้า `E2E-DF-1..4` (สร้างถ้ายังไม่มี — ใช้ code เป็นกุญแจ) คัดลอก item group / หน่วยคลังจากสินค้าตัวแรก **ไม่สร้างใบรับเข้า** สต๊อกเป็น 0
+   - คู่ location: เริ่มจาก inventory 2 ตัวแรกของ context แล้วตรวจกับ workflow Store Requisition ที่ seed จริง — ต้องเป็น location ที่ active และผู้ใช้ **ทุกคนที่อยู่ใน stage ของ SR** ใช้ได้ (`locations-users`) ถ้าไม่ผ่านจะใช้ inventory 2 ตัวแรกที่ผ่าน (ตามรหัส) หาไม่ครบ 2 = ขั้นล้ม ไม่ fallback · บันทึกเป็น `doc-flow.locations`
+   - เพิ่มสินค้าทั้ง 4 เข้า `data.products` ของ **ทุก workflow** ที่มีรายการสินค้า (PUT ทั้งก้อนพร้อม `doc_version`, ข้ามถ้ามีครบแล้ว) แล้วเรียก `products-location-workflow/<จาก>/<ถึง>/<SR>` ยืนยันว่าตัวเลือก SR เห็นครบ 4
+   - verify: `doc-flow.products` · `doc-flow.locations` · `doc-flow.sr-products` (อยู่ในรายการของ SR) · `doc-flow.links-no-stock` (ผูกครบทั้งสอง location และ on-hand = 0)
 8. ตรวจนับทั้ง BU เทียบตาราง (`verify-dataset.ts`) — แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้ แล้วจบด้วย exit 1
 
 ## ถ้า reset ตอบ 504 / timeout

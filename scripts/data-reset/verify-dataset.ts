@@ -5,6 +5,7 @@
 import type { ApiClient } from "../seed-master/api-client";
 import type { ResetConfig } from "./config";
 import { READ_SET, listAll } from "./docs/accounting";
+import { DF_PRODUCTS } from "./docs/doc-flow";
 import { refId } from "./docs/refs";
 import type { RowLedger } from "./docs/row-ledger";
 import { localDate, planNextPeriod } from "./period";
@@ -182,6 +183,50 @@ async function verifyIa(admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<R
   return { lines, short };
 }
 
+/**
+ * Read back what the doc-flow step promises: the four E2E-DF products exist, each linked to both chosen
+ * locations, each in the Store Requisition workflow's product list, with nothing on hand.
+ * Only runs when the doc-flow step recorded its rows.
+ */
+async function verifyDocFlow(admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<RowLedger["rows"]>): Promise<{ lines: string[]; short: string[] }> {
+  const lines: string[] = [];
+  const short: string[] = [];
+  const codes = DF_PRODUCTS as readonly string[];
+  const locationIds = seeded["doc-flow.locations"]?.docNos[0]?.split(",") ?? [];
+  if (!codes.some((c) => seeded[`doc-flow.${c}`]) && locationIds.length === 0) return { lines, short };
+  const bu = cfg.buCode;
+  const check = (row: string, ok: boolean, detail: string) => {
+    lines.push(`${row.padEnd(22)}${String(1).padStart(5)}${String(ok ? 1 : 0).padStart(7)}${ok ? "" : "  ✗"}`);
+    if (!ok) short.push(`${row}: ${detail}`);
+  };
+  const products = new Map((await listAll(admin, `/api/config/${bu}/products`)).map((r) => [String(r.code), r]));
+  const missing = codes.filter((c) => !products.has(c));
+  check("doc-flow.products", missing.length === 0, `missing product ${missing.join(", ")}`);
+  check("doc-flow.locations", locationIds.length === 2, "no location pair recorded");
+  const srId = ((await listAll(admin, `/api/config/${bu}/workflows`)).find((w) => w.workflow_type === "store_requisition") ?? {}).id;
+  const sr = srId ? (await admin.get(`/api/config/${bu}/workflows/${srId}`)).body?.data : undefined;
+  const inSr = new Set<string>((sr?.data?.products ?? []).map((p: any) => String(p.code)));
+  const notInSr = codes.filter((c) => !inSr.has(c));
+  check("doc-flow.sr-products", notInSr.length === 0, `not in the Store Requisition workflow product list: ${notInSr.join(", ")}`);
+  const today = localDate(new Date()).day;
+  const bad: string[] = [];
+  for (const code of codes) {
+    const id = products.get(code)?.id;
+    if (!id) continue;
+    const detail = await admin.get(`/api/config/${bu}/products/${id}`);
+    const linked = new Set<string>(((detail.body?.data?.locations ?? []) as any[]).map((l) => refId(l, "location") ?? ""));
+    const lacking = locationIds.filter((l) => !linked.has(l));
+    if (lacking.length > 0) bad.push(`${code} (not linked to ${lacking.length} location)`);
+    for (const locationId of locationIds) {
+      const info = await admin.get(`/api/${bu}/inventory-info/${id}/${locationId}?at_date=${today}`);
+      const onHand = Number(info.body?.data?.on_hand_qty);
+      if (!info.ok || onHand !== 0) bad.push(`${code} (on hand ${info.ok ? onHand : `HTTP ${info.status}`})`);
+    }
+  }
+  check("doc-flow.links-no-stock", missing.length === 0 && locationIds.length === 2 && bad.length === 0, bad.join(", ") || "unreadable");
+  return { lines, short };
+}
+
 /** The period step promises next month's inventory period (pre-generated, open) beside the current one. */
 async function verifyNextPeriod(admin: ApiClient, cfg: ResetConfig, now: Date): Promise<{ lines: string[]; short: string[] }> {
   const next = planNextPeriod(now);
@@ -227,6 +272,9 @@ export async function verifyDataset(
   const ia = await verifyIa(admin, cfg, seeded);
   lines.push(...ia.lines);
   short.push(...ia.short);
+  const docFlow = await verifyDocFlow(admin, cfg, seeded);
+  lines.push(...docFlow.lines);
+  short.push(...docFlow.short);
   const nextPeriod = await verifyNextPeriod(admin, cfg, now);
   lines.push(...nextPeriod.lines);
   short.push(...nextPeriod.short);

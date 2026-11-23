@@ -14,6 +14,7 @@ import { seedPrTemplate, seedPurchaseRequests } from "./purchase-requests";
 import { seedPurchaseOrders } from "./purchase-orders";
 import { seedReceiving } from "./receiving";
 import { RowLedger } from "./row-ledger";
+import { seedDocFlow } from "./doc-flow";
 import { seedIa } from "./ia";
 import { seedPos } from "./pos";
 import { seedStock } from "./stock";
@@ -24,6 +25,7 @@ export interface DocumentSteps {
   stock: typeof seedStock;
   pos: typeof seedPos;
   ia: typeof seedIa;
+  docFlow: typeof seedDocFlow;
   prTemplate: typeof seedPrTemplate;
   purchaseRequests: typeof seedPurchaseRequests;
   purchaseOrders: typeof seedPurchaseOrders;
@@ -39,6 +41,7 @@ const DEFAULT_STEPS: DocumentSteps = {
   stock: seedStock,
   pos: seedPos,
   ia: seedIa,
+  docFlow: seedDocFlow,
   prTemplate: seedPrTemplate,
   purchaseRequests: seedPurchaseRequests,
   purchaseOrders: seedPurchaseOrders,
@@ -81,6 +84,7 @@ export async function seedAllDocuments(
   results.push(await guard("stock", () => s.stock(sessions, cfg, ctx, ledger), {}));
   results.push(await guard("pos", () => s.pos(sessions, cfg, ctx, ledger), {}));
   results.push(await guard("ia", () => s.ia(sessions, cfg, ctx, ledger), {}));
+  results.push(await guard("doc-flow", () => s.docFlow(sessions, cfg, ctx, ledger), {}));
   results.push(await guard("pr-template", () => s.prTemplate(sessions, cfg, ctx, ledger), {}));
   const prs = await guard("purchase-requests", () => s.purchaseRequests(sessions, cfg, ctx, ledger), { reservedForPo: "" });
   results.push(strip(prs));

@@ -119,7 +119,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log("accounting-roles: would create \"Accounting Approver\" (budget: AP void, JV void / post / reverse) and \"Accounting Viewer\" (requestor: view only) from the BU's permission catalog, unless they exist");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
     log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today, then ensure ${JSON.stringify(planNextPeriod(now))} exists via POST /next`);
-    log("documents: would create 5 stock-ins, 1 PR template, 41 PRs, 7 POs, 4 GRNs, 2 CNs, 7 SRs, 3 price lists, 3 campaigns, the accounting read set (8 AP documents incl. payments, 1 JV, 1 JV template), then verify the counts");
+    log("documents: would create 5 stock-ins, 4 doc-flow products, 1 PR template, 41 PRs, 7 POs, 4 GRNs, 2 CNs, 7 SRs, 3 price lists, 3 campaigns, the accounting read set (8 AP documents incl. payments, 1 JV, 1 JV template), then verify the counts");
     return 0;
   }
 
