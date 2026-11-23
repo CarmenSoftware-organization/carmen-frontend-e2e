@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1256 |
-| **Running** | **1103** |
+| Cases declared | 1333 |
+| **Running** | **1180** |
 | Skipped | 153 |
 | Fixme | 0 |
-| **Dormant** (skipped + fixme) | **12%** |
+| **Dormant** (skipped + fixme) | **11%** |
 | Running cases asserting only through a page-object helper | 29 |
 | **Running cases asserting nothing at all** | **0** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 23 |
-| Assertions in running cases | 2837 |
+| Assertions in running cases | 3281 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -83,7 +83,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `402-po-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 80 | 0 |
 | `403-po-approver-journey.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 71 | 0 |
 | `404-po-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 17 | 1 |
-| `501-grn.spec.ts` | 54 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 179 | 2 |
+| `501-grn.spec.ts` | 54 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 180 | 2 |
 | `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |
 | `603-cn-doc-flow.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 21 | 0 |
@@ -94,6 +94,14 @@ Sorted by dormant share, then by cases that assert nothing.
 | `720-stock-issue.spec.ts` | 20 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 53 | 0 |
 | `721-sr-issue-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 9 | 0 | 0 | 10 | 1 |
 | `730-inventory-adjustment-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 11 | 0 | 0 | 1 | 1 |
+| `801-ap-invoice.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 115 | 0 |
+| `802-ap-doc-types.spec.ts` | 10 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 51 | 0 |
+| `803-ap-payment.spec.ts` | 10 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 55 | 0 |
+| `804-ap-payment-approvals.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 36 | 0 |
+| `805-ap-from-grn.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 38 | 0 |
+| `810-journal-voucher.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 99 | 0 |
+| `811-jv-template.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 35 | 0 |
+| `820-accounting-settings.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `900-period-end.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 46 | 0 |
 | `910-period-close-prestep.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | **2** | 8 | 1 |
 | `911-period-close-blockers.spec.ts` | 1 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 2 | 0 |
