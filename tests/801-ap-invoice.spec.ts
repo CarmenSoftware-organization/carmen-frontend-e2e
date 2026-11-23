@@ -695,7 +695,7 @@ requestorTest.describe("AP invoice (801) - Requestor (viewer)", () => {
       await expect(ap.statusChip()).toHaveText(/posted/i);
       requestorTest.fail(
         true,
-        "suspected bug: view-only Requestor gets an enabled Void on a posted AP invoice - apActions() (shared/ap-status.ts) offers void on status alone and ap-invoice-detail.tsx has no permission gate; only the gateway refuses (403). See docs/superpowers/specs/2026-11-23-e2e-phase-2a-bug-list.md",
+        "suspected bug: view-only Requestor gets an enabled Void on a posted AP invoice - apActions() (shared/ap-status.ts) offers void on status alone and ap-invoice-detail.tsx has no permission gate; only the gateway refuses (403); owner confirmed 2026-11-23: hide Void without the right (the right will come from the workflow). See docs/superpowers/specs/2026-11-23-e2e-phase-2a-bug-list.md",
       );
       await expect(ap.voidButton()).toHaveCount(0);
     },
