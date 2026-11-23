@@ -412,7 +412,6 @@ test.describe("Stock Out", () => {
     async ({ page }) => {
       const stored = await byId("stock-out", draftId);
       expect(stored.status, "the draft must exist before the pin").toBe("draft");
-      test.fail(true, "known bug FE-5: a reopened Stock Out draft shows estimated cost 0.00 (Cost/Unit; Total Cost carries the estimate now)");
       await adj.expectDraftShown(page, "stock-out", draftId, lines(), DESC);
       // On TEST BU the Total Cost column now carries the estimate (-50.00 / -40.00); the Cost/Unit column of the same row is still 0.00.
       const heads = (await page.locator("table thead th").allInnerTexts()).map((t) => t.trim());
@@ -420,6 +419,9 @@ test.describe("Stock Out", () => {
       expect(col, `Cost/Unit column in the view table (headers: ${heads.join(" | ")})`).toBeGreaterThanOrEqual(0);
       const costs: string[] = [];
       for (const l of lines()) costs.push((await itemRow(page, l.product).locator("td").nth(col).innerText()).trim());
+      expect(costs, "a Cost/Unit cell was read for every line").toHaveLength(lines().length);
+      // Pinned only now: the page opened, the rows and qty matched and the Cost/Unit column was found.
+      test.fail(true, "known bug FE-5: a reopened Stock Out draft shows estimated cost 0.00 (Cost/Unit; Total Cost carries the estimate now)");
       expect(costs.filter((c) => /^0(\.0+)?$/.test(c)), `estimated cost lost on reopen: Cost/Unit per row = ${costs.join(" · ")}`).toHaveLength(0);
     },
   );
