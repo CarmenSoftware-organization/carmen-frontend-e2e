@@ -69,7 +69,7 @@ Strict regex: `^TC-[A-Z]{2,5}-\d{6}$`
 | `820-accounting-settings.spec.ts` | `ACCT` | 01–03 | Accounting settings and dashboards smoke on TEST BU: seeded `gl_setting` accounts shown by code (01), view-only role cannot save (02), AP and GL dashboards show a figure (03) |
 | `701-sr.spec.ts` | `SR` | 01–12, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = movement doc flow (`702-sr-doc-flow.spec.ts`) |
 | `720-stock-issue.spec.ts` | `SI` | 01–06, 70–71, 90 | CRUD + sub-journeys + edge cases; 70–71 = movement SR → Issue flow, AVG / FIFO (`721-sr-issue-doc-flow.spec.ts`) |
-| `730-inventory-adjustment-doc-flow.spec.ts` | `IADJ` | 01–06, 10, 20, 30, 70–71, 90 | Movement doc flow: 70 = Stock In, 71 = Stock Out; the rest are open cases in `test-cases/gaps/730-inventory-adjustment-gap.md` |
+| `731-inventory-adjustment.spec.ts` | `IADJ` | 01–06, 10, 20, 30, 70–71, 80–82, 90 | Inventory Adjustment on TEST BU (main suite). 731: 70 = Stock In, 71 = Stock Out doc flow (draft, view, edit, delete, Commit); 732 (`732-inventory-adjustment-stock.spec.ts`): 80 = Stock In stock, 81 = Stock Out stock, 82 = void outcome; the rest are open cases in `test-cases/gaps/730-inventory-adjustment-gap.md` |
 | `900-period-end.spec.ts` | `PE` | 01–04, 31–34, 40–42, 44, 46–54, 90 | CRUD + integration + edge cases; 40–54 = movement period-close phases (`910`–`924-period-close-*.spec.ts`, one section per phase; 43 and 45 were p03-only regressions, dropped) |
 | `1001-campaign.spec.ts` | `CAM` | 01–10, 90 | CRUD + sub-journeys + edge cases |
 | `710-wastage-reporting.spec.ts` | `WAST` | 01–05, 10, 20, 90 | Lot-based wastage read-only |

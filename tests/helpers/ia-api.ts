@@ -145,6 +145,8 @@ export interface IaReady {
   productA: { id: string; code: string };
   productB: { id: string; code: string };
   locationId: string;
+  /** Name of that location, what the form's Location lookup is searched with. */
+  locationName: string;
   adjustmentTypeIn: string;
   adjustmentTypeOut: string;
   today: string;
@@ -168,8 +170,9 @@ export async function assertIaReady(): Promise<IaReady> {
     const hit = rows(r.body).find((p) => p.code === code);
     if (!hit) return fail(`product ${code} is missing - run data:reset`);
     const d = must(`product ${code}`, await buConfigSend(ROLE, "GET", `/products/${hit.id}`)).body?.data;
-    const locs = ((d?.locations ?? []) as any[]).filter((l) => l.is_active !== false).map((l) => l.location?.id as string);
-    return { id: hit.id as string, code, locs };
+    const active = ((d?.locations ?? []) as any[]).filter((l) => l.is_active !== false);
+    const locs = active.map((l) => l.location?.id as string);
+    return { id: hit.id as string, code, locs, locName: String(active[0]?.location?.name ?? "") };
   };
   const [a, b] = [await found(PRODUCT_A), await found(PRODUCT_B)];
   if (a.locs.length !== 1 || b.locs.length !== 1 || a.locs[0] !== b.locs[0]) {
@@ -188,5 +191,5 @@ export async function assertIaReady(): Promise<IaReady> {
   const day = (iso: string) => String(iso).slice(0, 10);
   if (today < day(p.body.data.start_at) || today > day(p.body.data.end_at)) fail(`no open period contains today (${today})`);
 
-  return { productA: { id: a.id, code: a.code }, productB: { id: b.id, code: b.code }, locationId: a.locs[0], adjustmentTypeIn, adjustmentTypeOut, today };
+  return { productA: { id: a.id, code: a.code }, productB: { id: b.id, code: b.code }, locationId: a.locs[0], locationName: a.locName, adjustmentTypeIn, adjustmentTypeOut, today };
 }
