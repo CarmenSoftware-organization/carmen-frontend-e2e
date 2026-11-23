@@ -26,6 +26,9 @@ touches:
 (a) ไม่มีผลสต๊อก → ไม่ void, ติดป้าย description "E2E-IA 732 accepted-bad" แล้ว cleanup ปล่อยไว้;
 (b) มีผลสต๊อก → void แล้วยืนยันว่า on-hand กลับเท่าค่าก่อน commit ถ้าไม่กลับ ถือเป็นบั๊กแยกอีกข้อ (void-symmetry)
 cleanup จะ throw ถ้า void ในเคสล้มเหลว ไม่ปล่อยให้สต๊อกรั่วเงียบ ๆ
+23 พ.ย. 2026 มี BU ทดสอบบน dev สามตัว แยกตามวิธีคิดต้นทุน:
+TEST BU (AVG) = BU-GR2VYNKQ (เดิม GR2VYNKQ, รหัสเดิมตอบ 403 แล้ว), TEST BU (FIFO) = BU-96EAT3GX, TEST BU (AVG-LOCATION) = BU-0706T34Y (Average per location)
+เคสที่ผลขึ้นกับวิธีคิดต้นทุนควรรันครบทั้งสาม BU
 
 ## Tried and ruled out
 - ย้ายแค่ doc-flow แล้วปล่อย period-close ไว้บน CARMEN-AVG/FIFO (ทางที่แนะนำ): user ไม่เอา อยากให้ทุกชุดอยู่ BU เดียว
@@ -41,3 +44,8 @@ In the code: playwright.config.ts (projects movement / period-close, E2E_MOVEMEN
 ยอดมูลค่าใน ledger อัปเดตช้ากว่าสถานะเอกสาร ต้องอ่าน delta ผ่าน expect.poll เสมอ
 
 In the code: tests/helpers/ia-api.ts (cleanupIaRun, leakedBad), tests/732-inventory-adjustment-stock.spec.ts, bug list docs/*inventory-adjustment-bug-list.md
+- รหัส BU ถูกใช้ประกอบ URL ของ API ทุกเส้น (/api/<code>/..., /api/config/<code>/...) เปลี่ยนรหัสบน dev = เทสทั้งชุดพังทันที ต้องแก้ค่าคงที่และ fixture ของ data:reset ตาม
+- 23 พ.ย. ตอนเปิดใช้: BU-96EAT3GX ยังไม่มีสินค้า, BU-0706T34Y ตอบ 503
+- dev :4001 ไม่ส่ง intermediate cert (Let's Encrypt YE2) → Bun/Node ขึ้น "unable to verify the first certificate" ทำให้ data:reset รันไม่ได้ ส่วน curl บน macOS ผ่าน แก้ที่ server ให้เสิร์ฟ fullchain
+
+In the code: tests/test-users.ts BU_CODE, scripts/data-reset/fixtures/workflows.json bu_code, scripts/data-reset/workflow-template.ts, tests/helpers/bu-api.ts
