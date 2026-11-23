@@ -361,7 +361,7 @@ test.describe("JV templates (811)", () => {
         expect(g.status, JSON.stringify(g.body)).toBeLessThan(300);
         const got = await jvLines(String(g.body.data.jv_id));
         expect(got, "generated JV lines were not read back from the BE").toHaveLength(3);
-        test.fail(true, `suspected bug: the allocation split is stored unrounded (333.30333 / 666.70667), the foundation rule is HALF_UP per line at 2 decimals. See ${BUG_LIST}`);
+        test.fail(true, `suspected bug: the allocation split is stored unrounded (333.30333 / 666.70667), the foundation rule is HALF_UP per line at 2 decimals (owner confirmed 2026-11-23: must round to 2 decimals). See ${BUG_LIST}`);
         expect(got).toEqual([
           { account: "5300", dr: exp1, cr: 0 },
           { account: "5100", dr: exp2, cr: 0 },
