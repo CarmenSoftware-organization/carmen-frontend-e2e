@@ -14,12 +14,14 @@ import { seedPrTemplate, seedPurchaseRequests } from "./purchase-requests";
 import { seedPurchaseOrders } from "./purchase-orders";
 import { seedReceiving } from "./receiving";
 import { RowLedger } from "./row-ledger";
+import { seedPos } from "./pos";
 import { seedStock } from "./stock";
 import { seedStoreRequisitions } from "./store-requisitions";
 
 export interface DocumentSteps {
   context: typeof resolveSeedContext;
   stock: typeof seedStock;
+  pos: typeof seedPos;
   prTemplate: typeof seedPrTemplate;
   purchaseRequests: typeof seedPurchaseRequests;
   purchaseOrders: typeof seedPurchaseOrders;
@@ -33,6 +35,7 @@ export interface DocumentSteps {
 const DEFAULT_STEPS: DocumentSteps = {
   context: resolveSeedContext,
   stock: seedStock,
+  pos: seedPos,
   prTemplate: seedPrTemplate,
   purchaseRequests: seedPurchaseRequests,
   purchaseOrders: seedPurchaseOrders,
@@ -73,6 +76,7 @@ export async function seedAllDocuments(
   const ledger = new RowLedger();
   const results: StepResult[] = [];
   results.push(await guard("stock", () => s.stock(sessions, cfg, ctx, ledger), {}));
+  results.push(await guard("pos", () => s.pos(sessions, cfg, ctx, ledger), {}));
   results.push(await guard("pr-template", () => s.prTemplate(sessions, cfg, ctx, ledger), {}));
   const prs = await guard("purchase-requests", () => s.purchaseRequests(sessions, cfg, ctx, ledger), { reservedForPo: "" });
   results.push(strip(prs));

@@ -65,10 +65,12 @@ export function createApiClient(
 
   async function request(method: string, path: string, body?: unknown): Promise<ApiResult> {
     const hasBody = body !== undefined;
+    // FormData goes out as multipart: fetch sets the boundary header itself, so no Content-Type here.
+    const multipart = body instanceof FormData;
     const res = await fetchFn(`${cfg.backendUrl}${path}`, {
       method,
-      headers: hasBody ? { ...authHeaders, "Content-Type": "application/json" } : authHeaders,
-      body: hasBody ? JSON.stringify(body) : undefined,
+      headers: hasBody && !multipart ? { ...authHeaders, "Content-Type": "application/json" } : authHeaders,
+      body: !hasBody ? undefined : multipart ? body : JSON.stringify(body),
     });
     const text = await res.text();
     let parsed: any = null;

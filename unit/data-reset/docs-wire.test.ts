@@ -169,6 +169,7 @@ describe("exceptions never abort the document half (I1)", () => {
     const results = await seedAllDocuments(createSessions(cfg, fakeBackend({}).fetchFn), cfg, users, new Date(), {
       context: async () => ctx,
       stock: async () => { throw new Error("fetch failed"); },
+      pos: ok("pos"),
       prTemplate: ok("pr-template"),
       purchaseRequests: ok("purchase-requests", { reservedForPo: "" }),
       purchaseOrders: ok("purchase-orders", { forGrn: { full: "", partial: "" } }),
