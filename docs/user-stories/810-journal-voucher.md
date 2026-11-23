@@ -5,7 +5,7 @@ _Generated from `tests/810-journal-voucher.spec.ts` annotations. Edit annotation
 **Module:** Journal Voucher
 **Spec:** `tests/810-journal-voucher.spec.ts`
 **Default role:** Admin
-**Total test cases:** 14 (4 High / 5 Medium / 0 Low / 5 unset)
+**Total test cases:** 15 (5 High / 5 Medium / 0 Low / 5 unset)
 
 ## Test Cases at a Glance
 
@@ -21,7 +21,8 @@ _Generated from `tests/810-journal-voucher.spec.ts` annotations. Edit annotation
 | TC-JV-040001 | Void JV ทำมือที่ลงบัญชีแล้ว (API): สถานะ void เก็บเหตุผลและเวลา ไม่มี JV ใหม่เกิดขึ้น | Critical | Functional |
 | TC-JV-040002 | Void JV จากหน้า UI: ปุ่มยืนยันปิดจนกรอกเหตุผล แล้ว Voucher voided และสถานะ VOID | High | Functional |
 | TC-JV-040003 | Void โดยไม่ส่งเหตุผล: BE ปฏิเสธ 422 GL_JV_VOID_REASON_REQUIRED และ JV ยัง posted | Medium | Negative |
-| TC-JV-040004 | Void JV ที่ยังเป็นร่าง: oracle อนุญาต (jv:246) แต่ BE ปฏิเสธ 409 GL_JV_IMMUTABLE | Medium | Functional |
+| TC-JV-040004 | Void JV ที่ยังเป็นร่างถูกปฏิเสธ 409 GL_JV_IMMUTABLE: ฉบับร่างใช้ลบแทน void | Medium | Functional |
+| TC-JV-040005 | ลบ JV ฉบับร่างได้: DELETE สำเร็จแล้วเปิดใบนั้นไม่เจอ | High | Functional |
 | TC-JV-050001 | Reverse JV ทำมือที่ลงบัญชีแล้วลงวันถัดไป: JV กลับรายการ posted สมดุล สลับ Dr/Cr ผูกกับต้นฉบับ | Critical | Functional |
 | TC-JV-050002 | Reverse JV ใบเดิมซ้ำ: ถูกปฏิเสธ 409 และไม่มี JV กลับรายการใบที่สอง | High | Negative |
 | TC-JV-060001 | JV ที่ AP สร้าง (subledger): Void และ Reverse ตรง ๆ ถูกปฏิเสธ 409 GL_JV_IMMUTABLE และใบ AP ต้นทางยัง posted | Critical | Negative |
@@ -254,7 +255,7 @@ JV ของเทสต์เอง posted
 
 ---
 
-## TC-JV-040004 — Void JV ที่ยังเป็นร่าง: oracle อนุญาต (jv:246) แต่ BE ปฏิเสธ 409 GL_JV_IMMUTABLE
+## TC-JV-040004 — Void JV ที่ยังเป็นร่างถูกปฏิเสธ 409 GL_JV_IMMUTABLE: ฉบับร่างใช้ลบแทน void
 
 > **As a** Admin user, **I want** this Journal Voucher interaction to behave as expected, **so that** the workflow stays predictable.
 
@@ -271,7 +272,28 @@ JV ของเทสต์เอง draft (ยังไม่ Submit)
 
 **Expected**
 
-200 และ jv_status void. rule: Void ใช้ได้ในสถานะ draft / submitted / scheduled / post_failed (jv:246), ส่วน posted ใช้ Reverse (jv:247). pinned: BE void ได้เฉพาะ JV ที่ posted; draft และ in_review ได้ 409 GL_JV_IMMUTABLE
+409 รหัส GL_JV_IMMUTABLE; JV ยัง draft ไม่มี void_at. rule (owner 2026-11-23): void ใช้กับ JV ที่ลงบัญชีแล้วเท่านั้น ฉบับร่างให้ลบแทน (TC-JV-040005) ซึ่งต่างจาก jv:246 ที่ให้ void ฉบับร่างได้
+
+---
+
+## TC-JV-040005 — ลบ JV ฉบับร่างได้: DELETE สำเร็จแล้วเปิดใบนั้นไม่เจอ
+
+> **As a** Admin user, **I want** this Journal Voucher interaction to behave as expected, **so that** the workflow stays predictable.
+
+**Priority:** High · **Test Type:** Functional
+
+**Preconditions**
+
+JV ของเทสต์เอง draft (ยังไม่ Submit); Admin
+
+**Steps**
+
+1. DELETE gl-jv/:id
+2. GET gl-jv/:id
+
+**Expected**
+
+DELETE ตอบ 2xx; GET ใบเดิมหลังลบไม่คืนเอกสาร (404). rule (owner 2026-11-23): JV ฉบับร่างให้ลบได้ ส่วน void ใช้กับ JV ที่ลงบัญชีแล้ว
 
 ---
 
@@ -344,4 +366,4 @@ Void และ Reverse ได้ 409 รหัส GL_JV_IMMUTABLE ทั้ง�
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git 03324d2</sub>
+<sub>Last regenerated: 2026-11-23 · git 01e02cd</sub>
