@@ -104,9 +104,10 @@ export async function cleanupPosRun(storeKey: string): Promise<void> {
     const detail = must(`import ${imp.id}`, await importDetail(imp.id)).body?.data;
     if (detail?.store?.store_key !== storeKey) continue;
     const sc = imp.sales_consumption as { id: string; status: ScStatus } | null;
-    if (sc?.status === "posted") {
+    if (sc) {
+      // Re-read: two imports of one store/day share an SC, an earlier iteration may have voided it.
       const d = must(`sc ${sc.id}`, await scDetail(sc.id)).body?.data;
-      must(`void sc ${sc.id}`, await scVoid(sc.id, "e2e cleanup", Number(d.doc_version)));
+      if (d?.status === "posted") must(`void sc ${sc.id}`, await scVoid(sc.id, "e2e cleanup", Number(d.doc_version)));
     }
     must(`cancel import ${imp.id}`, await cancelImport(imp.id));
   }
