@@ -43,22 +43,25 @@ test.beforeAll(async () => {
 
 /**
  * Cleanup by description stamp, read from the API (not from in-memory ids) so a failed case is
- * still cleaned. Drafts are deleted; the submitted PO is deleted too if the API allows it
- * (otherwise it stays in progress — reported, not failed).
+ * still cleaned. Only drafts can be deleted; the submitted PO is left in progress
+ * (warned) until the next data:reset. Failures throw so the hook fails visibly.
  */
 test.afterAll(async () => {
   test.setTimeout(180_000);
-  try {
-    const { status, body } = await dfGet(`/purchase-orders?search=${encodeURIComponent(DESC)}&perpage=100`, "Admin", BU);
-    if (status !== 200) return;
-    for (const d of (body?.data ?? []) as any[]) {
-      if (!String(d.description ?? "").startsWith(DESC)) continue;
-      const r = await buSend("Admin", "DELETE", `/purchase-orders/${d.id}`, undefined, BU);
-      if (r.status >= 300) console.warn(`cleanup: PO ${d.po_no} (${d.po_status}) not deleted — HTTP ${r.status}`);
+  const { status, body } = await dfGet(`/purchase-orders?search=${encodeURIComponent(DESC)}&perpage=100`, "Admin", BU);
+  if (status !== 200) throw new Error(`cleanup: list purchase-orders HTTP ${status} ${JSON.stringify(body).slice(0, 300)}`);
+  const failures: string[] = [];
+  for (const d of (body?.data ?? []) as any[]) {
+    if (!String(d.description ?? "").startsWith(DESC)) continue;
+    if (d.po_status !== "draft") {
+      // only drafts can be deleted (no cancel endpoint) — submitted docs wait for the next data:reset
+      console.warn(`cleanup: left ${d.po_no} in ${d.po_status} until next data:reset`);
+      continue;
     }
-  } catch (e) {
-    console.warn("cleanup: PO", e);
+    const r = await buSend("Admin", "DELETE", `/purchase-orders/${d.id}`, undefined, BU);
+    if (r.status >= 300) failures.push(`${d.po_no ?? d.id} HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
   }
+  if (failures.length) throw new Error(`cleanup: PO draft(s) not deleted: ${failures.join(" | ")}`);
 });
 
 // Finding FE-1: the PO page calls previous-stages even for a draft (no stage yet) → certain 404.

@@ -30,22 +30,25 @@ test.beforeAll(async () => {
 
 /**
  * Cleanup by description stamp, read from the API (not from in-memory ids) so a failed case is
- * still cleaned. Drafts are deleted; the submitted PR is deleted too if the API allows it
- * (otherwise it stays in progress — reported, not failed).
+ * still cleaned. Only drafts can be deleted; the submitted PR is left in progress
+ * (warned) until the next data:reset. Failures throw so the hook fails visibly.
  */
 test.afterAll(async () => {
   test.setTimeout(180_000);
-  try {
-    const { status, body } = await dfGet(`/purchase-requests?search=${encodeURIComponent(DESC)}&perpage=100`, "Admin", BU);
-    if (status !== 200) return;
-    for (const d of (body?.data ?? []) as any[]) {
-      if (!String(d.description ?? "").startsWith(DESC)) continue;
-      const r = await buSend("Admin", "DELETE", `/purchase-requests/${d.id}`, undefined, BU);
-      if (r.status >= 300) console.warn(`cleanup: PR ${d.pr_no} (${d.pr_status}) not deleted — HTTP ${r.status}`);
+  const { status, body } = await dfGet(`/purchase-requests?search=${encodeURIComponent(DESC)}&perpage=100`, "Admin", BU);
+  if (status !== 200) throw new Error(`cleanup: list purchase-requests HTTP ${status} ${JSON.stringify(body).slice(0, 300)}`);
+  const failures: string[] = [];
+  for (const d of (body?.data ?? []) as any[]) {
+    if (!String(d.description ?? "").startsWith(DESC)) continue;
+    if (d.pr_status !== "draft") {
+      // only drafts can be deleted (no cancel endpoint) — submitted docs wait for the next data:reset
+      console.warn(`cleanup: left ${d.pr_no} in ${d.pr_status} until next data:reset`);
+      continue;
     }
-  } catch (e) {
-    console.warn("cleanup: PR", e);
+    const r = await buSend("Admin", "DELETE", `/purchase-requests/${d.id}`, undefined, BU);
+    if (r.status >= 300) failures.push(`${d.pr_no ?? d.id} HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
   }
+  if (failures.length) throw new Error(`cleanup: PR draft(s) not deleted: ${failures.join(" | ")}`);
 });
 
 interface PrLine {
