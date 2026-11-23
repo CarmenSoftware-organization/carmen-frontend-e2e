@@ -8,6 +8,7 @@ import type { StepResult } from "../step-result";
 import type { TestUserInfo } from "../verify-env";
 import { verifyDataset } from "../verify-dataset";
 import { resolveSeedContext, type SeedContext } from "./context";
+import { seedAccountingDocs } from "./accounting";
 import { seedPricing } from "./pricing";
 import { seedPrTemplate, seedPurchaseRequests } from "./purchase-requests";
 import { seedPurchaseOrders } from "./purchase-orders";
@@ -25,6 +26,7 @@ export interface DocumentSteps {
   receiving: typeof seedReceiving;
   storeRequisitions: typeof seedStoreRequisitions;
   pricing: typeof seedPricing;
+  accountingDocs: typeof seedAccountingDocs;
   verify: typeof verifyDataset;
 }
 
@@ -37,6 +39,7 @@ const DEFAULT_STEPS: DocumentSteps = {
   receiving: seedReceiving,
   storeRequisitions: seedStoreRequisitions,
   pricing: seedPricing,
+  accountingDocs: seedAccountingDocs,
   verify: verifyDataset,
 };
 
@@ -80,6 +83,9 @@ export async function seedAllDocuments(
   results.push(await guard("receiving", () => s.receiving(sessions, cfg, ctx, ledger, pos.forGrn), {}));
   results.push(await guard("store-requisitions", () => s.storeRequisitions(sessions, cfg, ctx, ledger), {}));
   results.push(await guard("pricing", () => s.pricing(sessions, cfg, ctx, ledger), {}));
+  const accounting = await guard("accounting-docs", () => s.accountingDocs(sessions, cfg, ctx, ledger), { refused: [] as string[] });
+  for (const refusal of accounting.refused) log(`accounting-docs: dev refused ${refusal}`);
+  results.push(strip(accounting));
   let verified: { short: string[]; table: string };
   try {
     verified = await s.verify(sessions, cfg, ledger);

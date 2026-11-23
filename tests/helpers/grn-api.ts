@@ -1,4 +1,4 @@
-import { buConfigSend, buGet, buSend } from "./bu-api";
+import { buConfigSend, buGet, buSend, type ApiResult } from "./bu-api";
 
 /**
  * GRN seeding through the backend (purchase role): clones the seeded "STD grn.draft"
@@ -124,4 +124,18 @@ export async function createExtraCostType(name: string): Promise<string> {
 
 export async function deleteExtraCostType(id: string): Promise<number> {
   return (await buConfigSend("Purchase", "DELETE", `/extra-cost-types/${id}`)).status;
+}
+
+/**
+ * Save a draft GRN and commit it (purchase role): draft -> saved -> committed. Moves stock, so TEST BU only; a committed
+ * GRN can no longer be deleted or voided. Returns the raw commit result (a refusal, e.g. a missing account mapping when
+ * the BU raises AP invoices from GRN, comes back as a 4xx and leaves the GRN `saved`); a failing save throws.
+ */
+export async function commitGrn(id: string): Promise<ApiResult> {
+  const draft = await getGrn(id);
+  if (draft.status !== 200) throw new Error(`GET GRN ${id} -> ${draft.status}`);
+  const saved = await buSend("Purchase", "PATCH", `${BASE}/${id}/save`, { doc_version: draft.data!.doc_version });
+  if (saved.status >= 300) throw new Error(`save GRN -> ${saved.status} ${JSON.stringify(saved.body).slice(0, 300)}`);
+  const cur = await getGrn(id);
+  return buSend("Purchase", "PATCH", `${BASE}/${id}/commit`, { doc_version: cur.data!.doc_version });
 }

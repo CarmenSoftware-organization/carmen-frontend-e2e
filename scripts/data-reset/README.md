@@ -23,7 +23,14 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
 2. reset (deploy token เท่านั้น ไม่ใช้ token ของ user)
 3. master data — ชุด sample ของ `seed:master` (`sample_seed_data/Preconfig_CARMEN_AVG.xlsx`, 50 แถวต่อชนิด)
 3b. ตั้งค่าตัว BU: `default_currency_id` ชี้แถว THB ที่เพิ่งสร้าง (reset สร้างสกุลเงินใหม่ id ใหม่ แต่แถว BU ยังถือ id เก่า → ทุกหน้าขึ้นแถบ "default currency ... no longer exists")
-   และผังบัญชีขั้นต่ำ 13 บัญชีจาก `fixtures/chart-of-accounts.json` (workbook ไม่มี COA และ reset ล้างตารางนี้) — `verify-dataset` เช็คทั้งสองอย่าง
+   และผังบัญชี 18 บัญชีจาก `fixtures/chart-of-accounts.json` (workbook ไม่มี COA และ reset ล้างตารางนี้) — `verify-dataset` เช็คทั้งสองอย่าง
+3c. ฐานบัญชี AP + GL (`accounting.ts`, ขั้น `accounting` — ล้มแล้วหยุดก่อน mappings): ไม่มีขั้นนี้ AP / JV post ไม่ได้
+   (`GL_PERIOD_NOT_OPEN` / `GL_SETTING_ACCOUNT_MISSING`) — เขียน `gl_setting` (บัญชีเจ้าหนี้ / VAT ซื้อ / WHT / เงินมัดจำ /
+   FX กำไร-ขาดทุน, `ap_auto_from_grn: false`, `fiscal_year_start_month: 1`) ผ่าน `PUT /app-config/gl_setting`,
+   สร้างปี GL 13 งวด (`POST /gl-periods/years`) ถ้ายังไม่มีงวดเปิดที่ครอบวันนี้, บัญชีธนาคาร `E2E-BANK` ผูก COA 1110,
+   tax profile `Vat 7%` ผูก 1170 (แก้เฉพาะบัญชี ไม่แตะชื่อ/อัตรา) กับ `WHT 3%` (wht, ภ.ง.ด.53) ผูก 2150,
+   และ `ap_chart_of_accounts_id` = 2100 ให้ทุก vendor — ทุกอย่างข้ามถ้าค่าตรงอยู่แล้ว (reset ล้างทั้งหมด จึงสร้างใหม่ทุกรอบ)
+   role / workflow ของ AP + JV อยู่ที่ขั้น 4b / 5 ด้านล่าง
 4. ผูก user: ทุกบัญชีอยู่แผนกแรก (เรียงตาม code) โดย hod เป็นหัวหน้า, owner อยู่แผนกที่สอง (hod เป็นหัวหน้าด้วย —
    PR ของแผนกที่ไม่มี HOD ส่งไม่ได้ backend ตอบ 503), ทุกบัญชีได้ทุก location
    สิทธิ์ (`access.ts`): ให้ application role ที่ยังไม่มี — requestor → Requestor, hod → HOD, purchase → Purchase,
@@ -32,8 +39,14 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    และตั้ง THB เป็นสกุลเงินหลักของ BU ถ้ายังไม่ได้ตั้ง (`PATCH /api/business-units` เขียน BU default ของ admin
    จึงปฏิเสธถ้า BU นั้นไม่ใช่ TEST BU) — 2026-11-11 มีแต่ purchase ที่ถือ role (บัญชีอื่นเจอ Permission Denied ทั้งชุด
    PR) และ BU ไม่มีสกุลเงินหลัก (แบนเนอร์เตือนทุกหน้า)
+4b. role บัญชี (`seedAccountingRoles` ใน `access.ts`, ขั้น `accounting-roles`): catalog สิทธิ์ไม่มีคีย์ สร้าง / อนุมัติ / จ่าย ของ AP หรือ JV
+   (คุมด้วย stage ของ workflow) มีแค่ view / void / post / reverse จึงสร้าง "Accounting Approver" (budget: `accounting.ap.void`,
+   `accounting.gl.void` / `post` / `reverse` + view) กับ "Accounting Viewer" (requestor: view อย่างเดียว) โดยอ่าน permission id
+   จาก role "Accounting" ของ BU และปฏิเสธชื่อคีย์ที่ไม่มีใน catalog แทนการให้สิทธิ์ผี — เพิ่มทับ role หลัก ไม่ถอดของเดิม
 5. workflow จาก `fixtures/workflows.json` — PR: Create → HOD → Purchase → GM (ทุกใบผ่าน GM),
-   General PO: purchase → FC → GM, SR: Create → Store Approval (purchase) → Issue — ทุก workflow ได้รายการสินค้า
+   General PO: purchase → FC → GM, SR: Create → Store Approval (purchase) → Issue,
+   AP Payment (`ap_payment`) และ Journal Voucher (`gl_jv`, เฉพาะใบ manual): Create (admin, budget) → Accounting Approval (budget) —
+   ใบแจ้งหนี้ AP ไม่มี workflow (submit แล้ว post เลย) — ทุก workflow ได้รายการสินค้า
    ทั้งหมดที่ seed ไว้ (`data.products`) ไม่งั้นช่องเลือกสินค้าจะว่าง
    ทุก workflow จบด้วยขั้น `Completed` (ไม่มีคน ไม่มี action) — backend ปิดเอกสารตอนอนุมัติที่ "เข้า" ขั้นสุดท้าย
    ถ้าขั้นสุดท้ายเป็นผู้อนุมัติจริง (เช่น GM) เอกสารจะ approved ข้ามคนนั้นไป `validateFixture` จึงปฏิเสธ workflow แบบนั้น
@@ -50,6 +63,12 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    - PO draft / voided / approved / sent / partial / completed, GRN draft / saved / committed, CN draft / completed
    - SR draft 2, รออนุมัติ 2, รอจ่าย 1, ยกเลิก 1 (ใช้ reject เพราะไม่มี endpoint ยกเลิก), completed 1
    - price list 3 ใบที่ใช้ได้วันนี้, campaign 3 ใบ: เปิดอยู่ / ยังไม่เริ่ม / ปิดแล้ว (หน้าจอคำนวณสถานะจากวันที่)
+   - ชุดเอกสารบัญชีอ่านอย่างเดียว (`docs/accounting.ts`, ขั้น `accounting-docs`) ค้นเจอด้วย key ใน `vendor_invoice_no` / คำอธิบาย
+     / code: `E2E-AP-POSTED` (1 บรรทัด 3 × 333.33 = 999.99 + VAT 70.00 = 1,069.99), `E2E-AP-INCVAT` (1,070.00 รวม VAT), `E2E-AP-PARTIAL` (1,000 + VAT,
+     จ่าย 400.00 ไม่มี WHT → ค้าง 670.00), `E2E-AP-PAID` (535.00 จ่ายครบ), `E2E-AP-DRAFT`, `E2E-AP-DEPOSIT`, `E2E-AP-DN`, `E2E-AP-CN`,
+     `E2E-JV-POSTED` (Dr 5300 / Cr 1110 250.00), `E2E-JVT-1` (template) — ใบจ่ายเงินสร้างโดย admin อนุมัติโดย budget,
+     ต้องมี Payment Type (`E2E-PT`) ซึ่ง reset ล้างทิ้ง จึงสร้างให้ · ยอดรวมและยอดค้างเทียบกับที่คำนวณจากบรรทัดของตัวเอง
+     ไม่ใช่ค่าที่ backend ตอบ — ถ้า dev ปฏิเสธ deposit / debit note / credit note จะแจ้งสถานะ+body แล้วข้ามแถวนั้น ไม่ปลอม
 8. ตรวจนับทั้ง BU เทียบตาราง (`verify-dataset.ts`) — แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้ แล้วจบด้วย exit 1
 
 ## ถ้า reset ตอบ 504 / timeout

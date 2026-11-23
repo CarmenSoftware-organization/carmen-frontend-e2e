@@ -17,7 +17,11 @@ const args = (over: Partial<ResetArgs> = {}): ResetArgs => ({
 const base = "/api/config/GR2VYNKQ";
 const now = new Date("2026-11-05T03:00:00Z");
 
+// The accounting step resolves account ids from the COA list, so POSTed accounts must come back on GET.
+const accountingCodes = ["2100", "1170", "2150", "1180", "5300", "1140", "1110", "4300", "5400"];
+
 function routes(over: Record<string, unknown> = {}) {
+  const coa = accountingCodes.map((code) => ({ id: `coa-${code}`, code }));
   return {
     "GET /api/user/profile": {
       data: {
@@ -47,6 +51,17 @@ function routes(over: Record<string, unknown> = {}) {
       data: ["Accounting", "Approval", "HOD", "Purchase", "Requestor"].map((name) => ({ id: `r-${name}`, name })),
     },
     [`GET ${base}/user-application-roles`]: { data: [] },
+    // The accounting roles read permission ids from the BU's "Accounting" role.
+    [`GET ${base}/application-roles/r-Accounting`]: {
+      data: {
+        id: "r-Accounting",
+        permissions: [
+          "accounting.view", "accounting.ap.view", "accounting.gl.view", "accounting.gl.jv_template.view",
+          "accounting.ap.void", "accounting.gl.void", "accounting.gl.post", "accounting.gl.reverse",
+        ].map((k) => ({ permission_id: `perm-${k}`, resource: k.slice(0, k.lastIndexOf(".")), action: k.slice(k.lastIndexOf(".") + 1), is_granted: false })),
+      },
+    },
+    [`POST ${base}/application-roles`]: (b: unknown) => ({ data: { id: `new-${(b as { application_role_name: string }).application_role_name}` } }),
     "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 1, default_currency_id: null } },
     [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
     [`GET ${base}/workflows`]: { data: [] },
@@ -55,8 +70,20 @@ function routes(over: Record<string, unknown> = {}) {
     [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
     "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 4, default_currency_id: "c-old" } },
     "PATCH /api/business-units": { data: { id: "bu-1", doc_version: 5 } },
-    [`GET ${base}/chart-of-accounts`]: { data: [] },
+    [`GET ${base}/chart-of-accounts`]: { data: coa },
     [`POST ${base}/chart-of-accounts`]: { data: { id: "a1" } },
+    [`GET ${base}/gl-jv-prefixes`]: { data: [] },
+    [`POST ${base}/gl-jv-prefixes`]: (b: unknown) => ({ data: { id: `px-${(b as { code: string }).code}` } }),
+    [`GET ${base}/app-config/gl_setting`]: { __status: 404 },
+    [`PUT ${base}/app-config/gl_setting`]: { data: {} },
+    [`GET ${base}/gl-periods`]: { data: [] },
+    [`POST ${base}/gl-periods/years`]: { data: {} },
+    [`GET ${base}/bank-accounts`]: { data: [] },
+    [`POST ${base}/bank-accounts`]: { data: {} },
+    [`GET ${base}/tax-profiles`]: { data: [{ id: "t-vat", name: "Vat 7%", chart_of_accounts_id: null, doc_version: 0 }] },
+    [`PATCH ${base}/tax-profiles/t-vat`]: { data: {} },
+    [`POST ${base}/tax-profiles`]: { data: {} },
+    [`PUT ${base}/vendors/v1`]: { data: {} },
     ...over,
   };
 }
@@ -98,9 +125,16 @@ describe("runDataReset", () => {
       "POST /api-system/tenant/resets/",
       "PATCH /api/business-units",
       `POST ${base}/chart-of-accounts`,
+      `POST ${base}/gl-jv-prefixes`,
+      `PUT ${base}/app-config/gl_setting`,
+      `POST ${base}/gl-periods/years`,
+      `POST ${base}/bank-accounts`,
+      `PATCH ${base}/tax-profiles/`,
+      `PUT ${base}/vendors/`,
       `PATCH ${base}/departments/`,
       `PUT ${base}/locations-users/`,
       `POST ${base}/user-application-roles`,
+      `POST ${base}/application-roles`,
       `POST ${base}/workflows`,
       "POST /api/GR2VYNKQ/inventory-periods",
     ].map((p) => firstWrite(writes, p));
@@ -113,7 +147,8 @@ describe("runDataReset", () => {
     expect(code).toBe(0);
     expect(backend.writes()).toEqual([]);
     expect(seedCalls).toEqual([true]);
-    for (const step of ["reset", "master", "mappings", "access", "workflows", "period"]) expect(out).toContain(step);
+    expect(out).toContain("accounting: would");
+    for (const step of ["reset", "master", "accounting", "mappings", "access", "accounting-roles", "workflows", "period"]) expect(out).toContain(step);
   });
 
   it("refuses a live run against a remote backend without --yes", async () => {
@@ -142,6 +177,14 @@ describe("runDataReset", () => {
     const { code, backend } = await run({ [`POST ${base}/chart-of-accounts`]: { __status: 500 } });
     expect(code).toBe(1);
     expect(backend.writes().some((c) => c.path === `${base}/workflows`)).toBe(false);
+  });
+
+  it("stops with exit 1 before mappings when the accounting base cannot be seeded", async () => {
+    const { code, backend, out, documentCalls } = await run({ [`PUT ${base}/app-config/gl_setting`]: { __status: 500 } });
+    expect(code).toBe(1);
+    expect(out).toContain("accounting setup");
+    expect(backend.writes().some((c) => c.path.startsWith(`${base}/departments/`) || c.path === `${base}/workflows`)).toBe(false);
+    expect(documentCalls).toEqual([]);
   });
 
   it("stops when the reset fails", async () => {
@@ -204,7 +247,7 @@ describe("runDataReset", () => {
   it("dry run does not seed documents but prints the document plan", async () => {
     const { documentCalls, out } = await run({}, { dryRun: true, yes: false });
     expect(documentCalls).toEqual([]);
-    expect(out).toMatch(/documents: would create .*41 PR/);
+    expect(out).toMatch(/documents: would create .*41 PR.*accounting read set/);
   });
 
   it("does not seed documents after a failed earlier step", async () => {

@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { ROLE_BY_EMAIL, planDefaultCurrency, planRoleAssignments, seedAccess } from "../../scripts/data-reset/access";
+import {
+  ACCOUNTING_APPROVER_KEYS, ACCOUNTING_VIEW_KEYS, ROLE_BY_EMAIL, planDefaultCurrency, planRoleAssignments, seedAccess, seedAccountingRoles,
+} from "../../scripts/data-reset/access";
 import { createSessions } from "../../scripts/data-reset/sessions";
 import type { ResetConfig } from "../../scripts/data-reset/config";
 import { TEST_USERS } from "../../tests/test-users";
@@ -118,5 +120,64 @@ describe("seedAccess", () => {
     const result = await seedAccess(createSessions(cfg, backend.fetchFn), cfg, userIds);
     expect(result.failed).toEqual(["requestor: POST /api/config/GR2VYNKQ/user-application-roles → 403"]);
     expect(result.created).toBe(7);
+  });
+});
+
+describe("seedAccountingRoles", () => {
+  const base = "/api/config/GR2VYNKQ";
+  // The BU's "Accounting" role lists every permission in the catalog (granted or not) — ids come from it.
+  const catalogKeys = [...ACCOUNTING_APPROVER_KEYS, "accounting.ar.view"];
+  const catalog = catalogKeys.map((k) => {
+    const i = k.lastIndexOf(".");
+    return { permission_id: `perm-${k}`, resource: k.slice(0, i), action: k.slice(i + 1), is_granted: false };
+  });
+  const routes = (over: Record<string, unknown> = {}) => ({
+    [`GET ${base}/application-roles`]: { data: roles },
+    [`GET ${base}/application-roles/r-Accounting`]: { data: { id: "r-Accounting", permissions: catalog } },
+    [`GET ${base}/user-application-roles`]: { data: [] },
+    [`POST ${base}/application-roles`]: (b: unknown) => ({ data: { id: `new-${(b as { application_role_name: string }).application_role_name}` } }),
+    ...over,
+  });
+
+  it("creates the approver and viewer roles with only catalog keys and gives them to budget and requestor", async () => {
+    const backend = fakeBackend(routes());
+    const result = await seedAccountingRoles(createSessions(cfg, backend.fetchFn), cfg, userIds);
+    expect(result).toEqual({ step: "accounting-roles", created: 4, skipped: 0, failed: [] });
+    const writes = backend.writes();
+    const created = writes.filter((c) => c.path === `${base}/application-roles`).map((c) => c.body as { application_role_name: string; permissions: { add: string[] } });
+    expect(created.map((r) => r.application_role_name)).toEqual(["Accounting Approver", "Accounting Viewer"]);
+    expect(created[0].permissions.add).toEqual(ACCOUNTING_APPROVER_KEYS.map((k) => `perm-${k}`));
+    expect(created[1].permissions.add).toEqual(ACCOUNTING_VIEW_KEYS.map((k) => `perm-${k}`));
+    // Approve / create / pay have no key in the catalog: the approver differs from the viewer only by void / post / reverse.
+    expect(ACCOUNTING_APPROVER_KEYS.filter((k) => !(ACCOUNTING_VIEW_KEYS as readonly string[]).includes(k))).toEqual([
+      "accounting.ap.void", "accounting.gl.void", "accounting.gl.post", "accounting.gl.reverse",
+    ]);
+    const assigned = writes.filter((c) => c.path === `${base}/user-application-roles`).map((c) => c.body);
+    expect(assigned).toEqual([
+      { user_id: "id-budget", application_role_id: { add: ["new-Accounting Approver"] } },
+      { user_id: "id-requestor", application_role_id: { add: ["new-Accounting Viewer"] } },
+    ]);
+  });
+
+  it("is idempotent: roles with every key and holders already in place write nothing", async () => {
+    const full = catalog.map((p) => ({ ...p, is_granted: true }));
+    const backend = fakeBackend(routes({
+      [`GET ${base}/application-roles`]: { data: [...roles, { id: "r-A", name: "Accounting Approver" }, { id: "r-V", name: "Accounting Viewer" }] },
+      [`GET ${base}/application-roles/r-A`]: { data: { id: "r-A", permissions: full } },
+      [`GET ${base}/application-roles/r-V`]: { data: { id: "r-V", permissions: full } },
+      [`GET ${base}/user-application-roles`]: { data: [{ user_id: "id-budget", role_ids: ["r-A"] }, { user_id: "id-requestor", role_ids: ["r-V"] }] },
+    }));
+    const result = await seedAccountingRoles(createSessions(cfg, backend.fetchFn), cfg, userIds);
+    expect(result).toEqual({ step: "accounting-roles", created: 0, skipped: 4, failed: [] });
+    expect(backend.writes()).toEqual([]);
+  });
+
+  it("names a key the catalog lacks instead of granting a ghost permission", async () => {
+    const backend = fakeBackend(routes({
+      [`GET ${base}/application-roles/r-Accounting`]: { data: { id: "r-Accounting", permissions: catalog.filter((p) => p.action !== "reverse") } },
+    }));
+    const result = await seedAccountingRoles(createSessions(cfg, backend.fetchFn), cfg, userIds);
+    expect(result.failed).toEqual(["Accounting Approver: no such permission in the catalog: accounting.gl.reverse"]);
+    expect(backend.writes().some((c) => c.path === `${base}/application-roles`)).toBe(true); // the viewer still goes in
   });
 });

@@ -42,6 +42,9 @@ const inv = (tag: string) => `${PFX}-${tag}-${uid}`;
 const sweep = () => deleteGrnsByPrefix(PFX);
 const today = () => new Date().toLocaleDateString("sv");
 const LIST = "/procurement/goods-receive-note";
+/** Every data:reset GRN has an invoice no. starting with this; counts are scoped to it so GRNs other specs commit (805) do not change them. */
+const SEED_SEARCH = "STD-grn";
+const SEED_ROWS = /GRN26|draft-/;
 const goto = async (page: Page, id: string) => {
   await page.goto(`${LIST}/${id}`);
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({ timeout: 20_000 });
@@ -173,7 +176,7 @@ purchaseTest.describe("GRN — List", () => {
       ],
     },
     async ({ page }) => {
-      await page.goto(`${LIST}?perpage=2`);
+      await page.goto(`${LIST}?perpage=2&search=${SEED_SEARCH}`);
       await expect(page.getByText(/Showing 1–2 of 4/)).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Page 1 of 2/)).toBeVisible();
       const first = await page.getByRole("row").filter({ hasText: /GRN26|draft-/ }).allInnerTexts();
@@ -246,7 +249,8 @@ purchaseTest.describe("GRN — Filter / Search", () => {
       await search(page, "GRN261100001");
       await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(1);
       await page.getByRole("button", { name: /clear search/i }).click();
-      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(4, { timeout: 10_000 });
+      // the cleared list holds every GRN in the BU; the seeded four must all be among it (other specs may add committed ones)
+      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "draft-4"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
       await expect(page.getByPlaceholder("Search...")).toHaveValue("");
     },
   );
@@ -285,8 +289,10 @@ purchaseTest.describe("GRN — Filter / Search", () => {
       await page.goto(LIST);
       await search(page, `zz-none-${uid}`);
       await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
+      await search(page, SEED_SEARCH);
+      await expect(page.getByRole("row").filter({ hasText: SEED_ROWS })).toHaveCount(4, { timeout: 10_000 });
       await search(page, "");
-      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(4, { timeout: 10_000 });
+      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "draft-4"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
       await expect(page.getByText("No data found")).toHaveCount(0);
     },
   );
@@ -308,7 +314,7 @@ purchaseTest.describe("GRN — Filter / Search", () => {
       await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(1);
       await expect(page.getByRole("row").filter({ hasText: "draft-4" })).toHaveCount(1);
       await search(page, "เอบีโอ");
-      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(4, { timeout: 10_000 });
+      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "draft-4"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
     },
   );
 

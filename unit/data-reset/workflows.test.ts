@@ -53,17 +53,21 @@ describe("seedWorkflows", () => {
       "GET /api/config/GR2VYNKQ/products": { data: products },
     });
     const result = await seedWorkflows(createSessions(cfg, backend.fetchFn), cfg, loadWorkflowFixture(), users, department);
-    expect(result).toEqual({ step: "workflows", created: 2, skipped: 1, failed: [] });
+    expect(result).toEqual({ step: "workflows", created: 4, skipped: 1, failed: [] });
     expect(backend.writes().map((c) => [c.method, c.path, (c.body as { name: string }).name])).toEqual([
       ["POST", base, "Purchase Request"],
       ["POST", base, "Store Requisition"],
+      ["POST", base, "AP Payment"],
+      ["POST", base, "Journal Voucher"],
     ]);
   });
 
-  it("posts all three on an empty BU, PR first", async () => {
+  it("posts all five on an empty BU, PR first", async () => {
     const backend = fakeBackend({ [`GET ${base}`]: { data: [] }, "GET /api/config/GR2VYNKQ/products": { data: products } });
     await seedWorkflows(createSessions(cfg, backend.fetchFn), cfg, loadWorkflowFixture(), users, department);
-    expect(backend.writes().map((c) => (c.body as { name: string }).name)).toEqual(["Purchase Request", "General PO", "Store Requisition"]);
+    expect(backend.writes().map((c) => (c.body as { name: string }).name)).toEqual([
+      "Purchase Request", "General PO", "Store Requisition", "AP Payment", "Journal Voucher",
+    ]);
   });
 
   it("refuses to create workflows when the BU has no product", async () => {
