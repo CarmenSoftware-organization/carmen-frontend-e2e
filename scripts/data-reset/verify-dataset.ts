@@ -7,7 +7,7 @@ import type { ResetConfig } from "./config";
 import { READ_SET, listAll } from "./docs/accounting";
 import { refId } from "./docs/refs";
 import type { RowLedger } from "./docs/row-ledger";
-import { localDate } from "./period";
+import { localDate, planNextPeriod } from "./period";
 import type { Sessions } from "./sessions";
 
 export interface ExpectedRow {
@@ -182,8 +182,20 @@ async function verifyIa(admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<R
   return { lines, short };
 }
 
+/** The period step promises next month's inventory period (pre-generated, open) beside the current one. */
+async function verifyNextPeriod(admin: ApiClient, cfg: ResetConfig, now: Date): Promise<{ lines: string[]; short: string[] }> {
+  const next = planNextPeriod(now);
+  const res = await admin.get(`/api/${cfg.buCode}/inventory-periods?perpage=100`);
+  const rows: any[] = Array.isArray(res.body?.data) ? res.body.data : [];
+  const found = rows.some((p) => p.fiscal_year === next.fiscal_year && p.fiscal_month === next.fiscal_month && p.status === "open");
+  return {
+    lines: [`${"period.next".padEnd(22)}${String(1).padStart(5)}${String(found ? 1 : 0).padStart(7)}${found ? "" : "  ✗"}`],
+    short: found ? [] : [`period.next: no open inventory period for ${next.fiscal_year}-${String(next.fiscal_month).padStart(2, "0")} (HTTP ${res.status})`],
+  };
+}
+
 export async function verifyDataset(
-  sessions: Sessions, cfg: ResetConfig, ledger: RowLedger,
+  sessions: Sessions, cfg: ResetConfig, ledger: RowLedger, now: Date = new Date(),
 ): Promise<{ short: string[]; table: string }> {
   const admin = await sessions.client(cfg.adminEmail);
   const seeded = ledger.rows();
@@ -215,5 +227,8 @@ export async function verifyDataset(
   const ia = await verifyIa(admin, cfg, seeded);
   lines.push(...ia.lines);
   short.push(...ia.short);
+  const nextPeriod = await verifyNextPeriod(admin, cfg, now);
+  lines.push(...nextPeriod.lines);
+  short.push(...nextPeriod.short);
   return { short, table: lines.join("\n") };
 }

@@ -3,7 +3,7 @@ import { EXPECTED_ROWS, verifyDataset } from "../../scripts/data-reset/verify-da
 import { seedAllDocuments } from "../../scripts/data-reset/docs/seed-all";
 import { RowLedger } from "../../scripts/data-reset/docs/row-ledger";
 import { createSessions } from "../../scripts/data-reset/sessions";
-import { fakeBackend, healthyProfile } from "./fake-backend";
+import { fakeBackend, healthyProfile, periodsWithNext } from "./fake-backend";
 import { cfg, ctx, users } from "./docs-fixtures";
 
 
@@ -37,11 +37,21 @@ describe("verifyDataset", () => {
     const stageRows = [
       ...Array(19).fill("HOD Approval"), ...Array(8).fill("Purchase"), ...Array(2).fill("GM Approval"), "Create Request",
     ].map((s) => ({ workflow_current_stage: s }));
-    const backend = fakeBackend({ "GET /api/user/profile": healthyProfile }, (_m, path) =>
+    const backend = fakeBackend({ "GET /api/user/profile": healthyProfile, [`GET /api/${cfg.buCode}/inventory-periods`]: periodsWithNext }, (_m, path) =>
       path === "/api/purchase-requests" ? { data: stageRows, paginate: { total: 99 } } : { data: [], paginate: { total: 99 } },
     );
-    const { short } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger());
+    const { short } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger(), new Date("2026-11-05T03:00:00Z"));
     expect(short).toEqual([]);
+  });
+
+  it("reports a missing next-month inventory period", async () => {
+    const backend = fakeBackend({
+      "GET /api/user/profile": healthyProfile,
+      [`GET /api/${cfg.buCode}/inventory-periods`]: { data: [{ fiscal_year: 2026, fiscal_month: 11, status: "open" }] },
+    }, () => ({ data: [], paginate: { total: 99 } }));
+    const { short, table } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger(), new Date("2026-11-05T03:00:00Z"));
+    expect(short).toContain("period.next: no open inventory period for 2026-12 (HTTP 200)");
+    expect(table).toContain("period.next");
   });
 });
 

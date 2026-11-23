@@ -22,7 +22,15 @@ const accountingCodes = ["2100", "1170", "2150", "1180", "5300", "1140", "1110",
 
 function routes(over: Record<string, unknown> = {}) {
   const coa = accountingCodes.map((code) => ({ id: `coa-${code}`, code }));
+  let generated = false;
   return {
+    "GET /api/GR2VYNKQ/inventory-periods": () => ({
+      data: [
+        { fiscal_year: 2026, fiscal_month: 11, status: "open" },
+        ...(generated ? [{ fiscal_year: 2026, fiscal_month: 12, status: "open" }] : []),
+      ],
+    }),
+    "POST /api/GR2VYNKQ/inventory-periods/next": () => { generated = true; return { data: { total_created: 1 } }; },
     "GET /api/user/profile": {
       data: {
         id: "user-x", user_info: { firstname: "F", middlename: "", lastname: "L" },
@@ -238,7 +246,7 @@ describe("runDataReset", () => {
     expect(ok.code).toBe(0);
     expect(ok.documentCalls).toHaveLength(1);
     const lastWrite = ok.backend.writes().at(-1)!;
-    expect(lastWrite.path).toBe("/api/GR2VYNKQ/inventory-periods");
+    expect(lastWrite.path).toBe("/api/GR2VYNKQ/inventory-periods/next");
     const short = await run({}, {}, okSeed, [{ step: "verify", created: 0, skipped: 0, failed: ["PR draft: expected ≥ 3, found 0"] }]);
     expect(short.code).toBe(1);
     expect(short.out).toContain("PR draft: expected ≥ 3, found 0");

@@ -25,12 +25,12 @@ Filled in as the 731 / 732 specs run on TEST BU (GR2VYNKQ). Sections: 1 suspecte
 
 | What | Why | Source |
 | --- | --- | --- |
-| TC-IADJ-800010 (later period held, AVG) | TEST BU has a single inventory period (2611); `GET /inventory-periods` and `/period-ends` list no pre-generated later period, so the case fails loudly with that reason on every run. It becomes runnable once a later open period exists (the spec never creates or closes periods). | Task 4, 732 |
-| Void in a closed period | Needs a closed period; the specs never close or create periods (no E2E_ALLOW_IRREVERSIBLE) and TEST BU has one open period. | Task 5, 732 |
+| Void in a closed period | Needs a closed period; the specs never close or create periods (no E2E_ALLOW_IRREVERSIBLE). TEST BU now has two open periods (current + next, see Resolved) and none closed. | Task 5, 732 |
 | Costing on the other method (FIFO) | Only TEST BU's own method (average) is exercised. `costLayers` throws for FIFO: `cost_layers` of inventory-info is a ledger of every lot posted (in rows keep their full balance after issues and voids, out rows carry negative balances), so per-lot remaining qty cannot be read from it. `expectedIssueCost` supports FIFO and is unit-tested. | Task 5, 732 |
 | List-page UI cases still in the gap report | Filtering, sorting, search and pagination of the Inventory Adjustment list, and the Voided filter other than the 820001/820002 lookup, have no UI cases (see COVERAGE.md / SPEC-HEALTH.md gap report). | Task 5, 731/732 |
-| TC-IADJ-810004 date | Passes on TEST BU through the "before the earliest open period" branch because no other open period exists. | Task 5, 732 |
+| TC-IADJ-810004 date | Still passes through the "before the earliest open period" branch; the pre-generated next period does not change the current one (earliest open). | Task 5, 732 |
 
 ## Resolved
 
 - FE-4 (730 TC-IADJ-710004: editing an existing Stock Out line's qty made Total NaN and Save sent nothing) no longer reproduces on TEST BU. 731 ran it with no `test.fail` and it passed on every run, so the pin was removed.
+- TC-IADJ-800010 (Stock In dated in the next pre-generated period, AVG) was not testable while TEST BU had one period (2611). The data-reset `period` step now also pre-generates next month's open period (`POST /inventory-periods/next`, count = open + 1, idempotent; verify row `period.next`). After `bun run data:reset --yes` on 2026-11-23 the BU has 2611 (current, earliest open) and 2612, and 800010 passes: completed, on-hand unchanged. No app bug found.

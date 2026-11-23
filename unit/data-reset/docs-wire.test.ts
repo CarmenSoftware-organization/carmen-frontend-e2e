@@ -13,7 +13,7 @@ import { resolveSeedContext } from "../../scripts/data-reset/docs/context";
 import { verifyDataset } from "../../scripts/data-reset/verify-dataset";
 import { RowLedger } from "../../scripts/data-reset/docs/row-ledger";
 import { createSessions } from "../../scripts/data-reset/sessions";
-import { fakeBackend, healthyProfile } from "./fake-backend";
+import { fakeBackend, healthyProfile, periodsWithNext } from "./fake-backend";
 import { cfg, collapseRefs, ctx, docStore, users } from "./docs-fixtures";
 
 const ISO = /^\d{4}-\d{2}-\d{2}T05:00:00\.000Z$/;
@@ -152,13 +152,13 @@ describe("product locations (C3)", () => {
 describe("PR / SR list shape (C4): data[0] per BU", () => {
   it("reads paginate and rows from data[0]", async () => {
     const stages = [...Array(19).fill("HOD Approval"), ...Array(8).fill("Purchase"), ...Array(2).fill("GM Approval"), "Create Request"];
-    const backend = fakeBackend({ "GET /api/user/profile": healthyProfile }, (_m, path) => {
+    const backend = fakeBackend({ "GET /api/user/profile": healthyProfile, [`GET /api/${cfg.buCode}/inventory-periods`]: periodsWithNext }, (_m, path) => {
       if (path === "/api/purchase-requests" || path === "/api/store-requisitions") {
         return { data: [{ bu_code: "GR2VYNKQ", paginate: { total: 99 }, data: stages.map((s) => ({ workflow_current_stage: s })) }] };
       }
       return { data: [], paginate: { total: 99 } };
     });
-    const { short } = await verifyDataset(sessionsOf(backend), cfg, new RowLedger());
+    const { short } = await verifyDataset(sessionsOf(backend), cfg, new RowLedger(), new Date("2026-11-05T03:00:00Z"));
     expect(short).toEqual([]);
   });
 });
