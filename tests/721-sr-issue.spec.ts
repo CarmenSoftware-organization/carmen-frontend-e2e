@@ -36,7 +36,12 @@ import { addRow, answerSrDateQuestion, chooseDateInDialog, button, field, pickLo
  *
  * Local helpers (not in tests/helpers on purpose — shared helpers are frozen for this task): srCtx, issueCost, approveAllLines.
  * FINDING: the BU-scoped list `GET /api/<bu>/store-requisitions` is 404 — the list lives at `/api/store-requisitions?bu_code=`
- * (same as tests/helpers/sr-api.ts); cleanup here uses that. 702's afterAll uses the BU-scoped path and will fail the same way.
+ * and groups rows per BU at `data[i].data`; cleanup reads it through `multiBuRows`.
+ * FINDING (issue cost, live 2026-11-24, oracle = backend on all three):
+ *  - average: one BU-wide pool, e.g. 19 @ 33.4737 -> issue 1 = 33.47
+ *  - fifo: oldest open lot first (replayed ledger), e.g. lots [2@12, 5@18, 5@10, 5@11] -> issue 1 = 12
+ *  - average_per_location: source-location pool only, e.g. 17 @ 12.6112 -> issue 1 = 12.61
+ *  Note the FIFO lots are ordered by posting time, not by cost — run-to-run GRN prices differ on purpose.
  * Needs the doc-flow step of `bun run data:reset --bu all`.
  * Origin: `_movement_play/eop_bf/e2e/fe/07-sr-issue.spec.ts` (SRI.0–SRI.7, SRF.0–SRF.6).
  */

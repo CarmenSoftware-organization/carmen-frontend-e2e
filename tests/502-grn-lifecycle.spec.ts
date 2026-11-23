@@ -22,8 +22,9 @@ import { addRow, button, confirmDialog, inputValues, numRe, pickLookup, toasts, 
  *  - average:              Create (saved) posts stock           (TC-GRN-700005)
  *  - fifo:                 Create posts NOTHING, Commit posts   (TC-GRN-710005)
  *  - average_per_location: see "Finding" below                  (TC-GRN-720005)
- * FINDING (average_per_location): NOT YET OBSERVED LIVE (gotoBu could not find the BU switcher on the non-AVG BUs, and BU-GR2VYNKQ had no E2E-DF products when run).
- * Expected to post at saved like average; the 720005 branch asserts exactly that and fails loudly if the backend differs.
+ * FINDING (average_per_location, live 2026-11-24, three runs without reset): posts at **saved**, like average
+ * (on-hand 0 -> 1, one inventory transaction at saved). FIFO posts nothing at saved and +1 at commit
+ * (transactions 0 -> 1). The 720005 branch asserts that and fails loudly if the backend changes.
  *
  * On FIFO the backend refuses a receipt dated before the latest receipt of the same product/location in the
  * period (422), so the posting cases are dated today (activePeriodDate returns today while it is in the period).
