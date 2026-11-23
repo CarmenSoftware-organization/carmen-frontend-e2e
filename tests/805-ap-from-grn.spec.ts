@@ -126,16 +126,20 @@ test.describe("AP invoice from GRN (805)", () => {
   });
 
   test.afterAll(async () => {
-    // best effort: a draft / saved GRN a failed case left behind is removed, the mapping this run added is taken out
-    await deleteGrnsByPrefix(tag(""));
+    // a draft / saved GRN a failed case left behind is removed, the mapping this run added is taken out (every removal is
+    // attempted; a failed one is reported at the end so the mapping never stays on the TEST BU silently)
+    await deleteGrnsByPrefix(PREFIX);
+    const failures: string[] = [];
     for (const m of added.splice(0)) {
       const cur = await groupMapping(m.groupId);
-      await buConfigSend(CREATOR, "PUT", `/product-item-groups/${m.groupId}`, {
+      const del = await buConfigSend(CREATOR, "PUT", `/product-item-groups/${m.groupId}`, {
         doc_version: cur.version,
         cascade_deviation: false,
         account_codes: { remove: [{ id: m.mappingId }] },
       });
+      if (del.status < 200 || del.status >= 300) failures.push(`item group ${m.groupId} mapping ${m.mappingId} -> PUT ${del.status}`);
     }
+    if (failures.length) throw new Error(`805 cleanup: inventory mapping NOT removed: ${failures.join("; ")}`);
   });
 
   test(

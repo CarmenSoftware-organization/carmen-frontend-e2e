@@ -384,6 +384,7 @@ test.describe("AP invoice (801)", () => {
       await ap.selectVendor(vendor.code);
       await ap.fillLine(1, { description: "no invoice no", qty: 1, price: 100 });
       await expectBlocked(page, /\/ap-invoice(\?|$)/, () => ap.saveDraftButton().click(), page.getByText(/enter the vendor invoice number/i));
+      await expect(page).toHaveURL(/\/invoice\/new$/);
     },
   );
 
@@ -410,6 +411,7 @@ test.describe("AP invoice (801)", () => {
       await ap.setVendorInvoiceNo(tag("noaccount"));
       await ap.fillLine(1, { description: "no account", qty: 1, price: 100, account: null });
       await expectBlocked(page, /\/ap-invoice(\?|$)/, () => ap.saveDraftButton().click(), page.getByText("Every line needs a debit account"));
+      await expect(page).toHaveURL(/\/invoice\/new$/);
     },
   );
 

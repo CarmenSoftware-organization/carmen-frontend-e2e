@@ -115,9 +115,6 @@ export class ApInvoicePage extends BasePage {
   submitButton(): Locator {
     return this.button("Submit");
   }
-  approveButton(): Locator {
-    return this.button("Approve");
-  }
   voidButton(): Locator {
     return this.button("Void");
   }

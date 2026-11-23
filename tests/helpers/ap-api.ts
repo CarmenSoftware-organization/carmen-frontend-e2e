@@ -105,14 +105,16 @@ function profileId(name: string): Promise<string> {
 /**
  * A draft AP document. Every line carries "Vat 7%" unless `vat: false`; `incVat` marks the price as VAT-inclusive.
  * Deposit lines debit the advance-deposit account, everything else the expense account (5300).
+ * `wht` puts the "WHT 3%" profile on the line (the FE payment form derives its WHT row from it).
  * `tag` becomes `vendor_invoice_no`, so the document is findable.
  */
 export async function createApDoc(
   type: ApDocType,
-  opts: { lines: { qty: number; price: number; incVat?: boolean; vat?: boolean }[]; tag: string },
+  opts: { lines: { qty: number; price: number; incVat?: boolean; vat?: boolean; wht?: boolean }[]; tag: string },
 ): Promise<{ id: string; no: string }> {
   const dr = await accountId(type === "deposit" ? "1180" : "5300");
   const vat = await profileId("Vat 7%");
+  const wht = opts.lines.some((l) => l.wht) ? await profileId("WHT 3%") : null;
   const day = today();
   const r = ok(
     await buSend(CREATOR, "POST", "/ap-invoice", {
@@ -131,6 +133,8 @@ export async function createApDoc(
           dr_chart_of_accounts_id: dr,
           ...(l.vat === false ? {} : { vat_tax_profile_id: vat }),
           ...(l.incVat ? { vat_is_included: true } : {}),
+          // the line's WHT service: what the payment form's "Recalculate from invoices" (wht-preview) reads
+          ...(l.wht && wht ? { wht_tax_profile_id: wht } : {}),
         })),
       },
     }),
