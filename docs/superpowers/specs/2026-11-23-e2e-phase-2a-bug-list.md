@@ -24,7 +24,7 @@ none has been confirmed by a product owner. **Every row needs a per-item decisio
 | Dormant | 12% | 11% | -1 pt |
 | Running, asserting nothing | 0 | 0 | - |
 | Assertions in running cases | 2837 | 3267 | +430 |
-| Coverage modules: without coverage | 31 | 30 | -1 (see COVERAGE.md) |
+| Coverage modules: spec / none | 50 / 34 | 54 / 30 | +4 / -4 (`/accounting`, `/accounting/accounts-payable`, `/accounting/journal-voucher`, `/accounting/settings`) |
 
 ## 1. Suspected bugs (one row per cause)
 
