@@ -76,6 +76,10 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    - ใบรับเข้าที่ commit แล้ว `STD pos.stock.l1` / `STD pos.stock.l2`: P1–P4 จำนวน 500 ต้นทุน 10 ที่ location แรก / ที่สอง
      ลงวันที่ **วันแรกของงวดที่เปิดอยู่** (อ่านจาก `inventory-periods/current`) ไม่ใช่วันนี้
    - p7–p8 ซ้อนกับ `stock.on-hand.*` และ p9 ซ้อนกับ lot หมดอายุของ `stock.*` (ไม่มีสินค้าว่าง 4 ตัวติดกัน) — spec ที่อ่านยอดต้องดูเป็นส่วนต่างเสมอ
+7c. ฐาน Inventory Adjustment (`docs/ia.ts`, ขั้น `ia` ต่อจาก `pos`):
+   - สินค้า `E2E-IA-A` / `E2E-IA-B` (สร้างถ้ายังไม่มี — ซ้ำได้ ใช้ code เป็นกุญแจ) คัดลอก item group / หน่วยคลังจากสินค้าตัวแรกของ context
+   - ผูกกับ location แรก (1AG01) **ที่เดียว** และ **ไม่สร้างใบรับเข้า** — สต๊อกเริ่มที่ 0 ให้ spec ทดสอบต้นทุนของ adjustment
+   - verify: `ia.products` (มีทั้งสองรหัส) · `ia.no-stock` (`inventory-info` on-hand ของทั้งสองที่ location นั้น = 0)
 8. ตรวจนับทั้ง BU เทียบตาราง (`verify-dataset.ts`) — แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้ แล้วจบด้วย exit 1
 
 ## ถ้า reset ตอบ 504 / timeout
