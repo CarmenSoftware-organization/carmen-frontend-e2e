@@ -237,6 +237,8 @@ export async function openPeriodCovers(day: string): Promise<boolean> {
   const p = await buConfigSend(CREATOR, "GET", "/gl-periods?perpage=100");
   if (p.status !== 200) throw new Error(`accounting setup check: GET gl-periods -> ${p.status}`);
   const periods: Row[] = Array.isArray(p.body?.data) ? p.body.data : [];
+  // Observed (TEST BU, 2026-11-23): start_at/end_at are UTC calendar-day bounds (2026-01-01T00:00:00.000Z .. 2026-01-31T23:59:59.999Z), not
+  // Bangkok local instants, so the UTC date part IS the period day; bangkokDay() would push the end bound a day too far.
   return periods.some((x) => x.status === "open" && String(x.start_at).slice(0, 10) <= day && day <= String(x.end_at).slice(0, 10));
 }
 

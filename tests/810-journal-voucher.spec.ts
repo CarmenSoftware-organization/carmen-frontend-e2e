@@ -178,8 +178,15 @@ test.describe("Journal voucher (810)", () => {
         { account: "5300", dr: 100 },
         { account: "1110", cr: 90 },
       ]);
+      const answered = page.waitForResponse((res) => res.request().method() === "POST" && /\/gl-jv$/.test(res.url()));
+      await jv.button("Save").click();
+      const res = await answered;
+      // the save reached the BE with a real answer before the pin is armed, so an auth / 5xx failure cannot make it "pass"
+      expect(res.status(), "save did not get a real answer from the BE").not.toBe(401);
+      expect(res.status()).toBeLessThan(500);
       test.fail(true, `needs product decision: jv:241 lets a draft be saved unbalanced, the BE refuses at create (422). See ${BUG_LIST}`);
-      await expectSaved(page, /\/gl-jv$/, () => jv.button("Save").click(), jv.toastWith(/draft saved/i));
+      expect(res.status(), "draft not saved").toBeLessThan(300);
+      await expect(jv.toastWith(/draft saved/i)).toBeVisible();
       expect((await jvByTag(t))?.jv_status).toBe("draft");
     },
   );
@@ -264,7 +271,7 @@ test.describe("Journal voucher (810)", () => {
         {
           type: "expected",
           description:
-            "Approve 422 WORKFLOW_USER_NOT_STAGE_APPROVER (ไม่ใช่ผู้อนุมัติของ stage); Void และ Reverse 403 (ไม่มีสิทธิ์); JV แรกยัง in_review, JV หลังยัง posted และไม่มี JV กลับรายการเกิดขึ้น. rule: 403 ไม่มีสิทธิ์หรือผิด workflow stage (jv:283). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง แต่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เคสนี้ยืนยันเฉพาะว่า role ที่ไม่มีสิทธิ์ถูกปฏิเสธ",
+            "Approve 422 WORKFLOW_USER_NOT_STAGE_APPROVER (ไม่ใช่ผู้อนุมัติของ stage); Void และ Reverse 403 (ไม่มีสิทธิ์); JV แรกยัง in_review, JV หลังยัง posted และไม่มี JV กลับรายการเกิดขึ้น. rule: 403 ไม่มีสิทธิ์หรือผิด workflow stage (jv:283). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง แต่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เคสนี้ยืนยันเฉพาะว่า role ที่ไม่มีสิทธิ์ถูกปฏิเสธ ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) และจะ FAIL ถ้า BE ย้ายไปตาม oracle; รอเจ้าของสินค้าตัดสินก่อนใช้เป็นหลักฐานของ Accounting",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Security" },
@@ -340,7 +347,7 @@ test.describe("Journal voucher (810)", () => {
         {
           type: "expected",
           description:
-            "200, jv_status void, void_reason = เหตุผลที่ส่ง, void_at มีค่า; จำนวน JV ของ BU ไม่เปลี่ยน (void ถอนยอดโดยไม่สร้าง JV กลับรายการ); ไม่มี JV ใดมี reversal_of_jv_id ชี้มาที่ JV นี้. rule: Void เก็บ reason ห้ามลบ audit (jv:246). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); ยืนยันพฤติกรรมที่ BE/FE ใช้จริง (ดู TC-JV-040004)",
+            "200, jv_status void, void_reason = เหตุผลที่ส่ง, void_at มีค่า; จำนวน JV ของ BU ไม่เปลี่ยน (void ถอนยอดโดยไม่สร้าง JV กลับรายการ); ไม่มี JV ใดมี reversal_of_jv_id ชี้มาที่ JV นี้. rule: Void เก็บ reason ห้ามลบ audit (jv:246). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); ยืนยันพฤติกรรมที่ BE/FE ใช้จริง (ดู TC-JV-040004) ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) และจะ FAIL ถ้า BE ย้ายไปตาม oracle; รอเจ้าของสินค้าตัดสินก่อนใช้เป็นหลักฐานของ Accounting",
         },
         { type: "priority", description: "Critical" },
         { type: "testType", description: "Functional" },
@@ -369,7 +376,7 @@ test.describe("Journal voucher (810)", () => {
         { type: "steps", description: "1. เปิดหน้ารายละเอียด กด Void\n2. อ่านปุ่ม Void ในกล่องยืนยันก่อนกรอกเหตุผล\n3. กรอกเหตุผล กดยืนยัน\n4. อ่านสถานะผ่าน API" },
         {
           type: "expected",
-          description: "ปุ่ม Void ในกล่องยืนยัน disabled จนกรอกเหตุผล; หลังยืนยัน POST gl-posting สำเร็จ toast Voucher voided; API: void, void_reason ตรงที่กรอก. assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse)",
+          description: "ปุ่ม Void ในกล่องยืนยัน disabled จนกรอกเหตุผล; หลังยืนยัน POST gl-posting สำเร็จ toast Voucher voided; API: void, void_reason ตรงที่กรอก. assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse) ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) และจะ FAIL ถ้า BE ย้ายไปตาม oracle; รอเจ้าของสินค้าตัดสินก่อนใช้เป็นหลักฐานของ Accounting",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
@@ -402,7 +409,7 @@ test.describe("Journal voucher (810)", () => {
         {
           type: "expected",
           description:
-            "422 รหัส GL_JV_VOID_REASON_REQUIRED; JV ยัง posted ไม่มี void_at. assumption: oracle บอกแค่ 'เก็บ reason' (jv:246) ไม่ได้บอกว่าบังคับ และ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เทสต์นี้ยืนยันพฤติกรรมที่ BE ใช้จริง",
+            "422 รหัส GL_JV_VOID_REASON_REQUIRED; JV ยัง posted ไม่มี void_at. assumption: oracle บอกแค่ 'เก็บ reason' (jv:246) ไม่ได้บอกว่าบังคับ และ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เทสต์นี้ยืนยันพฤติกรรมที่ BE ใช้จริง ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) และจะ FAIL ถ้า BE ย้ายไปตาม oracle; รอเจ้าของสินค้าตัดสินก่อนใช้เป็นหลักฐานของ Accounting",
         },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
@@ -436,8 +443,10 @@ test.describe("Journal voucher (810)", () => {
     },
     async () => {
       const jv = await createManualJv(BALANCED, tag("voiddraft"));
-      test.fail(true, `needs product decision: jv:246 allows void of a draft JV, the BE answers 409 GL_JV_IMMUTABLE. See ${BUG_LIST}`);
       const r = await voidJv(jv.id, "e2e");
+      expect(r.status, "void call did not get a real answer from the BE").not.toBe(401);
+      expect(r.status).toBeLessThan(500);
+      test.fail(true, `needs product decision: jv:246 allows void of a draft JV, the BE answers 409 GL_JV_IMMUTABLE. See ${BUG_LIST}`);
       expect(r.status).toBe(200);
       expect((await getJv(jv.id)).jv_status).toBe("void");
     },

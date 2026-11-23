@@ -66,7 +66,7 @@ test.describe("Accounting settings (820)", () => {
   );
 
   test(
-    "TC-ACCT-030001 แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0",
+    "TC-ACCT-030001 (mock) แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0",
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; license accounting.ap" },
@@ -90,7 +90,7 @@ test.describe("Accounting settings (820)", () => {
   );
 
   test(
-    "TC-ACCT-030002 แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0",
+    "TC-ACCT-030002 (mock) แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0",
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; license accounting.gl" },

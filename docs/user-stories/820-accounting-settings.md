@@ -13,8 +13,8 @@ _Generated from `tests/820-accounting-settings.spec.ts` annotations. Edit annota
 | --- | --- | --- | --- |
 | TC-ACCT-010001 | หน้าตั้งค่า Accounting แสดงบัญชี gl_setting ที่ seed ไว้ด้วยรหัสบัญชี | High | Smoke |
 | TC-ACCT-020001 | Requestor (view-only) เปิดหน้าตั้งค่า Accounting: ไม่มีปุ่ม Edit และ PUT gl_setting ผ่าน API ถูกปฏิเสธ | High | Authorization |
-| TC-ACCT-030001 | แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0 | Medium | Smoke |
-| TC-ACCT-030002 | แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0 | Medium | Smoke |
+| TC-ACCT-030001 | (mock) แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0 | Medium | Smoke |
+| TC-ACCT-030002 | (mock) แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0 | Medium | Smoke |
 
 ---
 
@@ -63,7 +63,7 @@ Requestor login (ไม่มี configuration.app_config.update); gl_setting �
 
 ---
 
-## TC-ACCT-030001 — แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0
+## TC-ACCT-030001 — (mock) แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0
 
 > **As a** Requestor user, **I want** core Accounting Settings interactions to work, **so that** day-to-day usage stays smooth.
 
@@ -84,7 +84,7 @@ Admin login บน TEST BU; license accounting.ap
 
 ---
 
-## TC-ACCT-030002 — แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0
+## TC-ACCT-030002 — (mock) แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0
 
 > **As a** Requestor user, **I want** core Accounting Settings interactions to work, **so that** day-to-day usage stays smooth.
 
@@ -106,4 +106,4 @@ Admin login บน TEST BU; license accounting.gl
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git c21b49b</sub>
+<sub>Last regenerated: 2026-11-23 · git bd8bd47</sub>

@@ -4,9 +4,6 @@ import { field as labelledField, pickDate } from "../helpers/movement/ui";
 
 const BASE = "/accounting/journal-voucher";
 
-/** Header fields the v2.14 mockup shows on the JV detail; team decision 2026-11-04: all of them show even when empty. */
-export const JV_HEADER_FIELDS = ["Voucher Type", "Document No.", "Date", "Description"] as const;
-
 export interface JvLineInput {
   /** COA code, e.g. `5300`. */
   account: string;

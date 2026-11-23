@@ -236,11 +236,14 @@ test.describe("AP payment approvals (804)", () => {
     },
     async () => {
       const p = await submittedPayment("sod", "Budget");
+      const r = await approvePayment(p.id, "Budget");
+      // the call must have reached the BE with a real answer before the pin is armed, so an auth / 5xx failure cannot make it "pass"
+      expect(r.status, "approve call did not get a real answer from the BE").not.toBe(401);
+      expect(r.status).toBeLessThan(500);
       test.fail(
         true,
         `suspected bug: the same user (Budget) submits a payment voucher and approves it, and the backend posts it - the oracle requires a maker-checker 403 (pay:253). See ${BUG_LIST}`,
       );
-      const r = await approvePayment(p.id, "Budget");
       expect(r.status).toBe(403);
       expect(await paymentStatus(p.id)).toBe("in_review");
       expect(await jvOfSource("ap_payment", p.id)).toEqual([]);
@@ -263,11 +266,13 @@ test.describe("AP payment approvals (804)", () => {
     },
     async () => {
       const p = await submittedPayment("nonassignee");
+      const r = await approvePayment(p.id, "Requestor");
+      expect(r.status, "approve call did not get a real answer from the BE").not.toBe(401);
+      expect(r.status).toBeLessThan(500);
       test.fail(
         true,
         `suspected bug: a user who is not assigned to the Accounting Approval stage (view-only Requestor) can approve and post a payment voucher through the API (200) - the oracle requires 403 for a wrong workflow assignment (pay:194, pay:253). See ${BUG_LIST}`,
       );
-      const r = await approvePayment(p.id, "Requestor");
       expect(r.status).toBe(403);
       expect(await paymentStatus(p.id)).toBe("in_review");
       expect(await jvOfSource("ap_payment", p.id)).toEqual([]);
