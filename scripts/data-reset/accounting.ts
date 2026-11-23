@@ -145,6 +145,7 @@ async function seedGlPeriod(admin: ApiClient, base: string, now: Date, result: S
     result.failed.push(`GET ${path} → ${list.status}`);
     return;
   }
+  // start_at/end_at are UTC calendar-day bounds (observed 2026-01-01T00:00:00.000Z .. 2026-01-31T23:59:59.999Z), so slice(0, 10) is the period day.
   const covers = rowsOf<{ status?: string; start_at?: string; end_at?: string }>(list.body).some(
     (p) => p.status === "open" && !!p.start_at && !!p.end_at && p.start_at.slice(0, 10) <= today.day && today.day <= p.end_at.slice(0, 10),
   );

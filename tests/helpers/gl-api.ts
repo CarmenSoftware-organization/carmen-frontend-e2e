@@ -53,6 +53,11 @@ export function today(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
+/** `YYYY-MM-DD` of an ISO instant in the BU's timezone (a date picked in the UI is local midnight, i.e. 17:00Z the day before). */
+export function bangkokDay(instant: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(instant));
+}
+
 const MAX_PAGES = 50;
 
 /**
@@ -172,6 +177,22 @@ async function readGlSetting(): Promise<ApiResult> {
   return buConfigSend(CREATOR, "GET", GL_SETTING);
 }
 
+/** The current `gl_setting` value of the TEST BU (throws when the row is missing). */
+export async function getGlSettingValue(role: Role = CREATOR): Promise<Record<string, unknown>> {
+  const r = await buConfigSend(role, "GET", GL_SETTING);
+  const v = ok(r, `GET ${GL_SETTING}`).body?.data?.value;
+  if (!v) throw new Error("gl_setting has no value on the TEST BU - run data:reset");
+  return v as Record<string, unknown>;
+}
+
+/** COA code of an account id (the reverse of {@link accountId}). */
+export async function accountCode(id: string): Promise<string> {
+  const rows = await listAllRows(CREATOR, "/chart-of-accounts", true);
+  const hit = rows.find((a) => String(a.id) === id);
+  if (!hit) throw new Error(`no COA account with id ${id} on the TEST BU`);
+  return String(hit.code);
+}
+
 /**
  * Run `fn` with `patch` merged into `gl_setting`, then put back the exact previous value - also when `fn` throws.
  * The merge keeps every key the patch does not name, so a spec flipping one flag cannot wipe the accounts.
@@ -211,6 +232,21 @@ const REQUIRED_SETTING_KEYS = [
   "reversal_prefix_id",
 ] as const;
 
+/** True when an open GL period contains `day` (`YYYY-MM-DD`). */
+export async function openPeriodCovers(day: string): Promise<boolean> {
+  const p = await buConfigSend(CREATOR, "GET", "/gl-periods?perpage=100");
+  if (p.status !== 200) throw new Error(`accounting setup check: GET gl-periods -> ${p.status}`);
+  const periods: Row[] = Array.isArray(p.body?.data) ? p.body.data : [];
+  // Observed (TEST BU, 2026-11-23): start_at/end_at are UTC calendar-day bounds (2026-01-01T00:00:00.000Z .. 2026-01-31T23:59:59.999Z), not
+  // Bangkok local instants, so the UTC date part IS the period day; bangkokDay() would push the end bound a day too far.
+  return periods.some((x) => x.status === "open" && String(x.start_at).slice(0, 10) <= day && day <= String(x.end_at).slice(0, 10));
+}
+
+/** Throws, naming the missing period, unless an open GL period covers `day` (e.g. the day after today on a period-end date). */
+export async function assertOpenPeriodCovers(day: string, why: string): Promise<void> {
+  if (!(await openPeriodCovers(day))) throw new Error(`accounting setup missing on TEST BU: open GL period covering ${day} (${why}) - open the next period or run data:reset`);
+}
+
 /** Throws, naming what is missing, unless AP / GL can post on the TEST BU. */
 export async function assertAccountingReady(): Promise<void> {
   const missing: string[] = [];
@@ -223,12 +259,7 @@ export async function assertAccountingReady(): Promise<void> {
       if (!value[k]) missing.push(`gl_setting.${k}${k.endsWith("prefix_id") ? " (prefix)" : ""}`);
     }
   }
-  const p = await buConfigSend(CREATOR, "GET", "/gl-periods?perpage=100");
-  if (p.status !== 200) throw new Error(`accounting setup check: GET gl-periods -> ${p.status}`);
-  const day = today();
-  const periods: Row[] = Array.isArray(p.body?.data) ? p.body.data : [];
-  const covers = periods.some((x) => x.status === "open" && String(x.start_at).slice(0, 10) <= day && day <= String(x.end_at).slice(0, 10));
-  if (!covers) missing.push(`open GL period covering ${day}`);
+  if (!(await openPeriodCovers(today()))) missing.push(`open GL period covering ${today()}`);
   if (missing.length > 0) throw new Error(`accounting setup missing on TEST BU: ${missing.join(", ")} — run data:reset`);
 }
 
