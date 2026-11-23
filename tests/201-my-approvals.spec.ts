@@ -2,6 +2,7 @@ import { expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { MyApprovalsPage, LIST_PATH } from "./pages/my-approvals.page";
 import { BU_CODE } from "./test-users";
+import { pendingTotals } from "./helpers/my-pending";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
 import { openRecordFromRow } from "./helpers/list-row";
@@ -75,7 +76,7 @@ hodTest.describe("My Approvals — Queue", () => {
           description:
             "1. ไปที่ /procurement/my-approval\n2. อ่านจำนวนในการ์ด Total Pending\n3. เทียบกับจำนวนรวมใน footer ของตาราง",
         },
-        { type: "expected", description: "ผู้ใช้เห็นคิวอนุมัติรวม: การ์ด Total Pending แสดงจำนวนมากกว่า 0 และเท่ากับจำนวนรวมใน footer ของตาราง (Showing 1–N of <จำนวน>)" },
+        { type: "expected", description: "ผู้ใช้เห็นคิวอนุมัติรวม: การ์ด Total Pending แสดงจำนวนมากกว่า 0 และเท่ากับยอดรอนุมัติรวมทุก BU ที่ผู้ใช้สังกัด ส่วน footer ของตาราง (Showing 1–N of <จำนวน>) เท่ากับยอดของ BU ที่เลือกอยู่" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -88,7 +89,10 @@ hodTest.describe("My Approvals — Queue", () => {
       await expect(badge, "Total Pending card missing").toBeVisible({ timeout: 15_000 });
       const pending = Number((await badge.innerText()).match(/\d+/)?.[0]);
       expect(pending, "HOD has pending approvals in the dataset").toBeGreaterThan(0);
-      await expect(ma.paginationTotal()).toContainText(new RegExp(`of\\s+${pending}\\b`));
+      // The card counts every BU the user is in; the table lists the active BU only.
+      const totals = await pendingTotals("HOD");
+      expect(pending, `card = sum over TEST BUs ${JSON.stringify(totals.perBu)}`).toBe(totals.all);
+      await expect(ma.paginationTotal()).toContainText(new RegExp(`of\\s+${totals.perBu[BU_CODE]}\\b`));
     },
   );
 
