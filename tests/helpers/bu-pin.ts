@@ -1,5 +1,14 @@
 import { expect, type Page } from "@playwright/test";
 
+/**
+ * The switcher label of the BU each page is pinned to, read from the profile it rewrote. The FE
+ * shows `alias - name`, or just `name` without an alias (carmen-frontend components/navbar/bu-switcher.tsx);
+ * the TEST BUs have no alias, so the label never carries the BU code.
+ * label ของปุ่มสลับ BU คือชื่อ BU (มี alias ก็นำหน้า) ไม่มีรหัส BU
+ */
+const pinnedLabel = new WeakMap<Page, { code: string; label: string }>();
+const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 export async function pinBusinessUnit(page: Page, buCode: string): Promise<void> {
   // Switches BU in this browser only, by rewriting `is_default` in the profile
   // response. The real BU switcher saves the default on the account, which would
@@ -31,6 +40,11 @@ export async function pinBusinessUnit(page: Page, buCode: string): Promise<void>
     const body = await resp.json();
     for (const bu of body?.data?.business_unit ?? []) {
       bu.is_default = bu.code === buCode;
+      if (bu.is_default) {
+        const alias = String(bu.alias_name ?? "").trim();
+        const name = String(bu.name ?? "").trim();
+        if (name) pinnedLabel.set(page, { code: buCode, label: alias ? `${alias} - ${name}` : name });
+      }
     }
     const headers = Object.fromEntries(
       Object.entries(resp.headers()).filter(([k]) => !["content-encoding", "content-length"].includes(k.toLowerCase())),
@@ -42,6 +56,13 @@ export async function pinBusinessUnit(page: Page, buCode: string): Promise<void>
 /** Navigate, then wait until the header shows the intended BU — never post a document into the wrong BU. */
 export async function gotoBu(page: Page, path: string, bu: string): Promise<void> {
   await page.goto(path);
-  // The BU switcher button reads "<short name> - <BU code>" (it no longer sits in a <header> landmark).
-  await expect(page.getByRole("button", { name: new RegExp(`- ${bu}$`) }).first()).toBeVisible({ timeout: 30_000 });
+  // The switcher's accessible name is the pinned BU's label (see pinnedLabel); the profile is fetched
+  // on the first load, so the label is known once the page has asked for it.
+  await expect
+    .poll(() => pinnedLabel.get(page), { message: `profile of ${bu} not loaded — is the page pinned with pinBusinessUnit?`, timeout: 30_000 })
+    .toBeTruthy();
+  const pinned = pinnedLabel.get(page)!;
+  if (pinned.code !== bu) throw new Error(`gotoBu(${bu}): this page is pinned to ${pinned.code}`);
+  const label = pinned.label;
+  await expect(page.getByRole("button", { name: new RegExp(`^${escape(label)}$`) }).first()).toBeVisible({ timeout: 30_000 });
 }
