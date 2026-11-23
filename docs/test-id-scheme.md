@@ -57,6 +57,14 @@ Strict regex: `^TC-[A-Z]{2,5}-\d{6}$`
 | `501-grn.spec.ts` | `GRN` | 01–18, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = movement doc flow (`502-grn-doc-flow.spec.ts`) |
 | `601-cn.spec.ts` | `CN` | 01–11, 20–29, 30–39, 50–54, 70, 90 | CRUD + validation + integration; 70 = movement doc flow (`603-cn-doc-flow.spec.ts`) |
 | `602-cn-reason.spec.ts` | `CNR` | 01, 03–05, 10, 20 | CRUD + security |
+| `801-ap-invoice.spec.ts` | `APINV` | 01–04, 10, 20, 40 | Accounting AP invoice on TEST BU: list, detail, create, edit, validation, posting (JV), void, viewer permissions |
+| `802-ap-doc-types.spec.ts` | `APDOC` | 01–03 | Accounting AP deposit (01), debit note (02), credit note (03) on TEST BU: create, posting (JV signs), read set |
+| `803-ap-payment.spec.ts` | `APPAY` | 01–05 | Accounting AP payment on TEST BU: full payment with WHT 3% and rounding edge, mismatched WHT refused (01), partial payments and void (02), over-payment refusals (03), read set (04), WHT recalculated on the payment form (05) |
+| `804-ap-payment-approvals.spec.ts` | `APAPR` | 01–03 | Accounting AP payment approvals on TEST BU: Payment Approvals queue (01), approve and reject on the detail page (02), who may approve - maker-checker and stage assignment (03) |
+| `805-ap-from-grn.spec.ts` | `APGRN` | 01–04 | GRN -> AP invoice auto-creation (`ap_auto_from_grn`): switch on (01), off (02), GRN-side header edit voids and re-issues (03), setting restored (04) |
+| `810-journal-voucher.spec.ts` | `JV` | 01–06 | Accounting manual journal voucher on TEST BU: create and unbalanced (01), submit / approve and who may (02), detail header fields (03), void (04), reverse (05), subledger (AP) JV immutability (06) |
+| `811-jv-template.spec.ts` | `JVT` | 01–03 | JV templates on TEST BU: template / recurring / allocation lists (01), JV generated from a recurring template (02), allocation split (03) |
+| `820-accounting-settings.spec.ts` | `ACCT` | 01–03 | Accounting settings and dashboards smoke on TEST BU: seeded `gl_setting` accounts shown by code (01), view-only role cannot save (02), AP and GL dashboards show a figure (03) |
 | `701-sr.spec.ts` | `SR` | 01–12, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = movement doc flow (`702-sr-doc-flow.spec.ts`) |
 | `720-stock-issue.spec.ts` | `SI` | 01–06, 70–71, 90 | CRUD + sub-journeys + edge cases; 70–71 = movement SR → Issue flow, AVG / FIFO (`721-sr-issue-doc-flow.spec.ts`) |
 | `730-inventory-adjustment-doc-flow.spec.ts` | `IADJ` | 01–06, 10, 20, 30, 70–71, 90 | Movement doc flow: 70 = Stock In, 71 = Stock Out; the rest are open cases in `test-cases/gaps/730-inventory-adjustment-gap.md` |

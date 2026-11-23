@@ -8,11 +8,13 @@ describe("workflow fixture", () => {
   const fixture = loadWorkflowFixture();
   const [pr, po, sr] = fixture.workflows;
 
-  it("lists the PR workflow first, then General PO, then the SR workflow", () => {
+  it("lists the PR workflow first, then General PO, the SR workflow, AP Payment and Journal Voucher", () => {
     expect(fixture.workflows.map((w) => [w.order, w.workflow_type])).toEqual([
       [0, "purchase_request"],
       [1, "purchase_order"],
       [2, "store_requisition"],
+      [3, "ap_payment"],
+      [4, "gl_jv"],
     ]);
     expect(po.name).toBe("General PO");
   });
@@ -48,6 +50,23 @@ describe("workflow fixture", () => {
       ["GM Approval", "approve", ["carmensoftware.dev+gm@gmail.com"]],
       ["Completed", "approve", []],
     ]);
+  });
+
+  it("adds AP payment and JV workflows with Budget as the approver, Admin and Budget creating", () => {
+    const [, , , payment, jv] = fixture.workflows;
+    const who = (w: typeof payment) =>
+      w.data.stages.map((s) => [s.name, s.role, s.assigned_users.map((u) => u.email.split("+")[1].split("@")[0])]);
+    const expected = [
+      ["Create Request", "create", ["admin", "budget"]],
+      ["Accounting Approval", "approve", ["budget"]],
+      ["Completed", "approve", []],
+    ];
+    expect(payment.name).toBe("AP Payment");
+    expect(who(payment)).toEqual(expected);
+    expect(jv.name).toBe("Journal Voucher");
+    expect(who(jv)).toEqual(expected);
+    // Only manual vouchers go through review; AP-generated, recurring and reversal vouchers post straight away.
+    expect(jv.data.jv_scope).toEqual({ prefix_ids: [], sources: ["manual"] });
   });
 
   it("only names test accounts", () => {

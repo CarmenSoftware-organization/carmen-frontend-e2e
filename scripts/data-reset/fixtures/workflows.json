@@ -1,5 +1,5 @@
 {
-  "note": "Hand-authored 2026-11-05: TEST BU had no workflows to capture. assigned_users carry emails; data:reset fills id, names and department from each account's profile. Every PR passes GM (user decision 2026-11-05: PR prices exist only from the Purchase stage, so an amount rule cannot pick high-value PRs).",
+  "note": "Hand-authored 2026-11-05: TEST BU had no workflows to capture. assigned_users carry emails; data:reset fills id, names and department from each account's profile. Every PR passes GM (user decision 2026-11-05: PR prices exist only from the Purchase stage, so an amount rule cannot pick high-value PRs). 2026-11-23: added AP Payment (ap_payment) and Journal Voucher (gl_jv, manual vouchers only) — Admin creates, Budget approves. AP invoices have no workflow: submit posts.",
   "bu_code": "GR2VYNKQ",
   "workflows": [
     {
@@ -692,6 +692,338 @@
           }
         ],
         "routing_rules": []
+      }
+    },
+    {
+      "order": 3,
+      "name": "AP Payment",
+      "workflow_type": "ap_payment",
+      "description": "Standard test dataset AP payment workflow",
+      "is_active": true,
+      "data": {
+        "stages": [
+          {
+            "name": "Create Request",
+            "role": "create",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Accounting creates and submits the payment voucher",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+admin@gmail.com"
+              },
+              {
+                "email": "carmensoftware.dev+budget@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
+          },
+          {
+            "name": "Accounting Approval",
+            "role": "approve",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Budget approves and posts the payment",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+budget@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              }
+            }
+          },
+          {
+            "name": "Completed",
+            "role": "approve",
+            "sla": "0",
+            "sla_unit": "hours",
+            "description": "Terminal stage — the backend completes the document on the approval that enters it",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
+          }
+        ],
+        "routing_rules": []
+      }
+    },
+    {
+      "order": 4,
+      "name": "Journal Voucher",
+      "workflow_type": "gl_jv",
+      "description": "Standard test dataset manual JV workflow",
+      "is_active": true,
+      "data": {
+        "stages": [
+          {
+            "name": "Create Request",
+            "role": "create",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Accounting creates and submits the journal voucher",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+admin@gmail.com"
+              },
+              {
+                "email": "carmensoftware.dev+budget@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
+          },
+          {
+            "name": "Accounting Approval",
+            "role": "approve",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Budget approves and posts the journal voucher",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+budget@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              }
+            }
+          },
+          {
+            "name": "Completed",
+            "role": "approve",
+            "sla": "0",
+            "sla_unit": "hours",
+            "description": "Terminal stage — the backend completes the document on the approval that enters it",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
+          }
+        ],
+        "routing_rules": [],
+        "jv_scope": {
+          "prefix_ids": [],
+          "sources": [
+            "manual"
+          ]
+        }
       }
     }
   ]
