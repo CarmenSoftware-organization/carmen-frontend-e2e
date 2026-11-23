@@ -271,7 +271,7 @@ test.describe("AP payment approvals (804)", () => {
       expect(r.status).toBeLessThan(500);
       test.fail(
         true,
-        `suspected bug: a user who is not assigned to the Accounting Approval stage (view-only Requestor) can approve and post a payment voucher through the API (200) - the oracle requires 403 for a wrong workflow assignment (pay:194, pay:253). See ${BUG_LIST}`,
+        `suspected bug: a user who is not assigned to the Accounting Approval stage (view-only Requestor) can approve and post a payment voucher through the API (200) - the oracle requires 403 for a wrong workflow assignment (pay:194, pay:253; owner confirmed 2026-11-23: only the workflow's assigned user may approve). See ${BUG_LIST}`,
       );
       expect(r.status).toBe(403);
       expect(await paymentStatus(p.id)).toBe("in_review");
