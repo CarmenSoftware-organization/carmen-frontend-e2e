@@ -161,7 +161,7 @@ JV ของเทสต์เอง 1 ใบ in_review และอีก 1 ใ
 
 **Expected**
 
-Approve 422 WORKFLOW_USER_NOT_STAGE_APPROVER (ไม่ใช่ผู้อนุมัติของ stage); Void และ Reverse 403 (ไม่มีสิทธิ์); JV แรกยัง in_review, JV หลังยัง posted และไม่มี JV กลับรายการเกิดขึ้น. rule: 403 ไม่มีสิทธิ์หรือผิด workflow stage (jv:283). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง แต่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เคสนี้ยืนยันเฉพาะว่า role ที่ไม่มีสิทธิ์ถูกปฏิเสธ ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) และจะ FAIL ถ้า BE ย้ายไปตาม oracle; รอเจ้าของสินค้าตัดสินก่อนใช้เป็นหลักฐานของ Accounting
+Approve 422 WORKFLOW_USER_NOT_STAGE_APPROVER (ไม่ใช่ผู้อนุมัติของ stage); Void และ Reverse 403 (ไม่มีสิทธิ์); JV แรกยัง in_review, JV หลังยัง posted และไม่มี JV กลับรายการเกิดขึ้น. rule: 403 ไม่มีสิทธิ์หรือผิด workflow stage (jv:283). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง แต่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เคสนี้ยืนยันเฉพาะว่า role ที่ไม่มีสิทธิ์ถูกปฏิเสธ ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) แต่เจ้าของสินค้าตัดสินแล้ว (2026-11-23) ว่าตอนนี้อนุญาต void ได้; ต่อไปจะมี BU setting เลือก reverse JV หรือ void JV เมื่อมีแล้วต้องแยกเคสตามค่า setting
 
 ---
 
@@ -205,7 +205,7 @@ JV ของเทสต์เอง posted; Admin มี accounting.gl.void (�
 
 **Expected**
 
-200, jv_status void, void_reason = เหตุผลที่ส่ง, void_at มีค่า; จำนวน JV ของ BU ไม่เปลี่ยน (void ถอนยอดโดยไม่สร้าง JV กลับรายการ); ไม่มี JV ใดมี reversal_of_jv_id ชี้มาที่ JV นี้. rule: Void เก็บ reason ห้ามลบ audit (jv:246). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); ยืนยันพฤติกรรมที่ BE/FE ใช้จริง (ดู TC-JV-040004) ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) และจะ FAIL ถ้า BE ย้ายไปตาม oracle; รอเจ้าของสินค้าตัดสินก่อนใช้เป็นหลักฐานของ Accounting
+200, jv_status void, void_reason = เหตุผลที่ส่ง, void_at มีค่า; จำนวน JV ของ BU ไม่เปลี่ยน (void ถอนยอดโดยไม่สร้าง JV กลับรายการ); ไม่มี JV ใดมี reversal_of_jv_id ชี้มาที่ JV นี้. rule: Void เก็บ reason ห้ามลบ audit (jv:246). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); ยืนยันพฤติกรรมที่ BE/FE ใช้จริง (ดู TC-JV-040004) ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) แต่เจ้าของสินค้าตัดสินแล้ว (2026-11-23) ว่าตอนนี้อนุญาต void ได้; ต่อไปจะมี BU setting เลือก reverse JV หรือ void JV เมื่อมีแล้วต้องแยกเคสตามค่า setting
 
 ---
 
@@ -228,7 +228,7 @@ Admin login; JV ของเทสต์เอง posted
 
 **Expected**
 
-ปุ่ม Void ในกล่องยืนยัน disabled จนกรอกเหตุผล; หลังยืนยัน POST gl-posting สำเร็จ toast Voucher voided; API: void, void_reason ตรงที่กรอก. assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse) ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) และจะ FAIL ถ้า BE ย้ายไปตาม oracle; รอเจ้าของสินค้าตัดสินก่อนใช้เป็นหลักฐานของ Accounting
+ปุ่ม Void ในกล่องยืนยัน disabled จนกรอกเหตุผล; หลังยืนยัน POST gl-posting สำเร็จ toast Voucher voided; API: void, void_reason ตรงที่กรอก. assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse) ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) แต่เจ้าของสินค้าตัดสินแล้ว (2026-11-23) ว่าตอนนี้อนุญาต void ได้; ต่อไปจะมี BU setting เลือก reverse JV หรือ void JV เมื่อมีแล้วต้องแยกเคสตามค่า setting
 
 ---
 
@@ -250,7 +250,7 @@ JV ของเทสต์เอง posted
 
 **Expected**
 
-422 รหัส GL_JV_VOID_REASON_REQUIRED; JV ยัง posted ไม่มี void_at. assumption: oracle บอกแค่ 'เก็บ reason' (jv:246) ไม่ได้บอกว่าบังคับ และ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เทสต์นี้ยืนยันพฤติกรรมที่ BE ใช้จริง ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) และจะ FAIL ถ้า BE ย้ายไปตาม oracle; รอเจ้าของสินค้าตัดสินก่อนใช้เป็นหลักฐานของ Accounting
+422 รหัส GL_JV_VOID_REASON_REQUIRED; JV ยัง posted ไม่มี void_at. assumption: oracle บอกแค่ 'เก็บ reason' (jv:246) ไม่ได้บอกว่าบังคับ และ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เทสต์นี้ยืนยันพฤติกรรมที่ BE ใช้จริง ผลเขียวของเคสนี้ยึดพฤติกรรม void ของ JV ที่ posted ซึ่งไม่ตรง oracle (jv:246-247) แต่เจ้าของสินค้าตัดสินแล้ว (2026-11-23) ว่าตอนนี้อนุญาต void ได้; ต่อไปจะมี BU setting เลือก reverse JV หรือ void JV เมื่อมีแล้วต้องแยกเคสตามค่า setting
 
 ---
 
@@ -344,4 +344,4 @@ Void และ Reverse ได้ 409 รหัส GL_JV_IMMUTABLE ทั้ง�
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git bd8bd47</sub>
+<sub>Last regenerated: 2026-11-23 · git 03324d2</sub>
