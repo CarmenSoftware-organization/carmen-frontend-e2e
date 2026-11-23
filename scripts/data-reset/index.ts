@@ -101,7 +101,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     env.problems.forEach((p) => log(`  ✗ ${p}`));
     return 1;
   }
-  log(`step 0: 9 accounts in ${cfg.buCode}, default ${BU_CODE}, cost method ${TEST_BUS.find((b) => b.code === cfg.buCode)?.method}, purchase permissions present`);
+  log(`step 0: 9 accounts in ${cfg.buCode}, default ${BU_CODE}, cost method ${TEST_BUS.find((b) => b.code === cfg.buCode)?.method}${env.notes.length === 0 ? ", purchase permissions present" : ""}`);
   env.notes.forEach((n) => log(`  note: ${n}`));
   const admin = await sessions.client(cfg.adminEmail);
 

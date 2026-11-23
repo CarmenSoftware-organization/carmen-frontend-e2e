@@ -4,13 +4,12 @@
 // "Permission Denied" on the PR pages) and the BU had no default currency (amounts fell back to THB
 // with a warning banner on every page).
 // สิทธิ์ของบัญชีเทสใน TEST BU (application role) และสกุลเงินหลักของ BU — ไม่มีใครตั้งให้เอง
-import { TEST_USERS } from "../../tests/test-users";
+import { BU_CODE, TEST_USERS } from "../../tests/test-users";
 import type { ResetConfig } from "./config";
 import type { Sessions } from "./sessions";
 import { rowsOf, type StepResult } from "./step-result";
 import { withAdminDefaultBu } from "./bu-base";
 import { copyRolesFromSource } from "./roles";
-import { BU_CODE } from "../../tests/test-users";
 import { PURCHASE_EMAIL, purchaseProblems } from "./verify-env";
 
 const email = (local: string) => `carmensoftware.dev+${local}@gmail.com`;

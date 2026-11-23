@@ -62,9 +62,18 @@ export async function withAdminDefaultBu<T extends StepResult>(
   try {
     return await fn();
   } finally {
-    const back = await switchTo(homeId);
-    if (!back.ok) {
-      result.failed.push(`RESTORE FAILED: POST /api/business-units/default (${BU_CODE}) → ${back.status} — admin's default BU is still ${cfg.buCode}; switch it back by hand`);
+    // Never throw from here: it would mask an error thrown by fn().
+    try {
+      const back = await switchTo(homeId);
+      if (!back.ok) {
+        const line = `RESTORE FAILED: POST /api/business-units/default (${BU_CODE}) → ${back.status} — admin's default BU is still ${cfg.buCode}; switch it back by hand`;
+        result.failed.push(line);
+        console.error(line);
+      }
+    } catch (err) {
+      const line = `RESTORE FAILED: POST /api/business-units/default (${BU_CODE}) threw ${err instanceof Error ? err.message : String(err)} — admin's default BU may still be ${cfg.buCode}; switch it back by hand`;
+      result.failed.push(line);
+      console.error(line);
     }
   }
 }
