@@ -10,27 +10,31 @@ import {
   listOutlets,
   onHand,
   rowsOf,
+  scCalendar,
   scDetail,
   scForDay,
   scPost,
   scUpdateLines,
   scVerify,
+  scVoid,
+  voidStockOut,
   mapItem,
   mapOutlet,
 } from "./helpers/pos-api";
-import { saleDay, type Period } from "./helpers/pos-days";
+import { pastDays, saleDay, type Period } from "./helpers/pos-days";
 import { buildSimphonyFile, type SimphonyLine } from "./helpers/simphony-fixture";
 import { expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Sales Consumption on the TEST BU (GR2VYNKQ): mapping blocks Post, line overrides, verify on-hand, post (Stock Outs
-// per location + on-hand deltas) and double post. Groups 01-05; void / late lines / calendar belong to later tasks.
+// per location + on-hand deltas), double post, void + late lines and the calendar. Groups 01-07 (06 has 5 cases, one is skipped by ruling, one pinned).
 //
 // Store key E2E-141; sale days saleDay(141, 1..10) count backward from the end of the open inventory period (spec 140
-// counts forward, Task 6 owns n = 11..16). Every case starts from a clean store (beforeEach cleanupPosRun: voids posted
+// counts forward; groups 06-07 use n = 11..16 and two stores). Every case starts from a clean store (beforeEach cleanupPosRun: voids posted
 // SCs, cancels imports) so a day can be reused and a failed case never leaves a posted SC behind. Case -> day:
-// 01 -> 1 (010004 also 2), 02 -> 3, 03 -> 4, 04 -> 5, 05 -> 6.
+// 01 -> 1 (010004 also 2), 02 -> 3, 03 -> 4, 04 -> 5, 05 -> 6, 06 -> 11 / 12 / 13 (060001 / 060002 / 060004),
+// 07 -> 14 (posted), 15 (pending) + pastDays (net-0 day, two days without a file).
 //
 // Oracle: ../carmen-frontend/docs/superpowers/specs/2026-10-26-sales-consumption-design.md §4.2 (blocked lines, location
 // / recipe override, verify, post = one Stock Out per location) and §6. Expected ingredient qty = recipe qty x net sale
@@ -45,6 +49,10 @@ test.describe.configure({ timeout: 120_000 });
 
 const STORE_KEY = "E2E-141";
 const STORE_NAME = "E2E 141";
+// second store: the file that arrives after a day was posted (TC-SC-060004)
+const STORE_KEY_B = "E2E-141B";
+const STORE_NAME_B = "E2E 141B";
+const ALL_STORE_KEYS = [STORE_KEY, STORE_KEY_B];
 const fileName = (key: string) => `e2e-141-${key}-${uid}.txt`;
 
 const OUTLET = { O1: "Outlet One", O2: "Outlet Two", O9: "Outlet Nine" } as const;
@@ -108,9 +116,9 @@ async function loadFixture(): Promise<void> {
 }
 
 /** Import through the API and demand a live import (status success). */
-async function importLive(key: string, businessDate: string, lines: SimphonyLine[]): Promise<void> {
+async function importLive(key: string, businessDate: string, lines: SimphonyLine[], store = { key: STORE_KEY, name: STORE_NAME }): Promise<void> {
   const name = fileName(key);
-  const text = buildSimphonyFile({ storeKey: STORE_KEY, storeName: STORE_NAME, businessDate, lines });
+  const text = buildSimphonyFile({ storeKey: store.key, storeName: store.name, businessDate, lines });
   const r = await importSimphony(text, name);
   expect(r.status, `import ${name}: ${JSON.stringify(r.body).slice(0, 200)}`).toBe(201);
   expect(r.body?.data?.status).toBe("success");
@@ -266,10 +274,10 @@ test.describe("Sales Consumption (141)", () => {
 
   // a failed case must never leave a posted SC (or a live import) behind
   test.beforeEach(async () => {
-    await cleanupPosRun(STORE_KEY);
+    for (const key of ALL_STORE_KEYS) await cleanupPosRun(key);
   });
   test.afterAll(async () => {
-    await cleanupPosRun(STORE_KEY);
+    for (const key of ALL_STORE_KEYS) await cleanupPosRun(key);
   });
 
   // ── 01 blocking ───────────────────────────────────────────────────────
@@ -412,6 +420,7 @@ test.describe("Sales Consumption (141)", () => {
       expect(i9.length).toBe(1);
       expect(i9[0].state).toBe("not_counted");
       const i2 = det.lines.filter((l: any) => l.item.code === "I2");
+      expect(i2.length, "the net-0 I2 line is still listed").toBeGreaterThan(0);
       for (const l of i2) {
         expect(Number(l.qty), "refund line nets out").toBeLessThanOrEqual(0);
         expect(l.state, "a net <= 0 line is not counted").toBe("not_counted");
@@ -850,6 +859,8 @@ test.describe("Sales Consumption (141)", () => {
       }
       const ok = [a, b].filter((r) => r.status >= 200 && r.status < 300);
       expect(ok.length, "exactly one parallel post succeeds").toBe(1);
+      const lost = [a, b].find((r) => !(r.status >= 200 && r.status < 300))!;
+      expect(lost.status, "the losing request is refused").toBeGreaterThanOrEqual(400);
       expect((await detail(sc.id)).status).toBe("posted");
       const want = expectedUse([
         { loc: locs.first, recipe: "A", qty: 2 },
@@ -857,6 +868,230 @@ test.describe("Sales Consumption (141)", () => {
       ]);
       await expectStockOuts(sc.id, d, want);
       await expectDeltas(d, before, want);
+    },
+  );
+
+  // ── 06 void, late lines ───────────────────────────────────────────────
+  test(
+    "TC-SC-060001 void SC ที่ post แล้ว (งวดเปิด) ผ่านหน้าเว็บ: Stock Out ทุกใบถูก void, on-hand กลับเท่าก่อน post, SC เดิม voided และมี SC ใหม่ pending ของวันเดิมจำนวนบรรทัดเท่าเดิม",
+    {
+      annotation: [
+        { type: "preconditions", description: "Admin login บน TEST BU; ร้าน E2E-141 วัน 11 import O1/I1 x2 และ O2/I2 x1 ผูกครบ; อ่าน on-hand P1-P4 ทั้งสอง location ณ วันขายก่อน post; verify แล้ว post (Stock Out 2 ใบ)" },
+        { type: "steps", description: "1. เปิดหน้า SC ที่ posted กด Void ใส่เหตุผลแล้วยืนยัน\n2. อ่าน SC เดิม, Stock Out ของมัน และ SC ของวันนั้น\n3. อ่าน on-hand P1-P4 ทั้งสอง location ใหม่" },
+        {
+          type: "expected",
+          description:
+            "ขึ้นข้อความ Voided พร้อมเลข SC ใหม่; SC เดิมสถานะ voided และ Stock Out ทั้ง 2 ใบถูก void (ไม่เหลือใบที่ใช้งานอยู่ และ GET /stock-outs/:id ของแต่ละใบตอบ 404 เพราะ void = soft delete); on-hand ทุกสินค้าทุก location เท่าค่าก่อน post (ผลต่าง 0); SC ของวันเดียวกันที่ไม่ voided มีใบเดียว คนละ id กับใบเดิม สถานะ pending มี 2 บรรทัด (O1/I1 และ O2/I2) และไม่มี Stock Out",
+        },
+        { type: "priority", description: "Critical" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const d = day(11);
+      const before = await snapshot(d);
+      const s = await postedFresh("void-ui", 11, [line("O1", "I1", 2), line("O2", "I2", 1)]);
+      const posted = await liveStockOuts(s.id);
+      expect(posted.length, "post made one Stock Out per location").toBe(2);
+      const pendingLines = (await detail(s.id)).lines.length;
+
+      const sc = new SalesConsumptionPage(page);
+      await sc.gotoDetail(s.id);
+      await expectSaved(page, /\/sales-consumptions\/[^/]+\/void/, () => sc.confirmVoid("e2e void 060001"), page.getByText(/Voided\./));
+
+      const old = await detail(s.id);
+      expect(old.status).toBe("voided");
+      expect(await liveStockOuts(s.id)).toEqual([]);
+      // a voided Stock Out is soft-deleted: /stock-outs/:id answers 404 for it (the SC detail side is TC-SC-060005)
+      for (const x of posted) {
+        const r = await buSend("Admin", "GET", `/stock-outs/${x.id}`);
+        expect(r.status, `voided stock-out ${x.id} is no longer served`).toBe(404);
+      }
+      await expectDeltas(d, before, new Map());
+
+      const fresh = await scForDay(d);
+      expect(fresh, "the day reopened as a new SC").toBeTruthy();
+      expect(fresh!.id).not.toBe(s.id);
+      const nd = await detail(fresh!.id);
+      expect(nd.status).toBe("pending");
+      expect(nd.lines.length, "the new SC holds the same lines").toBe(pendingLines);
+      expect(await liveStockOuts(fresh!.id)).toEqual([]);
+    },
+  );
+
+  test(
+    "TC-SC-060002 void Stock Out ของ SC ที่ post แล้วตรง ๆ: ถูกปฏิเสธ STOCK_OUT_VOID_VIA_SALES_CONSUMPTION และ Stock Out ยังใช้งานอยู่",
+    {
+      annotation: [
+        { type: "preconditions", description: "Admin login บน TEST BU; ร้าน E2E-141 วัน 12 import O1/I1 x2 ผูกครบ แล้ว verify + post; อ่าน on-hand ก่อนเริ่ม" },
+        { type: "steps", description: "1. อ่านรายการ Stock Out ที่ SC สร้าง\n2. ยิง DELETE /stock-outs/:id/void กับ Stock Out นั้นตรง ๆ\n3. อ่าน SC, Stock Out และ on-hand ใหม่" },
+        {
+          type: "expected",
+          description: "ถูกปฏิเสธ 409 STOCK_OUT_VOID_VIA_SALES_CONSUMPTION (feature spec §4.2: void Stock Out ที่มาจาก SC ต้องทำที่ SC); SC ยัง posted, Stock Out ยังไม่ voided รายการเดิม, on-hand ยังลดตามสูตรเท่าเดิม",
+        },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async () => {
+      const d = day(12);
+      const before = await snapshot(d);
+      const s = await postedFresh("void-so", 12, [line("O1", "I1", 2)]);
+      const so = await liveStockOuts(s.id);
+      expect(so.length).toBe(1);
+      for (const x of so) expectRefusal(await voidStockOut(x.id), 409, "STOCK_OUT_VOID_VIA_SALES_CONSUMPTION");
+      expect((await detail(s.id)).status).toBe("posted");
+      expect((await liveStockOuts(s.id)).map((x) => x.id)).toEqual(so.map((x) => x.id));
+      await expectDeltas(d, before, expectedUse([{ loc: locs.first, recipe: "A", qty: 2 }]));
+    },
+  );
+
+  test(
+    "TC-SC-060003 void SC ที่วันขายอยู่ในงวดคลังที่ปิดแล้ว ต้องถูกปฏิเสธ",
+    {
+      annotation: [
+        { type: "preconditions", description: "SC ที่ posted แล้วในงวดคลังที่ถูกปิด; e2e ไม่เคยปิดงวด (data:reset ได้งวดเปิดเท่านั้น) จึงสร้างเงื่อนไขนี้ไม่ได้" },
+        { type: "steps", description: "1. ปิดงวดคลังของวันขาย\n2. void SC ของวันนั้น" },
+        { type: "expected", description: "void ถูกปฏิเสธด้วย SALES_CONSUMPTION_VOID_PERIOD_CLOSED (feature spec §4.2) และไม่มี Stock Out ถูก void" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async () => {
+      test.skip(true, "not testable: e2e never closes inventory periods (design 2026-11-23)");
+    },
+  );
+
+  test(
+    "TC-SC-060004 ไฟล์ของอีกร้านเข้ามาหลังวันนั้น post แล้ว: SC ขึ้นคำเตือน late, บรรทัด late ไม่ผูก SC, void แล้ว SC ใหม่รับทั้งบรรทัดเดิมและ late",
+    {
+      annotation: [
+        { type: "preconditions", description: "Admin login บน TEST BU; ร้าน E2E-141 วัน 13 import O1/I1 x2 ผูกครบ verify + post แล้ว; อ่าน on-hand P1-P4 ณ วันขายก่อนเริ่ม; ร้านที่สอง E2E-141B (ไม่ผูก master)" },
+        {
+          type: "steps",
+          description:
+            "1. import ไฟล์ของร้าน E2E-141B วัน 13 (O1/I2 x2) หลังวันนั้น post แล้ว\n2. เปิดหน้า SC ที่ posted และอ่านรายละเอียด/ปฏิทินของวัน\n3. void SC ผ่าน API\n4. อ่าน SC ใหม่ของวัน และ on-hand",
+        },
+        {
+          type: "expected",
+          description:
+            "หน้า SC ขึ้นคำเตือน 'sale line arrived after this was posted' และ late_lines = 1 (ตรงกับปฏิทิน); SC ที่ posted ยังมีแค่ 1 บรรทัดเดิม (บรรทัด late ไม่มี SC id) และ Stock Out ชุดเดิมไม่เปลี่ยน; หลัง void SC เดิม voided, on-hand กลับเท่าก่อน post, มี SC ใหม่ pending ใบเดียวที่มี 2 บรรทัด (เดิม + late) และไม่ขึ้น late อีก",
+        },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
+      ],
+    },
+    async ({ page }) => {
+      const d = day(13);
+      const before = await snapshot(d);
+      const s = await postedFresh("late-a", 13, [line("O1", "I1", 2)]);
+      const so = await liveStockOuts(s.id);
+      expect(so.length).toBe(1);
+
+      await importLive("late-b", d, [line("O1", "I2", 2)], { key: STORE_KEY_B, name: STORE_NAME_B });
+      const posted = await detail(s.id);
+      expect(posted.status, "a late file does not touch the posted SC").toBe("posted");
+      expect(posted.late_lines).toBe(1);
+      expect(posted.lines.length, "the late line is not attached to the posted SC").toBe(1);
+      expect((await liveStockOuts(s.id)).map((x) => x.id)).toEqual(so.map((x) => x.id));
+      const cal = (await scCalendar(d.slice(0, 7))).body?.data?.find((x: any) => x.date === d);
+      expect(cal?.late_lines, "calendar counts the same late line").toBe(1);
+
+      const sc = new SalesConsumptionPage(page);
+      await sc.gotoDetail(s.id);
+      await expect(sc.lateLinesWarning()).toBeVisible();
+
+      const v = await scVoid(s.id, "e2e void 060004", Number(posted.doc_version));
+      expect(v.status, `void: ${JSON.stringify(v.body).slice(0, 300)}`).toBeLessThan(300);
+      expect((await detail(s.id)).status).toBe("voided");
+      await expectDeltas(d, before, new Map());
+      const fresh = await scForDay(d);
+      expect(fresh, "the day reopened as a new SC").toBeTruthy();
+      expect(fresh!.id).not.toBe(s.id);
+      const nd = await detail(fresh!.id);
+      expect(nd.status).toBe("pending");
+      expect(nd.lines.length, "the new SC holds the original and the late line").toBe(2);
+      expect(nd.late_lines).toBe(0);
+    },
+  );
+
+  test(
+    "TC-SC-060005 หน้า SC ที่ถูก void ต้องแสดง Stock Out ที่ถูก void ของมัน (voided = true)",
+    {
+      annotation: [
+        { type: "preconditions", description: "Admin login บน TEST BU; ร้าน E2E-141 วัน 12 import O1/I1 x2 ผูกครบ verify + post (Stock Out 1 ใบ) แล้ว void SC ผ่าน API" },
+        { type: "steps", description: "1. void SC ที่ posted (API)\n2. อ่านรายละเอียดของ SC เดิมที่ voided" },
+        {
+          type: "expected",
+          description:
+            "stock_outs ของ SC ที่ voided ยังรายการ Stock Out ใบเดิมพร้อม voided = true (feature spec §4.2: หน้า SC ที่ voided แสดงข้อมูลจาก Stock Out ที่ออกจริง; โค้ด BE และป้าย 'voided' ใน FE เตรียมไว้). BE จริงตอบ stock_outs ว่าง จึง pin เป็น suspected bug (test.fail)",
+        },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Functional" },
+      ],
+    },
+    async () => {
+      const s = await postedFresh("void-list", 12, [line("O1", "I1", 2)]);
+      const so = await liveStockOuts(s.id);
+      expect(so.length).toBe(1);
+      const v = await scVoid(s.id, "e2e void 060005", Number((await detail(s.id)).doc_version));
+      expect(v.status, `void: ${JSON.stringify(v.body).slice(0, 300)}`).toBeLessThan(300);
+      const r = await scDetail(s.id);
+      expect(r.status, "answered by the real backend").toBe(200);
+      expect(r.body.data.status).toBe("voided");
+
+      test.fail(true, "suspected bug: the detail of a voided SC lists no Stock Outs (feature spec §4.2)");
+      const list = r.body.data.stock_outs as Array<{ id: string; voided: boolean }>;
+      expect(list.map((x) => x.id)).toEqual(so.map((x) => x.id));
+      expect(list.every((x) => x.voided)).toBe(true);
+    },
+  );
+
+  // ── 07 calendar ───────────────────────────────────────────────────────
+  test(
+    "TC-SC-070001 ปฏิทินเดือนปัจจุบัน: วัน post = Posted, วันรอ post = Pending, วันที่ import แต่ยอดสุทธิ 0 = No sales, วันที่ไม่มีไฟล์ = No file และวันนี้ไม่ขึ้น No file",
+    {
+      annotation: [
+        { type: "preconditions", description: "Admin login บน TEST BU; ร้าน E2E-141: วัน 14 import + post, วัน 15 import (ผูกครบ ยังไม่ post), วันที่หนึ่งใน pastDays import เฉพาะรายการยอดสุทธิ 0 (ตั้งต้นปฏิทินของ BU); อีกสองวันใน pastDays ไม่มีไฟล์; ต้องมีวันในอดีตก่อนเมื่อวาน 3 วันที่ไม่ชนวันของสเปกอื่น" },
+        { type: "steps", description: "1. เปิด Sales Consumption > Calendar เดือนปัจจุบัน\n2. อ่านข้อความสถานะของแต่ละวันที่กล่าวมา และของวันนี้\n3. เทียบกับ GET calendar" },
+        {
+          type: "expected",
+          description:
+            "วัน 14 ขึ้น Posted, วัน 15 ขึ้น Pending, วัน net-0 ขึ้น No sales, สองวันที่ไม่มี import (อยู่หลังวัน import แรกของ BU ก่อนวันนี้) ขึ้น No file, วันนี้ไม่ขึ้น No file (API = future); ค่าจาก API calendar ตรงกับหน้า (posted / pending / no_sales / no_file / future)",
+        },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
+      ],
+    },
+    async ({ page }) => {
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
+      const past = pastDays(period, today, 3);
+      test.skip(past === null, "month too young: needs 2 past days before yesterday (plus one earlier day for the BU calendar start)");
+      const [noSales, noFile1, noFile2] = past!;
+      const month = today.slice(0, 7);
+      for (const dd of [day(14), day(15), noSales, noFile1, noFile2]) expect(dd.slice(0, 7), `${dd} is in the current month`).toBe(month);
+
+      await postedFresh("cal-posted", 14, [line("O1", "I1", 1)]);
+      await prepare("cal-pending", 15, [line("O1", "I1", 1)]);
+      // the BU calendar starts at its first live import: this net-0 day is that start, so the two days after it have no file
+      await importLive("cal-nosales", noSales, [line("O1", "I2", 3), line("O1", "I2", -3)]);
+
+      const api = new Map<string, string>(((await scCalendar(month)).body?.data ?? []).map((x: any) => [x.date as string, x.status as string]));
+      expect(api.get(day(14))).toBe("posted");
+      expect(api.get(day(15))).toBe("pending");
+      expect(api.get(noSales)).toBe("no_sales");
+      expect(api.get(noFile1)).toBe("no_file");
+      expect(api.get(noFile2)).toBe("no_file");
+      expect(api.get(today), "today is never a missing file").toBe("future");
+
+      const sc = new SalesConsumptionPage(page);
+      await sc.goto(month);
+      await expect(sc.dayStatus(day(14))).toHaveText("Posted");
+      await expect(sc.dayStatus(day(15))).toHaveText("Pending");
+      await expect(sc.dayStatus(noSales)).toHaveText("No sales");
+      await expect(sc.dayStatus(noFile1)).toHaveText("No file");
+      await expect(sc.dayStatus(noFile2)).toHaveText("No file");
+      await expect(sc.calendarDay(today)).not.toContainText("No file");
     },
   );
 });

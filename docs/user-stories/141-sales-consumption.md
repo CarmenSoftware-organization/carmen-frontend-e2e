@@ -5,7 +5,7 @@ _Generated from `tests/141-sales-consumption.spec.ts` annotations. Edit annotati
 **Module:** Sales Consumption
 **Spec:** `tests/141-sales-consumption.spec.ts`
 **Default role:** Admin
-**Total test cases:** 15 (10 High / 1 Medium / 0 Low / 4 unset)
+**Total test cases:** 21 (13 High / 3 Medium / 0 Low / 5 unset)
 
 ## Test Cases at a Glance
 
@@ -26,6 +26,12 @@ _Generated from `tests/141-sales-consumption.spec.ts` annotations. Edit annotati
 | TC-SC-040003 | post ที่ถูกปฏิเสธเพราะสต็อกไม่พอ ต้องระบุสินค้าที่ขาดแยก location ในคำตอบ (spec §4.2) | Medium | Negative |
 | TC-SC-050001 | post ซ้ำหลัง post สำเร็จ: ถูกปฏิเสธ จำนวน Stock Out และ on-hand ไม่เปลี่ยน | Critical | Negative |
 | TC-SC-050002 | post พร้อมกันสองคำขอ (doc_version เดียวกัน): สำเร็จ 2xx เพียงหนึ่ง และเกิด Stock Out ชุดเดียว | Critical | Negative |
+| TC-SC-060001 | void SC ที่ post แล้ว (งวดเปิด) ผ่านหน้าเว็บ: Stock Out ทุกใบถูก void, on-hand กลับเท่าก่อน post, SC เดิม voided และมี SC ใหม่ pending ของวันเดิมจำนวนบรรทัดเท่าเดิม | Critical | Happy Path |
+| TC-SC-060002 | void Stock Out ของ SC ที่ post แล้วตรง ๆ: ถูกปฏิเสธ STOCK_OUT_VOID_VIA_SALES_CONSUMPTION และ Stock Out ยังใช้งานอยู่ | High | Negative |
+| TC-SC-060003 | void SC ที่วันขายอยู่ในงวดคลังที่ปิดแล้ว ต้องถูกปฏิเสธ | Medium | Negative |
+| TC-SC-060004 | ไฟล์ของอีกร้านเข้ามาหลังวันนั้น post แล้ว: SC ขึ้นคำเตือน late, บรรทัด late ไม่ผูก SC, void แล้ว SC ใหม่รับทั้งบรรทัดเดิมและ late | High | Functional |
+| TC-SC-060005 | หน้า SC ที่ถูก void ต้องแสดง Stock Out ที่ถูก void ของมัน (voided = true) | Medium | Functional |
+| TC-SC-070001 | ปฏิทินเดือนปัจจุบัน: วัน post = Posted, วันรอ post = Pending, วันที่ import แต่ยอดสุทธิ 0 = No sales, วันที่ไม่มีไฟล์ = No file และวันนี้ไม่ขึ้น No file | High | Functional |
 
 ---
 
@@ -374,5 +380,139 @@ Admin login บน TEST BU; ร้าน E2E-141 วัน 6 import O1/I1 x2 แ
 
 ---
 
+## TC-SC-060001 — void SC ที่ post แล้ว (งวดเปิด) ผ่านหน้าเว็บ: Stock Out ทุกใบถูก void, on-hand กลับเท่าก่อน post, SC เดิม voided และมี SC ใหม่ pending ของวันเดิมจำนวนบรรทัดเท่าเดิม
 
-<sub>Last regenerated: 2026-11-23 · git 2a33953</sub>
+> **As a** Admin user, **I want** this Sales Consumption behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Critical · **Test Type:** Happy Path
+
+**Preconditions**
+
+Admin login บน TEST BU; ร้าน E2E-141 วัน 11 import O1/I1 x2 และ O2/I2 x1 ผูกครบ; อ่าน on-hand P1-P4 ทั้งสอง location ณ วันขายก่อน post; verify แล้ว post (Stock Out 2 ใบ)
+
+**Steps**
+
+1. เปิดหน้า SC ที่ posted กด Void ใส่เหตุผลแล้วยืนยัน
+2. อ่าน SC เดิม, Stock Out ของมัน และ SC ของวันนั้น
+3. อ่าน on-hand P1-P4 ทั้งสอง location ใหม่
+
+**Expected**
+
+ขึ้นข้อความ Voided พร้อมเลข SC ใหม่; SC เดิมสถานะ voided และ Stock Out ทั้ง 2 ใบถูก void (ไม่เหลือใบที่ใช้งานอยู่ และ GET /stock-outs/:id ของแต่ละใบตอบ 404 เพราะ void = soft delete); on-hand ทุกสินค้าทุก location เท่าค่าก่อน post (ผลต่าง 0); SC ของวันเดียวกันที่ไม่ voided มีใบเดียว คนละ id กับใบเดิม สถานะ pending มี 2 บรรทัด (O1/I1 และ O2/I2) และไม่มี Stock Out
+
+---
+
+## TC-SC-060002 — void Stock Out ของ SC ที่ post แล้วตรง ๆ: ถูกปฏิเสธ STOCK_OUT_VOID_VIA_SALES_CONSUMPTION และ Stock Out ยังใช้งานอยู่
+
+> **As a** Admin user, **I want** this Sales Consumption behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** High · **Test Type:** Negative
+
+**Preconditions**
+
+Admin login บน TEST BU; ร้าน E2E-141 วัน 12 import O1/I1 x2 ผูกครบ แล้ว verify + post; อ่าน on-hand ก่อนเริ่ม
+
+**Steps**
+
+1. อ่านรายการ Stock Out ที่ SC สร้าง
+2. ยิง DELETE /stock-outs/:id/void กับ Stock Out นั้นตรง ๆ
+3. อ่าน SC, Stock Out และ on-hand ใหม่
+
+**Expected**
+
+ถูกปฏิเสธ 409 STOCK_OUT_VOID_VIA_SALES_CONSUMPTION (feature spec §4.2: void Stock Out ที่มาจาก SC ต้องทำที่ SC); SC ยัง posted, Stock Out ยังไม่ voided รายการเดิม, on-hand ยังลดตามสูตรเท่าเดิม
+
+---
+
+## TC-SC-060003 — void SC ที่วันขายอยู่ในงวดคลังที่ปิดแล้ว ต้องถูกปฏิเสธ
+
+> **As a** Admin user, **I want** this Sales Consumption behavior verified, **so that** the feature works as expected.
+<!-- TODO: refine narrative -->
+
+**Priority:** Medium · **Test Type:** Negative
+
+**Preconditions**
+
+SC ที่ posted แล้วในงวดคลังที่ถูกปิด; e2e ไม่เคยปิดงวด (data:reset ได้งวดเปิดเท่านั้น) จึงสร้างเงื่อนไขนี้ไม่ได้
+
+**Steps**
+
+1. ปิดงวดคลังของวันขาย
+2. void SC ของวันนั้น
+
+**Expected**
+
+void ถูกปฏิเสธด้วย SALES_CONSUMPTION_VOID_PERIOD_CLOSED (feature spec §4.2) และไม่มี Stock Out ถูก void
+
+---
+
+## TC-SC-060004 — ไฟล์ของอีกร้านเข้ามาหลังวันนั้น post แล้ว: SC ขึ้นคำเตือน late, บรรทัด late ไม่ผูก SC, void แล้ว SC ใหม่รับทั้งบรรทัดเดิมและ late
+
+> **As a** Admin user, **I want** this Sales Consumption interaction to behave as expected, **so that** the workflow stays predictable.
+
+**Priority:** High · **Test Type:** Functional
+
+**Preconditions**
+
+Admin login บน TEST BU; ร้าน E2E-141 วัน 13 import O1/I1 x2 ผูกครบ verify + post แล้ว; อ่าน on-hand P1-P4 ณ วันขายก่อนเริ่ม; ร้านที่สอง E2E-141B (ไม่ผูก master)
+
+**Steps**
+
+1. import ไฟล์ของร้าน E2E-141B วัน 13 (O1/I2 x2) หลังวันนั้น post แล้ว
+2. เปิดหน้า SC ที่ posted และอ่านรายละเอียด/ปฏิทินของวัน
+3. void SC ผ่าน API
+4. อ่าน SC ใหม่ของวัน และ on-hand
+
+**Expected**
+
+หน้า SC ขึ้นคำเตือน 'sale line arrived after this was posted' และ late_lines = 1 (ตรงกับปฏิทิน); SC ที่ posted ยังมีแค่ 1 บรรทัดเดิม (บรรทัด late ไม่มี SC id) และ Stock Out ชุดเดิมไม่เปลี่ยน; หลัง void SC เดิม voided, on-hand กลับเท่าก่อน post, มี SC ใหม่ pending ใบเดียวที่มี 2 บรรทัด (เดิม + late) และไม่ขึ้น late อีก
+
+---
+
+## TC-SC-060005 — หน้า SC ที่ถูก void ต้องแสดง Stock Out ที่ถูก void ของมัน (voided = true)
+
+> **As a** Admin user, **I want** this Sales Consumption interaction to behave as expected, **so that** the workflow stays predictable.
+
+**Priority:** Medium · **Test Type:** Functional
+
+**Preconditions**
+
+Admin login บน TEST BU; ร้าน E2E-141 วัน 12 import O1/I1 x2 ผูกครบ verify + post (Stock Out 1 ใบ) แล้ว void SC ผ่าน API
+
+**Steps**
+
+1. void SC ที่ posted (API)
+2. อ่านรายละเอียดของ SC เดิมที่ voided
+
+**Expected**
+
+stock_outs ของ SC ที่ voided ยังรายการ Stock Out ใบเดิมพร้อม voided = true (feature spec §4.2: หน้า SC ที่ voided แสดงข้อมูลจาก Stock Out ที่ออกจริง; โค้ด BE และป้าย 'voided' ใน FE เตรียมไว้). BE จริงตอบ stock_outs ว่าง จึง pin เป็น suspected bug (test.fail)
+
+---
+
+## TC-SC-070001 — ปฏิทินเดือนปัจจุบัน: วัน post = Posted, วันรอ post = Pending, วันที่ import แต่ยอดสุทธิ 0 = No sales, วันที่ไม่มีไฟล์ = No file และวันนี้ไม่ขึ้น No file
+
+> **As a** Admin user, **I want** a clear empty-state when no Sales Consumption records match my search, **so that** I know nothing was found.
+
+**Priority:** High · **Test Type:** Functional
+
+**Preconditions**
+
+Admin login บน TEST BU; ร้าน E2E-141: วัน 14 import + post, วัน 15 import (ผูกครบ ยังไม่ post), วันที่หนึ่งใน pastDays import เฉพาะรายการยอดสุทธิ 0 (ตั้งต้นปฏิทินของ BU); อีกสองวันใน pastDays ไม่มีไฟล์; ต้องมีวันในอดีตก่อนเมื่อวาน 3 วันที่ไม่ชนวันของสเปกอื่น
+
+**Steps**
+
+1. เปิด Sales Consumption > Calendar เดือนปัจจุบัน
+2. อ่านข้อความสถานะของแต่ละวันที่กล่าวมา และของวันนี้
+3. เทียบกับ GET calendar
+
+**Expected**
+
+วัน 14 ขึ้น Posted, วัน 15 ขึ้น Pending, วัน net-0 ขึ้น No sales, สองวันที่ไม่มี import (อยู่หลังวัน import แรกของ BU ก่อนวันนี้) ขึ้น No file, วันนี้ไม่ขึ้น No file (API = future); ค่าจาก API calendar ตรงกับหน้า (posted / pending / no_sales / no_file / future)
+
+---
+
+
+<sub>Last regenerated: 2026-11-23 · git c5d832e</sub>
