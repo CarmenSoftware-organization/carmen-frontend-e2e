@@ -500,7 +500,7 @@ stock_outs ของ SC ที่ voided ยังรายการ Stock Out �
 
 **Preconditions**
 
-Admin login บน TEST BU; ร้าน E2E-141: วัน 14 import + post, วัน 15 import (ผูกครบ ยังไม่ post), วันที่หนึ่งใน pastDays import เฉพาะรายการยอดสุทธิ 0 (ตั้งต้นปฏิทินของ BU); อีกสองวันใน pastDays ไม่มีไฟล์; ต้องมีวันในอดีตก่อนเมื่อวาน 3 วันที่ไม่ชนวันของสเปกอื่น
+Admin login บน TEST BU; ร้าน E2E-141: ใช้ pastDays 5 วัน (ก่อนเมื่อวาน ไม่ชนวันของ 140/141): วันแรก import เฉพาะรายการยอดสุทธิ 0 (ตั้งต้นปฏิทินของ BU), สองวันถัดไปไม่มีไฟล์, วันที่สี่ import + post, วันที่ห้า import ผูกครบ ยังไม่ post
 
 **Steps**
 
@@ -510,9 +510,9 @@ Admin login บน TEST BU; ร้าน E2E-141: วัน 14 import + post, �
 
 **Expected**
 
-วัน 14 ขึ้น Posted, วัน 15 ขึ้น Pending, วัน net-0 ขึ้น No sales, สองวันที่ไม่มี import (อยู่หลังวัน import แรกของ BU ก่อนวันนี้) ขึ้น No file, วันนี้ไม่ขึ้น No file (API = future); ค่าจาก API calendar ตรงกับหน้า (posted / pending / no_sales / no_file / future)
+วันที่ post ขึ้น Posted, วันที่ยังไม่ post ขึ้น Pending, วัน net-0 ขึ้น No sales, สองวันที่ไม่มี import (อยู่หลังวัน import แรกของ BU ก่อนวันนี้) ขึ้น No file, วันนี้ไม่ขึ้น No file (API = future); ค่าจาก API calendar ตรงกับหน้า (posted / pending / no_sales / no_file / future)
 
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git c5d832e</sub>
+<sub>Last regenerated: 2026-11-23 · git bd69f29</sub>

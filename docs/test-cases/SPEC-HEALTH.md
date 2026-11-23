@@ -17,7 +17,7 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | **Running cases asserting nothing at all** | **1** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 25 |
-| Assertions in running cases | 3479 |
+| Assertions in running cases | 3482 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -48,7 +48,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 145 | 0 |
 | `301-pr.spec.ts` | 59 | 47 | 0 | 44% | 0 | 0 | 0 | 0 | 120 | 0 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
-| `141-sales-consumption.spec.ts` | 21 | 0 | 0 | 0% | **1** | 0 | 0 | **2** | 136 | 0 |
+| `141-sales-consumption.spec.ts` | 21 | 0 | 0 | 0% | **1** | 0 | 0 | **2** | 139 | 0 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `010-department.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 57 | 2 |
 | `020-unit.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 32 | 0 |

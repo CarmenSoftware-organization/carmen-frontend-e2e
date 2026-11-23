@@ -39,3 +39,4 @@ Other observations: parallel `post` (same `doc_version`) gave exactly one 2xx an
 - Two-brand day (one day with both a Simphony and a Micros 3700 file): Micros is not enabled on the TEST BU, so late lines are covered with a second Simphony store (TC-SC-060004) instead.
 - Micros overwrite of a posted day (`needs_resolution` of an outlet inside a posted SC): needs Micros enabled.
 - Void in a closed inventory period (TC-SC-060003, `test.skip`): e2e never closes inventory periods (design 2026-11-23), so `SALES_CONSUMPTION_VOID_PERIOD_CLOSED` is untested.
+- Calendar (TC-SC-070001) is skipped early in a month by its data guard (needs 5 past days before yesterday outside the 140/141 day ranges, i.e. it only runs from about the 13th of a 30-day month); on those days the Posted / Pending / No sales / No file statuses go unchecked.

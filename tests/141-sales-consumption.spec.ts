@@ -28,13 +28,14 @@ import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Sales Consumption on the TEST BU (GR2VYNKQ): mapping blocks Post, line overrides, verify on-hand, post (Stock Outs
-// per location + on-hand deltas), double post, void + late lines and the calendar. Groups 01-07 (06 has 5 cases, one is skipped by ruling, one pinned).
+// per location + on-hand deltas), double post, void + late lines and the calendar. Groups 01-07 (06: 5 cases, one skipped by ruling, one pinned).
 //
-// Store key E2E-141; sale days saleDay(141, 1..10) count backward from the end of the open inventory period (spec 140
-// counts forward; groups 06-07 use n = 11..16 and two stores). Every case starts from a clean store (beforeEach cleanupPosRun: voids posted
+// Store key E2E-141; sale days saleDay(141, n) count backward from the end of the open inventory period (spec 140
+// counts forward): groups 01-05 use n = 1..7, group 06 uses n = 11..13 (two stores). The calendar case (07) uses five
+// pastDays (strictly before yesterday, outside both day ranges) so it never depends on how far into the month today is. Every case starts from a clean store (beforeEach cleanupPosRun: voids posted
 // SCs, cancels imports) so a day can be reused and a failed case never leaves a posted SC behind. Case -> day:
 // 01 -> 1 (010004 also 2), 02 -> 3, 03 -> 4, 04 -> 5, 05 -> 6, 06 -> 11 / 12 / 13 (060001 / 060002 / 060004),
-// 07 -> 14 (posted), 15 (pending) + pastDays (net-0 day, two days without a file).
+// 07 -> five pastDays: net-0 (No sales), two without a file, posted, pending.
 //
 // Oracle: ../carmen-frontend/docs/superpowers/specs/2026-10-26-sales-consumption-design.md §4.2 (blocked lines, location
 // / recipe override, verify, post = one Stock Out per location) and §6. Expected ingredient qty = recipe qty x net sale
@@ -163,8 +164,9 @@ async function itemMaster(code: ItemCode): Promise<any> {
 }
 
 /** Import `lines` on day n, set the masters and return the day's SC. */
-async function prepare(key: string, n: number, lines: SimphonyLine[], masters: Partial<Masters> = {}) {
-  const d = day(n);
+async function prepare(key: string, n: number | string, lines: SimphonyLine[], masters: Partial<Masters> = {}) {
+  // n = a saleDay index, or an explicit YYYY-MM-DD (the calendar case uses past days outside both day ranges)
+  const d = typeof n === "string" ? n : day(n);
   await importLive(key, d, lines);
   await setMasters(masters);
   const sc = await scForDay(d);
@@ -256,7 +258,7 @@ async function expectDeltas(d: string, before: Snap, expected: Use): Promise<voi
   }
 }
 
-async function postedFresh(key: string, n: number, lines: SimphonyLine[]) {
+async function postedFresh(key: string, n: number | string, lines: SimphonyLine[]) {
   const s = await prepare(key, n, lines);
   const v = await scVerify(s.id);
   expect(v.status, `verify: ${JSON.stringify(v.body).slice(0, 300)}`).toBe(200);
@@ -557,7 +559,6 @@ test.describe("Sales Consumption (141)", () => {
       expect((await itemMaster("I1")).recipe?.id, "item default changed").toBe(recipes.B.id);
       expect(await recipeOf("O9"), "non-overridden line follows the new master").toBe(recipes.B.id);
       expect((await lineOf(s.id, "O9", "I1")).recipe_source).toBe("master");
-      await setMasters(); // put I1 back to recipe A
     },
   );
 
@@ -1040,7 +1041,8 @@ test.describe("Sales Consumption (141)", () => {
       expect(r.status, "answered by the real backend").toBe(200);
       expect(r.body.data.status).toBe("voided");
 
-      test.fail(true, "suspected bug: the detail of a voided SC lists no Stock Outs (feature spec §4.2)");
+      test.fail(true, "suspected bug: the detail of a voided SC lists no Stock Outs or ingredients (feature spec §4.2)");
+      expect((r.body.data.ingredients as unknown[]).length, "ingredients of the voided Stock Out").toBeGreaterThan(0);
       const list = r.body.data.stock_outs as Array<{ id: string; voided: boolean }>;
       expect(list.map((x) => x.id)).toEqual(so.map((x) => x.id));
       expect(list.every((x) => x.voided)).toBe(true);
@@ -1052,12 +1054,12 @@ test.describe("Sales Consumption (141)", () => {
     "TC-SC-070001 ปฏิทินเดือนปัจจุบัน: วัน post = Posted, วันรอ post = Pending, วันที่ import แต่ยอดสุทธิ 0 = No sales, วันที่ไม่มีไฟล์ = No file และวันนี้ไม่ขึ้น No file",
     {
       annotation: [
-        { type: "preconditions", description: "Admin login บน TEST BU; ร้าน E2E-141: วัน 14 import + post, วัน 15 import (ผูกครบ ยังไม่ post), วันที่หนึ่งใน pastDays import เฉพาะรายการยอดสุทธิ 0 (ตั้งต้นปฏิทินของ BU); อีกสองวันใน pastDays ไม่มีไฟล์; ต้องมีวันในอดีตก่อนเมื่อวาน 3 วันที่ไม่ชนวันของสเปกอื่น" },
+        { type: "preconditions", description: "Admin login บน TEST BU; ร้าน E2E-141: ใช้ pastDays 5 วัน (ก่อนเมื่อวาน ไม่ชนวันของ 140/141): วันแรก import เฉพาะรายการยอดสุทธิ 0 (ตั้งต้นปฏิทินของ BU), สองวันถัดไปไม่มีไฟล์, วันที่สี่ import + post, วันที่ห้า import ผูกครบ ยังไม่ post" },
         { type: "steps", description: "1. เปิด Sales Consumption > Calendar เดือนปัจจุบัน\n2. อ่านข้อความสถานะของแต่ละวันที่กล่าวมา และของวันนี้\n3. เทียบกับ GET calendar" },
         {
           type: "expected",
           description:
-            "วัน 14 ขึ้น Posted, วัน 15 ขึ้น Pending, วัน net-0 ขึ้น No sales, สองวันที่ไม่มี import (อยู่หลังวัน import แรกของ BU ก่อนวันนี้) ขึ้น No file, วันนี้ไม่ขึ้น No file (API = future); ค่าจาก API calendar ตรงกับหน้า (posted / pending / no_sales / no_file / future)",
+            "วันที่ post ขึ้น Posted, วันที่ยังไม่ post ขึ้น Pending, วัน net-0 ขึ้น No sales, สองวันที่ไม่มี import (อยู่หลังวัน import แรกของ BU ก่อนวันนี้) ขึ้น No file, วันนี้ไม่ขึ้น No file (API = future); ค่าจาก API calendar ตรงกับหน้า (posted / pending / no_sales / no_file / future)",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
@@ -1065,33 +1067,41 @@ test.describe("Sales Consumption (141)", () => {
     },
     async ({ page }) => {
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(new Date());
-      const past = pastDays(period, today, 3);
-      test.skip(past === null, "month too young: needs 2 past days before yesterday (plus one earlier day for the BU calendar start)");
-      const [noSales, noFile1, noFile2] = past!;
+      const past = pastDays(period, today, 5);
+      test.skip(past === null, "month too young: needs 5 past days before yesterday outside the 140/141 day ranges");
+      // earliest first: the net-0 day is the BU calendar start, so the two days after it (no import) are No file
+      const [noSales, noFile1, noFile2, postedDay, pendingDay] = past!;
       const month = today.slice(0, 7);
-      for (const dd of [day(14), day(15), noSales, noFile1, noFile2]) expect(dd.slice(0, 7), `${dd} is in the current month`).toBe(month);
+      for (const dd of past!) {
+        expect(dd < today, `${dd} is a past day`).toBe(true);
+        expect(dd.slice(0, 7), `${dd} is in the current month`).toBe(month);
+      }
 
-      await postedFresh("cal-posted", 14, [line("O1", "I1", 1)]);
-      await prepare("cal-pending", 15, [line("O1", "I1", 1)]);
-      // the BU calendar starts at its first live import: this net-0 day is that start, so the two days after it have no file
+      await postedFresh("cal-posted", postedDay, [line("O1", "I1", 1)]);
+      await prepare("cal-pending", pendingDay, [line("O1", "I1", 1)]);
+      // the BU calendar starts at its first live import: this net-0 day is that start
       await importLive("cal-nosales", noSales, [line("O1", "I2", 3), line("O1", "I2", -3)]);
 
-      const api = new Map<string, string>(((await scCalendar(month)).body?.data ?? []).map((x: any) => [x.date as string, x.status as string]));
-      expect(api.get(day(14))).toBe("posted");
-      expect(api.get(day(15))).toBe("pending");
+      const cal = await scCalendar(month);
+      expect(cal.status, "calendar answered by the real backend").toBe(200);
+      const api = new Map<string, string>((cal.body?.data ?? []).map((x: any) => [x.date as string, x.status as string]));
+      expect(api.get(postedDay)).toBe("posted");
+      expect(api.get(pendingDay)).toBe("pending");
       expect(api.get(noSales)).toBe("no_sales");
       expect(api.get(noFile1)).toBe("no_file");
       expect(api.get(noFile2)).toBe("no_file");
+      // proof that today is never "No file": the API says future (the UI shows no status text for a future day)
       expect(api.get(today), "today is never a missing file").toBe("future");
 
       const sc = new SalesConsumptionPage(page);
       await sc.goto(month);
-      await expect(sc.dayStatus(day(14))).toHaveText("Posted");
-      await expect(sc.dayStatus(day(15))).toHaveText("Pending");
+      await expect(sc.dayStatus(postedDay)).toHaveText("Posted");
+      await expect(sc.dayStatus(pendingDay)).toHaveText("Pending");
       await expect(sc.dayStatus(noSales)).toHaveText("No sales");
       await expect(sc.dayStatus(noFile1)).toHaveText("No file");
       await expect(sc.dayStatus(noFile2)).toHaveText("No file");
-      await expect(sc.calendarDay(today)).not.toContainText("No file");
+      // a future day carries no status text at all
+      await expect(sc.dayStatus(today)).toHaveCount(0);
     },
   );
 });
