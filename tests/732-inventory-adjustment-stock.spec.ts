@@ -21,6 +21,7 @@ import {
 } from "./helpers/ia-api";
 import { buSend } from "./helpers/bu-api";
 import { expectedIssueCost } from "./helpers/ia-cost";
+import type { CostMethod } from "./test-users";
 import { addRow, confirmDialog, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
 import { expectRefused, expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
@@ -44,7 +45,7 @@ const REASON_NAME_IN = "E2E IA stock in";
 const REASON_NAME_OUT = "E2E IA stock out";
 const ready: { v: IaReady | null } = { v: null };
 const R = () => ready.v as IaReady;
-let method: "average" | "fifo" = "average";
+let method: CostMethod = "average";
 
 const status = (r: { status: number }) => r.status;
 const errCode = (r: { body: any }) => String(r.body?.error?.code ?? "");
