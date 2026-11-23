@@ -17,6 +17,7 @@ import {
   type IaLine,
   type IaReady,
   type IaType,
+  typeCost,
 } from "./helpers/ia-api";
 import { buSend } from "./helpers/bu-api";
 import { expectedIssueCost } from "./helpers/ia-cost";
@@ -99,23 +100,15 @@ const answered = (r: { status: number; body: any }, what: string) => {
   expect(r.status, `${what}: the backend must answer (got ${r.status})`).toBeLessThan(500);
 };
 
-/** Type a Stock In cost and make sure it sticks: CostProbe fills a cost asynchronously and can overwrite what was typed. */
-async function typeCost(page: Page, input: Locator, price: number) {
-  await expect(async () => {
-    await typeInto(input, price);
-    await page.waitForLoadState("networkidle");
-    expect(Number(await input.inputValue())).toBe(price);
-  }).toPass({ timeout: 20_000 });
-}
-
 test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)", () => {
   test.describe.configure({ mode: "serial" });
+  const leakedBad = new Set<string>(); // accepted-bad documents whose effect could not be voided in the case
   test.beforeAll(async () => {
     ready.v = await assertIaReady();
     method = await calcMethod();
   });
   test.afterAll(async () => {
-    await cleanupIaRun("732");
+    await cleanupIaRun("732", leakedBad);
   });
 
   test(
@@ -143,9 +136,7 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
       const row = await addRow(page, "Select Product");
       await pickLookup(page, row.getByRole("button", { name: "Select Product" }), a.code);
       await typeInto(row.locator('input[name$=".qty"]'), 10);
-      await typeCost(page, row.locator('input[name$=".cost_per_unit"]'), 12.5);
-      await page.waitForLoadState("networkidle");
-      await typeCost(page, row.locator('input[name$=".cost_per_unit"]'), 12.5);
+      await typeCost(row.locator('input[name$=".cost_per_unit"]'), 12.5);
       await ia.description().fill(desc);
 
       const res = await expectSaved(
@@ -272,12 +263,20 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
       for (const r of pb) answered(r, "commit without doc_version");
       const afterB = await onHand(a.id);
       const posted = await postedLines("stock-in", db.id);
-      if (pb.some((r) => r.status < 300) || posted !== 0 || afterB.qty !== beforeB.qty) {
-        // accepted: it must still be exactly one posting, otherwise this is the double-post bug
-        test.fail(true, "suspected bug: parallel commit without doc_version posts twice (status check outside the transaction, stock-in.service.ts:706-710)");
+      // Policy (same as 810005 (b)): a commit without doc_version accepted AND posted exactly once = pass (no double-post, R6);
+      // accepted with a double post, or refused yet posted = bug pin.
+      const accepted = pb.filter((r) => r.status < 300).length;
+      const deltaB = afterB.qty - beforeB.qty;
+      if (posted > 1 || accepted > 1 || deltaB > 3 || (accepted === 0 && (posted !== 0 || deltaB !== 0))) {
+        test.fail(true, "suspected bug: parallel commit without doc_version posts twice or posts although refused (status check outside the transaction, stock-in.service.ts:706-710)");
         expect(posted, "(b) movements = lines").toBe(1);
-        expect(afterB.qty - beforeB.qty, "(b) qty posted once").toBe(3);
-        expect(pb.filter((r) => r.status < 300).length, "(b) exactly one commit accepted").toBe(1);
+        expect(deltaB, "(b) qty posted once").toBe(3);
+        expect(accepted, "(b) exactly one commit accepted").toBe(1);
+        return;
+      }
+      if (accepted === 1) {
+        expect(posted, "(b) exactly one posting").toBe(1);
+        expect(deltaB, "(b) qty posted once").toBe(3);
         return;
       }
       for (const r of pb) expect(r.status, `commit without doc_version refused: ${JSON.stringify(r.body).slice(0, 150)}`).toBeGreaterThanOrEqual(400);
@@ -304,14 +303,12 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
       const d = await draft("stock-in", "void untouched", [{ productId: b.id, qty: 5, cost: 9 }]);
       const before = await onHand(b.id);
       await commitOk("stock-in", d.id);
-      const mid = await onHand(b.id);
-      expect(mid.qty - before.qty, "commit +qty").toBe(5);
-      expect(mid.value - before.value, "commit +value").toBeCloseTo(45, 2);
+      await expect.poll(async () => (await onHand(b.id)).qty - before.qty, { message: "commit +qty", timeout: 20_000 }).toBe(5);
+      await expect.poll(async () => (await onHand(b.id)).value - before.value, { message: "commit +value", timeout: 20_000 }).toBeCloseTo(45, 2);
       const v = await voidIa("stock-in", d.id, "e2e void untouched", await versionOf("stock-in", d.id));
       expect(v.status, `void: ${JSON.stringify(v.body).slice(0, 200)}`).toBeLessThan(300);
-      const after = await onHand(b.id);
-      expect(after.qty - before.qty, "on-hand back to before").toBe(0);
-      expect(after.value - before.value, "value back to before").toBeCloseTo(0, 2);
+      await expect.poll(async () => (await onHand(b.id)).qty - before.qty, { message: "on-hand back to before", timeout: 20_000 }).toBe(0);
+      await expect.poll(async () => (await onHand(b.id)).value - before.value, { message: "value back to before", timeout: 20_000 }).toBeCloseTo(0, 2);
     },
   );
 
@@ -357,7 +354,7 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
   // 800007 / 800008 / 800009: each pins its own bug, so a fix of one turns only that case red.
   // The bad document is described "E2E-IA 732 accepted-bad ...". A wrongly accepted one is handled by its measured commit
   // effect (R11), never by a compensating document: no effect on on-hand / value -> left alone (cleanupIaRun skips completed
-  // "accepted-bad" documents); an effect -> voided, and the void must return the stock to the pre-commit read (else it is its own bug).
+  // "accepted-bad" documents, but throws for one whose in-case void failed); an effect -> voided, and the void must return the stock to the pre-commit read (else it is its own bug).
   async function badLine(what: string, line: IaLine) {
     const a = R().productA;
     const before = await onHand(a.id);
@@ -377,6 +374,7 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
     const hadEffect = Math.abs(afterCommit.qty - before.qty) > 1e-9 || Math.abs(afterCommit.value - before.value) > 1e-9;
     if (made.status < 300 && result.status < 300 && hadEffect) {
       const v = await voidIa("stock-in", made.body.data.id, `e2e void of accepted ${what}`, await versionOf("stock-in", made.body.data.id));
+      if (v.status >= 300) leakedBad.add(made.body.data.id);
       expect(v.status, `the accepted bad document must be voidable: ${JSON.stringify(v.body).slice(0, 200)}`).toBeLessThan(300);
       const afterVoid = await onHand(a.id);
       voidReturned = Math.abs(afterVoid.qty - before.qty) < 1e-9 && Math.abs(afterVoid.value - before.value) < 1e-9;
@@ -504,6 +502,7 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
       await ia.description().fill(desc);
       // The estimate arrives after the qty is typed: wait until the total is a number and has settled (two equal reads).
       let estimate = Number.NaN;
+      let lastRead = Number.NaN;
       await expect(async () => {
         const read = async () => {
           const text = (await ia.grandTotal().innerText()).replace(/,/g, "");
@@ -511,10 +510,11 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
           expect(m, `no Grand Total amount in: ${text.slice(0, 80)}`).toBeTruthy();
           return Math.abs(Number(m![0]));
         };
-        const first = await read();
-        await page.waitForLoadState("networkidle");
-        estimate = await read();
-        expect(estimate, "estimate settled").toBe(first);
+        const cur = await read();
+        const settled = cur === lastRead; // two successive attempts read the same total
+        lastRead = cur;
+        estimate = cur;
+        expect(settled, "estimate settled").toBe(true);
         expect(estimate, "estimate is not 0").toBeGreaterThan(0);
       }).toPass({ timeout: 30_000 });
       console.log(`810001 live: pool before ${JSON.stringify(before)} oracle ${expected} form estimate ${estimate}`);
@@ -531,13 +531,13 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
       const id: string = (await res.json()).data.id;
       await expect.poll(() => statusOf("stock-out", id), { timeout: 60_000 }).toBe("completed");
 
-      const after = await onHand(b.id);
-      expect(after.qty - before.qty, "on-hand moved by -15").toBe(-15);
+      // The ledger is updated right after the status flips (same lag 800001 showed): poll the deltas instead of one read.
+      await expect.poll(async () => (await onHand(b.id)).qty - before.qty, { message: "on-hand moved by -15", timeout: 20_000 }).toBe(-15);
       const mvBody = (await movementsOf("stock-out", id)).body;
       expect(mvBody?.data?.is_posted, "movements are posted").toBe(true);
       expect(issueCostOf(mvBody), "issue cost on the movement = oracle").toBeCloseTo(expected, 2);
       expect(Math.abs(estimate - expected), `form estimate ${estimate} vs oracle ${expected}`).toBeLessThanOrEqual(0.0100001);
-      expect(after.value - before.value, "value moved by -issue cost").toBeCloseTo(-expected, 1);
+      await expect.poll(async () => (await onHand(b.id)).value - before.value, { message: "value moved by -issue cost", timeout: 20_000 }).toBeCloseTo(-expected, 1);
     },
   );
 
@@ -703,8 +703,9 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
       const afterB = await onHand(b.id);
       const posted = await postedLines("stock-out", db.id);
       const accepted = pb.filter((r) => r.status < 300).length;
-      if (posted > 1 || accepted > 1 || afterB.qty - beforeB.qty < -2) {
-        test.fail(true, "suspected bug: parallel Stock Out commit without doc_version deducts twice");
+      // Policy (same as 800004 (b)): accepted AND posted exactly once = pass (no double-post, R6); accepted with a double post, or refused yet posted = bug pin.
+      if (posted > 1 || accepted > 1 || afterB.qty - beforeB.qty < -2 || (accepted === 0 && (posted !== 0 || afterB.qty !== beforeB.qty))) {
+        test.fail(true, "suspected bug: parallel Stock Out commit without doc_version deducts twice or posts although refused");
         expect(posted, "(b) movements = lines").toBe(1);
         expect(afterB.qty - beforeB.qty, "(b) deducted once").toBe(-2);
         return;
@@ -742,13 +743,11 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
       const before = await onHand(b.id);
       const d = await draft("stock-out", "void restores", [{ productId: b.id, qty: 15 }]);
       await commitOk("stock-out", d.id);
-      const mid = await onHand(b.id);
-      expect(mid.qty - before.qty, "commit -qty").toBe(-15);
+      await expect.poll(async () => (await onHand(b.id)).qty - before.qty, { message: "commit -qty", timeout: 20_000 }).toBe(-15);
       const v = await voidIa("stock-out", d.id, "e2e void stock out", await versionOf("stock-out", d.id));
       expect(v.status, `void: ${JSON.stringify(v.body).slice(0, 200)}`).toBeLessThan(300);
-      const after = await onHand(b.id);
-      expect(after.qty - before.qty, "on-hand back to before").toBe(0);
-      expect(after.value - before.value, "value back to before (restored at the issued cost)").toBeCloseTo(0, 2);
+      await expect.poll(async () => (await onHand(b.id)).qty - before.qty, { message: "on-hand back to before", timeout: 20_000 }).toBe(0);
+      await expect.poll(async () => (await onHand(b.id)).value - before.value, { message: "value back to before (restored at the issued cost)", timeout: 20_000 }).toBeCloseTo(0, 2);
     },
   );
 
@@ -864,7 +863,7 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
         { type: "expected", description: "AVG: ใบ completed และ on-hand ที่วันนั้นและวันนี้ไม่เปลี่ยน (รอ bring-forward); FIFO: commit ลง movement จริง" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
-        { type: "note", description: "TEST BU ใช้วิธี average (อ่านสด) · เส้นทาง API เท่านั้น (ฟอร์มไม่ให้ลงวันอนาคต) · งวดที่สองต้องสร้างเตรียมไว้เอง — เคสนี้ไม่ปิดงวดและไม่สร้างงวด" },
+        { type: "note", description: "TEST BU ใช้วิธี average (อ่านสด) · เส้นทาง API เท่านั้น (ฟอร์มไม่ให้ลงวันอนาคต) · งวดถัดไปถูกสร้างโดย data:reset ขั้น period — เคสนี้ไม่ปิดงวดและไม่สร้างงวด" },
       ],
     },
     async () => {

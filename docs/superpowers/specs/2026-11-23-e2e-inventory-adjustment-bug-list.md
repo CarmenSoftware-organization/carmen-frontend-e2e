@@ -28,7 +28,7 @@ Filled in as the 731 / 732 specs run on TEST BU (GR2VYNKQ). Sections: 1 suspecte
 | Void in a closed period | Needs a closed period; the specs never close or create periods (no E2E_ALLOW_IRREVERSIBLE). TEST BU now has two open periods (current + next, see Resolved) and none closed. | Task 5, 732 |
 | Costing on the other method (FIFO) | Only TEST BU's own method (average) is exercised. `costLayers` throws for FIFO: `cost_layers` of inventory-info is a ledger of every lot posted (in rows keep their full balance after issues and voids, out rows carry negative balances), so per-lot remaining qty cannot be read from it. `expectedIssueCost` supports FIFO and is unit-tested. | Task 5, 732 |
 | List-page UI cases still in the gap report | Filtering, sorting, search and pagination of the Inventory Adjustment list, and the Voided filter other than the 820001/820002 lookup, have no UI cases (see COVERAGE.md / SPEC-HEALTH.md gap report). | Task 5, 731/732 |
-| TC-IADJ-810004 date | Still passes through the "before the earliest open period" branch; the pre-generated next period does not change the current one (earliest open). | Task 5, 732 |
+| TC-IADJ-810004 date | Now takes the "open period other than the current one" branch: data:reset pre-generates next month's period, so the Stock Out is dated on its first day and must be refused with STOCK_OUT_DATE_NOT_CURRENT_PERIOD / STOCK_OUT_NO_OPEN_PERIOD. The "before the earliest open period" branch is still covered by 800002. | Task 5, 732 |
 
 ## Resolved
 

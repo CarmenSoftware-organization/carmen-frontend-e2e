@@ -1,3 +1,5 @@
+import { expect, type Locator } from "@playwright/test";
+import { typeInto } from "./movement/ui";
 import { buConfigSend, buSend, type ApiResult, type Role } from "./bu-api";
 
 /**
@@ -126,14 +128,20 @@ export async function calcMethod(): Promise<"average" | "fifo"> {
  * ones (stock-outs first so a Stock In void is not refused for missing stock), then deletes the drafts.
  * Throws on any failure.
  */
-export async function cleanupIaRun(spec: "731" | "732"): Promise<void> {
+export async function cleanupIaRun(spec: "731" | "732", leakedBad: ReadonlySet<string> = new Set()): Promise<void> {
   const prefix = `${IA_TAG} ${spec}`;
   const mine = async (type: IaType) => (await listIa(type)).filter((d) => String(d.description ?? "").startsWith(prefix));
+  const leaked: string[] = [];
   for (const type of ["stock-out", "stock-in"] as const) {
     for (const d of await mine(type)) {
       if (d.doc_status !== "completed") continue;
       // "accepted-bad": a wrongly accepted bad document (spec 732) whose commit had no stock effect; a void would only drift stock (R11).
-      if (String(d.description ?? "").includes("accepted-bad")) continue;
+      if (String(d.description ?? "").includes("accepted-bad")) {
+        // Zero-effect leftovers (this or an earlier run) are skipped. One whose stock effect leaked (its in-case void failed) is
+        // reported loudly: no compensating document on TEST BU (R11), so the run must not end green over it.
+        if (leakedBad.has(d.id)) leaked.push(`${type} ${d.id}`);
+        continue;
+      }
       const v = must(`read ${type} ${d.id}`, await getIa(type, d.id)).body?.data;
       must(`void ${type} ${d.id}`, await voidIa(type, d.id, "e2e cleanup", Number(v?.doc_version)));
     }
@@ -143,6 +151,7 @@ export async function cleanupIaRun(spec: "731" | "732"): Promise<void> {
       if (d.doc_status === "draft") must(`delete ${type} ${d.id}`, await deleteIa(type, d.id));
     }
   }
+  if (leaked.length) throw new Error(`ia-api: accepted-bad document(s) still completed WITH a stock effect (void failed in the case): ${leaked.join(", ")} - not compensated (R11), clean with data:reset`);
 }
 
 export interface IaReady {
@@ -196,4 +205,20 @@ export async function assertIaReady(): Promise<IaReady> {
   if (today < day(p.body.data.start_at) || today > day(p.body.data.end_at)) fail(`no open period contains today (${today})`);
 
   return { productA: { id: a.id, code: a.code }, productB: { id: b.id, code: b.code }, locationId: a.locs[0], locationName: a.locName, adjustmentTypeIn, adjustmentTypeOut, today };
+}
+
+/**
+ * Type a Stock In cost and make sure it sticks: CostProbe fills a cost asynchronously after the product / qty / date
+ * change and can overwrite what was typed. Retried until the field holds the value on two consecutive attempts
+ * (the second one is after the probe had a chance to answer); no network-idle wait.
+ */
+export async function typeCost(input: Locator, price: number): Promise<void> {
+  let lastHeld = false;
+  await expect(async () => {
+    await typeInto(input, price);
+    await expect(input).toHaveValue(new RegExp(`^${price}(\\.0+)?$`), { timeout: 1_000 });
+    const confirmed = lastHeld;
+    lastHeld = true;
+    expect(confirmed, "cost held across two attempts (CostProbe may still overwrite it)").toBe(true);
+  }).toPass({ timeout: 20_000 });
 }

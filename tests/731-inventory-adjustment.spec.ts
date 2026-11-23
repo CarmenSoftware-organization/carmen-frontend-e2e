@@ -1,6 +1,6 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
-import { cleanupIaRun, assertIaReady, getIa, stockAt, type IaReady, type IaType } from "./helpers/ia-api";
+import { cleanupIaRun, assertIaReady, getIa, stockAt, typeCost, type IaReady, type IaType } from "./helpers/ia-api";
 import { addRow, confirmDialog, numRe, pickDate, pickLookup, typeInto } from "./helpers/movement/ui";
 import { expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
@@ -61,18 +61,6 @@ async function byId(type: IaType, id: string) {
   };
 }
 
-/**
- * Type a Stock In cost and make sure it sticks: CostProbe fills a cost asynchronously after the product / qty
- * change and can overwrite what was typed, so retype until the field holds the value after the probe has answered.
- */
-async function typeCost(page: Page, input: Locator, price: number) {
-  await expect(async () => {
-    await typeInto(input, price);
-    await page.waitForLoadState("networkidle");
-    await expect(input).toHaveValue(new RegExp(`^${price}(\\.0+)?$`), { timeout: 1_000 });
-  }).toPass({ timeout: 20_000 });
-}
-
 // ── shared steps ────────────────────────────────────────────────────────────────
 
 async function expectFormOpens(page: Page, type: IaType) {
@@ -97,13 +85,13 @@ async function fillNew(page: Page, type: IaType, lines: AdjLine[], desc: string)
     await pickLookup(page, row.getByRole("button", { name: "Select Product" }), line.product);
     await typeInto(row.locator('input[name$=".qty"]'), line.qty);
     if (type === "stock-in") {
-      await typeCost(page, row.locator('input[name$=".cost_per_unit"]'), line.price!);
+      await typeCost(row.locator('input[name$=".cost_per_unit"]'), line.price!);
     }
   }
   if (type === "stock-in") {
     // A later row's CostProbe answer can still overwrite an earlier cost: settle, then pin every cost again before saving.
     await page.waitForLoadState("networkidle");
-    for (const line of lines) await typeCost(page, itemRow(page, line.product).locator('input[name$=".cost_per_unit"]'), line.price!);
+    for (const line of lines) await typeCost(itemRow(page, line.product).locator('input[name$=".cost_per_unit"]'), line.price!);
   }
   await ia.description().fill(desc);
 }
@@ -151,7 +139,7 @@ async function expectDraftEdited(page: Page, type: IaType, id: string, edited: A
   await ia.description().fill(desc);
   const a = itemRow(page, edited[0].product);
   await typeInto(a.locator('input[name$=".qty"]'), edited[0].qty);
-  if (isIn) await typeCost(page, a.locator('input[name$=".cost_per_unit"]'), edited[0].price!);
+  if (isIn) await typeCost(a.locator('input[name$=".cost_per_unit"]'), edited[0].price!);
   await itemRow(page, R().productB.code).getByRole("button", { name: "Remove" }).click();
   const dlg = page.locator("[role=alertdialog]:visible");
   if (await dlg.count()) await confirmDialog(page, /remove|delete|confirm|ลบ/i);
@@ -160,7 +148,7 @@ async function expectDraftEdited(page: Page, type: IaType, id: string, edited: A
   await pickLookup(page, row.getByRole("button", { name: "Select Product" }), edited[1].product);
   const added = itemRow(page, edited[1].product);
   await typeInto(added.locator('input[name$=".qty"]'), edited[1].qty);
-  if (isIn) await typeCost(page, added.locator('input[name$=".cost_per_unit"]'), edited[1].price!);
+  if (isIn) await typeCost(added.locator('input[name$=".cost_per_unit"]'), edited[1].price!);
   // Save must go out and succeed (FE-4 once sent nothing for an edited existing Stock Out line).
   await expectSaved(page, writeUrl(type), () => ia.saveButton().click(), page.locator("[data-sonner-toast]"));
   await expect.poll(async () => fmtOf(type)((await byId(type, id)).lines), { timeout: 15_000 }).toBe(fmtOf(type)(edited));
@@ -260,7 +248,7 @@ test.describe("Stock In", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Admin; BU TEST; คลังที่ E2E-IA-A / E2E-IA-B ผูกอยู่ (data:reset ขั้น ia); เหตุผล E2E-IA-IN มีอยู่" },
-        { type: "steps", description: "1. เปิดหน้าสร้าง Stock In\n2. Date = วันนี้, Reason E2E-IA-IN, Location ของสินค้า E2E-IA\n3. Add Item: E2E-IA-A × 3 ต้นทุน 100, E2E-IA-B × 5 ต้นทุน 200\n4. ใส่คำอธิบาย E2E-IA 731 SI <uid> (หลังเพิ่มรายการ)\n5. กด Save" },
+        { type: "steps", description: "1. เปิดหน้าสร้าง Stock In\n2. Date = วันนี้, Reason E2E IA stock in, Location ของสินค้า E2E-IA\n3. Add Item: E2E-IA-A × 3 ต้นทุน 100, E2E-IA-B × 5 ต้นทุน 200\n4. ใส่คำอธิบาย E2E-IA 731 SI <uid> (หลังเพิ่มรายการ)\n5. กด Save" },
         { type: "expected", description: "POST ตอบ < 300; หลังบ้าน doc_status = draft, description ตรง และรายการ E2E-IA-A×3@100, E2E-IA-B×5@200" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
@@ -385,7 +373,7 @@ test.describe("Stock Out", () => {
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น Admin; BU TEST; คลังที่ E2E-IA-A / E2E-IA-B ผูกอยู่; เหตุผล E2E-IA-OUT มีอยู่" },
-        { type: "steps", description: "1. เปิดหน้าสร้าง Stock Out\n2. Date = วันนี้, Reason E2E-IA-OUT, Location ของสินค้า E2E-IA\n3. Add Item: E2E-IA-A × 1, E2E-IA-B × 1\n4. ใส่คำอธิบาย E2E-IA 731 SO <uid>\n5. กด Save" },
+        { type: "steps", description: "1. เปิดหน้าสร้าง Stock Out\n2. Date = วันนี้, Reason E2E IA stock out, Location ของสินค้า E2E-IA\n3. Add Item: E2E-IA-A × 1, E2E-IA-B × 1\n4. ใส่คำอธิบาย E2E-IA 731 SO <uid>\n5. กด Save" },
         { type: "expected", description: "POST ตอบ < 300; หลังบ้าน doc_status = draft, description ตรง และรายการ E2E-IA-A×1, E2E-IA-B×1" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
@@ -406,7 +394,7 @@ test.describe("Stock Out", () => {
         { type: "expected", description: "หน้าแสดงคำอธิบาย E2E-IA 731 SO <uid>; แถว E2E-IA-A และ E2E-IA-B มีจำนวน 1 และต้นทุนประเมินไม่เป็น 0.00" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
-        { type: "note", description: "บั๊กที่รู้อยู่ FE-5 (test.fail): ใบ SO draft ไม่เก็บต้นทุน (คิดตอน commit) — ตอนสร้างฟอร์มประเมินให้ แต่เปิดใบกลับมาขึ้น 0.00 ทุกแถว · เดิม SO.2" },
+        { type: "note", description: "บั๊กที่รู้อยู่ FE-5 (test.fail): ใบ SO draft ไม่เก็บต้นทุน (คิดตอน commit) — ตอนสร้างฟอร์มประเมินให้ แต่เปิดใบกลับมา Cost/Unit ขึ้น 0.00 ทุกแถว (Total Cost แสดงค่าประเมินแล้ว — R9) · เดิม SO.2" },
       ],
     },
     async ({ page }) => {
