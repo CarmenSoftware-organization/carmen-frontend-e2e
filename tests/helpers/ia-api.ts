@@ -130,6 +130,8 @@ export async function cleanupIaRun(spec: "731" | "732"): Promise<void> {
   for (const type of ["stock-out", "stock-in"] as const) {
     for (const d of await mine(type)) {
       if (d.doc_status !== "completed") continue;
+      // "accepted-bad": a wrongly accepted bad document (spec 732) whose commit had no stock effect; a void would only drift stock (R11).
+      if (String(d.description ?? "").includes("accepted-bad")) continue;
       const v = must(`read ${type} ${d.id}`, await getIa(type, d.id)).body?.data;
       must(`void ${type} ${d.id}`, await voidIa(type, d.id, "e2e cleanup", Number(v?.doc_version)));
     }

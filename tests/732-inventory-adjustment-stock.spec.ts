@@ -342,10 +342,9 @@ test.describe("Inventory Adjustment stock outcomes (Stock In)", () => {
   );
 
   // 800007 / 800008 / 800009: each pins its own bug, so a fix of one turns only that case red.
-  // When the backend accepts the bad document, this helper voids it again before the case asserts (cleanupIaRun would
-  // otherwise meet it later). Voiding a negative-cost Stock In takes stock out that its commit never added (observed:
-  // on-hand -qty), so the helper then posts a compensating Stock In of the missing qty. That document is described
-  // "E2E-IA drift-fix 732 ..." on purpose: it is not tagged "E2E-IA 732", so cleanupIaRun leaves it (a void of it would drift again).
+  // The bad document is described "E2E-IA 732 accepted-bad ...". A wrongly accepted one is handled by its measured commit
+  // effect (R11), never by a compensating document: no effect on on-hand / value -> left alone (cleanupIaRun skips completed
+  // "accepted-bad" documents); an effect -> voided, and the void must return the stock to the pre-commit read (else it is its own bug).
   async function badLine(what: string, line: IaLine) {
     const a = R().productA;
     const before = await onHand(a.id);
@@ -353,7 +352,7 @@ test.describe("Inventory Adjustment stock outcomes (Stock In)", () => {
       date: R().today,
       locationId: R().locationId,
       adjustmentTypeId: R().adjustmentTypeIn,
-      description: `${TAG} ${what} ${uid}`,
+      description: `${TAG} accepted-bad ${what} ${uid}`,
       lines: [line],
     });
     answered(made, `create (${what})`);
@@ -361,24 +360,15 @@ test.describe("Inventory Adjustment stock outcomes (Stock In)", () => {
     const result = made.status < 300 ? await commitNow("stock-in", made.body.data.id) : made;
     answered(result, `commit (${what})`);
     const afterCommit = await onHand(a.id);
-    let drift = 0;
-    if (made.status < 300 && result.status < 300) {
+    let voidReturned: boolean | null = null;
+    const hadEffect = Math.abs(afterCommit.qty - before.qty) > 1e-9 || Math.abs(afterCommit.value - before.value) > 1e-9;
+    if (made.status < 300 && result.status < 300 && hadEffect) {
       const v = await voidIa("stock-in", made.body.data.id, `e2e void of accepted ${what}`, await versionOf("stock-in", made.body.data.id));
       expect(v.status, `the accepted bad document must be voidable: ${JSON.stringify(v.body).slice(0, 200)}`).toBeLessThan(300);
-      drift = (await onHand(a.id)).qty - before.qty;
-      if (drift < 0) {
-        const fix = await createIa("stock-in", {
-          date: R().today,
-          locationId: R().locationId,
-          adjustmentTypeId: R().adjustmentTypeIn,
-          description: `E2E-IA drift-fix 732 ${what} ${uid}`,
-          lines: [{ productId: a.id, qty: -drift, cost: 1 }],
-        });
-        expect(fix.status, "compensating Stock In").toBeLessThan(300);
-        await commitOk("stock-in", fix.body.data.id);
-      }
+      const afterVoid = await onHand(a.id);
+      voidReturned = Math.abs(afterVoid.qty - before.qty) < 1e-9 && Math.abs(afterVoid.value - before.value) < 1e-9;
     }
-    return { before, result, afterCommit, drift };
+    return { before, result, afterCommit, hadEffect, voidReturned };
   }
 
   test(
@@ -394,10 +384,11 @@ test.describe("Inventory Adjustment stock outcomes (Stock In)", () => {
       ],
     },
     async () => {
-      const { before, result, afterCommit } = await badLine("negative qty", { productId: R().productA.id, qty: -1, cost: 5 });
+      const { before, result, afterCommit, voidReturned } = await badLine("negative qty", { productId: R().productA.id, qty: -1, cost: 5 });
       test.fail(true, "suspected bug: negative Stock In qty accepted (acts as an unchecked stock out)");
       expect(result.status, `negative qty must be refused (got ${result.status})`).toBeGreaterThanOrEqual(400);
       expect(afterCommit.qty - before.qty, "on-hand unchanged").toBe(0);
+      expect(voidReturned, "voiding the accepted document must return stock to the pre-commit read").not.toBe(false);
     },
   );
 
@@ -414,10 +405,11 @@ test.describe("Inventory Adjustment stock outcomes (Stock In)", () => {
       ],
     },
     async () => {
-      const { before, result, afterCommit } = await badLine("negative cost", { productId: R().productA.id, qty: 2, cost: -5 });
+      const { before, result, afterCommit, voidReturned } = await badLine("negative cost", { productId: R().productA.id, qty: 2, cost: -5 });
       test.fail(true, "suspected bug: negative cost accepted");
       expect(result.status, `negative cost must be refused (got ${result.status})`).toBeGreaterThanOrEqual(400);
       expect(afterCommit.qty - before.qty, "on-hand unchanged").toBe(0);
+      expect(voidReturned, "voiding the accepted document must return stock to the pre-commit read").not.toBe(false);
     },
   );
 
@@ -434,10 +426,11 @@ test.describe("Inventory Adjustment stock outcomes (Stock In)", () => {
       ],
     },
     async () => {
-      const { before, result, afterCommit } = await badLine("qty zero", { productId: R().productA.id, qty: 0, cost: 5 });
+      const { before, result, afterCommit, voidReturned } = await badLine("qty zero", { productId: R().productA.id, qty: 0, cost: 5 });
       test.fail(true, "suspected bug: qty 0 line accepted on commit");
       expect(result.status, `qty 0 must be refused (got ${result.status})`).toBeGreaterThanOrEqual(400);
       expect(afterCommit.qty - before.qty, "on-hand unchanged").toBe(0);
+      expect(voidReturned, "voiding the accepted document must return stock to the pre-commit read").not.toBe(false);
     },
   );
 
