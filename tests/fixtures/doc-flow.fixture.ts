@@ -11,7 +11,8 @@ import { pinBusinessUnit, gotoBu } from "../helpers/bu-pin";
  *   test.use({ role: "Admin", bu: "BU-GR2VYNKQ" });
  *
  * - `role` — which TEST_USERS account's storageState the context boots from
- * - `bu`   — business unit pinned for this page (skipped for the default BU_CODE)
+ * - `bu`   — business unit pinned for this page, BU_CODE included: gotoBu reads the switcher label
+ *            from the pinned profile, so an unpinned page cannot prove which BU it is on
  * - `signals` / `failOnSignals` — same front-end bug signals as the movement fixture
  */
 export const test = base.extend<{ role: Role; bu: string; signals: Signals; failOnSignals: boolean }>({
@@ -20,7 +21,7 @@ export const test = base.extend<{ role: Role; bu: string; signals: Signals; fail
   failOnSignals: [true, { option: true }],
   storageState: async ({ role }, use) => use(authFile(TEST_USERS.find((u) => u.role === role)!.email)),
   page: async ({ page, bu }, use) => {
-    if (bu !== BU_CODE) await pinBusinessUnit(page, bu);
+    await pinBusinessUnit(page, bu);
     await use(page);
   },
   signals: [

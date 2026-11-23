@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { test, gotoBu, expect, observed } from "./fixtures/doc-flow.fixture";
 import { BU_CODE } from "./test-users";
-import { buSend } from "./helpers/bu-api";
+import { buSend, rootGet } from "./helpers/bu-api";
 import { dfGet } from "./helpers/doc-flow/api";
 import { DF as P, itemRow, srLocations, srWorkflowName, stamp } from "./helpers/doc-flow/data";
 import {
@@ -53,7 +53,8 @@ test.beforeAll(async () => {
  */
 test.afterAll(async () => {
   test.setTimeout(180_000);
-  const { status, body } = await dfGet(`/store-requisitions?search=${encodeURIComponent(DESC)}&perpage=100`, "Admin", BU);
+  // The SR list is not BU-scoped (`GET /api/<bu>/store-requisitions` is 404): it takes `bu_code`.
+  const { status, body } = await rootGet("Admin", `/store-requisitions?perpage=100&bu_code=${BU}&search=${encodeURIComponent(DESC)}`);
   if (status !== 200) throw new Error(`cleanup: list store-requisitions HTTP ${status} ${JSON.stringify(body).slice(0, 300)}`);
   const failures: string[] = [];
   for (const d of (body?.data ?? []) as any[]) {
