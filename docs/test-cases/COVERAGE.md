@@ -8,9 +8,9 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 
 | Status | Meaning | Modules |
 | --- | --- | --- |
-| ✅ spec | an automated Playwright spec drives this module | 50 |
+| ✅ spec | an automated Playwright spec drives this module | 54 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 39 |
-| ❌ none | neither — this is the coverage gap | 34 |
+| ❌ none | neither — this is the coverage gap | 30 |
 
 ## *
 
@@ -22,8 +22,8 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
-| `/accounting` | 6 | — | — | ❌ none |
-| `/accounting/accounts-payable` | 3 | — | — | ❌ none |
+| `/accounting` | 6 | `820-accounting-settings.spec.ts` | — | ✅ spec |
+| `/accounting/accounts-payable` | 3 | `801-ap-invoice.spec.ts`<br>`802-ap-doc-types.spec.ts`<br>`803-ap-payment.spec.ts`<br>`804-ap-payment-approvals.spec.ts`<br>_+1 more_ | — | ✅ spec |
 | `/accounting/accounts-receivable` | 2 | — | — | ❌ none |
 | `/accounting/accounts-receivable/contract` | 1 _(redirect → `/accounting/accounts-receivable/profile`)_ | — | — | ❌ none |
 | `/accounting/accounts-receivable/preview` | 1 _(redirect → `/accounting/accounts-receivable`)_ | — | — | ❌ none |
@@ -31,8 +31,8 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | `/accounting/accounts-receivable/preview/folio` | 1 _(redirect → `/accounting/accounts-receivable/folio`)_ | — | — | ❌ none |
 | `/accounting/accounts-receivable/preview/invoice` | 2 _(redirect → `/accounting/accounts-receivable/invoice`)_ | — | — | ❌ none |
 | `/accounting/accounts-receivable/preview/profiles` | 1 _(redirect → `/accounting/accounts-receivable/profile`)_ | — | — | ❌ none |
-| `/accounting/journal-voucher` | 2 | — | — | ❌ none |
-| `/accounting/settings` | 1 | — | — | ❌ none |
+| `/accounting/journal-voucher` | 2 | `810-journal-voucher.spec.ts` | — | ✅ spec |
+| `/accounting/settings` | 1 | `820-accounting-settings.spec.ts` | — | ✅ spec |
 
 ## Config (master data)
 

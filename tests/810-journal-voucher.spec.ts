@@ -6,6 +6,8 @@ import { createApDoc, getApDoc, submitApDoc } from "./helpers/ap-api";
 import {
   approveJv,
   assertAccountingReady,
+  assertOpenPeriodCovers,
+  bangkokDay,
   createManualJv,
   CREATOR,
   isoDay,
@@ -90,11 +92,11 @@ test.describe("Journal voucher (810)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; ผังบัญชี 5300 / 1110; งวดบัญชีเปิดครอบคลุมวันนี้" },
-        { type: "steps", description: "1. เปิดหน้า New JV\n2. ใส่คำอธิบาย (tag) บรรทัด 1 Dr 5300 100.00, บรรทัด 2 Cr 1110 100.00\n3. กด Save\n4. อ่าน JV ผ่าน API" },
+        { type: "steps", description: "1. เปิดหน้า New JV เลือกวันที่เป็นวันนี้\n2. ใส่คำอธิบาย (tag) บรรทัด 1 Dr 5300 100.00, บรรทัด 2 Cr 1110 100.00\n3. กด Save\n4. อ่าน JV ผ่าน API" },
         {
           type: "expected",
           description:
-            "POST gl-jv สำเร็จ toast Draft saved และไปหน้ารายละเอียด; API: jv_status draft, source manual, total_debit = total_credit = 100.00, 2 บรรทัด (5300 Dr 100.00 / 1110 Cr 100.00)",
+            "POST gl-jv สำเร็จ toast Draft saved และไปหน้ารายละเอียด; API: jv_status draft, source manual, jv_date = วันนี้ (Bangkok) ที่เลือกเองใน date picker (ฟอร์มตั้งค่าเริ่มต้นเป็นวันที่ UTC จึงไม่พึ่งค่าเริ่มต้น), total_debit = total_credit = 100.00, 2 บรรทัด (5300 Dr 100.00 / 1110 Cr 100.00)",
         },
         { type: "priority", description: "Critical" },
         { type: "testType", description: "Functional" },
@@ -104,6 +106,7 @@ test.describe("Journal voucher (810)", () => {
       const t = tag("create");
       const jv = new JournalVoucherPage(page);
       await jv.gotoNew();
+      await jv.setDate(today());
       await jv.fillForm(t, BALANCED);
       await expect(jv.balanceMessage("Balanced")).toBeVisible();
       await expectSaved(page, /\/gl-jv$/, () => jv.button("Save").click(), jv.toastWith(/draft saved/i));
@@ -113,6 +116,7 @@ test.describe("Journal voucher (810)", () => {
       const d = await getJv(String(row!.id));
       expect(d.jv_status).toBe("draft");
       expect(d.source).toBe("manual");
+      expect(bangkokDay(String(d.jv_date))).toBe(today());
       expect(Number(d.total_debit)).toBe(100);
       expect(Number(d.total_credit)).toBe(100);
       expect(lineSummary(d)).toEqual([
@@ -152,7 +156,7 @@ test.describe("Journal voucher (810)", () => {
   );
 
   test(
-    "TC-JV-010003 Save Draft JV ที่ไม่สมดุล: oracle ให้บันทึกร่างได้ (jv:241) แต่ BE ปฏิเสธ 422 ตั้งแต่ร่าง",
+    "TC-JV-010003 Save Draft JV ที่ไม่สมดุล: jv:241 ว่า Save Draft ยังไม่บังคับ balanced ครบทุกกรณี แต่ BE ปฏิเสธ 422 ตั้งแต่ร่าง",
     {
       annotation: [
         { type: "preconditions", description: "Admin login; หน้า New JV; Dr 100.00 / Cr 90.00" },
@@ -160,7 +164,7 @@ test.describe("Journal voucher (810)", () => {
         {
           type: "expected",
           description:
-            "Draft saved และมี JV draft ตาม tag. rule: Save Draft validate shape แต่ยังไม่บังคับ balanced (jv:241 'ยังไม่บังคับ balanced ครบทุกกรณี'). pinned: BE POST gl-jv ตอบ 422 'must have at least two lines with equal base debit and credit'",
+            "Draft saved และมี JV draft ตาม tag. rule (hedged): Save Draft validate shape แต่ยังไม่บังคับ balanced ครบทุกกรณี (jv:241) - อ่านว่าร่างไม่สมดุลบันทึกได้เป็นการตีความ ไม่ใช่ข้อความตรง ๆ. pinned: BE POST gl-jv ตอบ 422 'must have at least two lines with equal base debit and credit'",
         },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
@@ -215,11 +219,11 @@ test.describe("Journal voucher (810)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login; workflow gl_jv (Admin สร้าง/Submit, Budget อนุมัติ); งวดเปิด" },
-        { type: "steps", description: "1. สร้าง JV 2 บรรทัดสมดุลผ่านฟอร์ม กด Submit\n2. อ่านสถานะ\n3. Budget Approve ผ่าน API\n4. เปิดหน้ารายละเอียด" },
+        { type: "steps", description: "1. สร้าง JV 2 บรรทัดสมดุลผ่านฟอร์ม เลือกวันที่เป็นวันนี้ กด Submit\n2. อ่านสถานะ\n3. Budget Approve ผ่าน API\n4. เปิดหน้ารายละเอียด" },
         {
           type: "expected",
           description:
-            "หลัง Submit: toast Voucher sent for approval, jv_status in_review; หลัง Approve: posted, posted_at มีค่า, เหลือ JV เดียวตาม tag, บรรทัดตรงกับที่กรอก; หน้ารายละเอียดแสดง POSTED. rule: workflow เปิด = Submit แล้ว in_review, final approval จึง post (jv:242, jv:296)",
+            "หลัง Submit: toast Voucher sent for approval, jv_status in_review; หลัง Approve: posted, posted_at มีค่า, jv_date = วันนี้ (Bangkok) ที่เลือกเองใน date picker, เหลือ JV เดียวตาม tag, บรรทัดตรงกับที่กรอก; หน้ารายละเอียดแสดง POSTED. rule: workflow เปิด = Submit แล้ว in_review, final approval จึง post (jv:242, jv:296)",
         },
         { type: "priority", description: "Critical" },
         { type: "testType", description: "Functional" },
@@ -229,6 +233,7 @@ test.describe("Journal voucher (810)", () => {
       const t = tag("post");
       const jv = new JournalVoucherPage(page);
       await jv.gotoNew();
+      await jv.setDate(today());
       await jv.fillForm(t, BALANCED);
       await expectSaved(page, /\/gl-jv/, () => jv.button("Submit").click(), jv.toastWith(/sent for approval/i));
       const row = await jvByTag(t);
@@ -239,6 +244,7 @@ test.describe("Journal voucher (810)", () => {
       const d = await getJv(id);
       expect(d.jv_status).toBe("posted");
       expect(d.posted_at).toBeTruthy();
+      expect(bangkokDay(String(d.jv_date))).toBe(today());
       expect(lineSummary(d)).toEqual([
         { account: "5300", dr: 100, cr: 0 },
         { account: "1110", dr: 0, cr: 100 },
@@ -258,7 +264,7 @@ test.describe("Journal voucher (810)", () => {
         {
           type: "expected",
           description:
-            "Approve 422 WORKFLOW_USER_NOT_STAGE_APPROVER (ไม่ใช่ผู้อนุมัติของ stage); Void และ Reverse 403 (ไม่มีสิทธิ์); JV แรกยัง in_review, JV หลังยัง posted และไม่มี JV กลับรายการเกิดขึ้น. rule: 403 ไม่มีสิทธิ์หรือผิด workflow stage (jv:283)",
+            "Approve 422 WORKFLOW_USER_NOT_STAGE_APPROVER (ไม่ใช่ผู้อนุมัติของ stage); Void และ Reverse 403 (ไม่มีสิทธิ์); JV แรกยัง in_review, JV หลังยัง posted และไม่มี JV กลับรายการเกิดขึ้น. rule: 403 ไม่มีสิทธิ์หรือผิด workflow stage (jv:283). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง แต่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เคสนี้ยืนยันเฉพาะว่า role ที่ไม่มีสิทธิ์ถูกปฏิเสธ",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Security" },
@@ -334,7 +340,7 @@ test.describe("Journal voucher (810)", () => {
         {
           type: "expected",
           description:
-            "200, jv_status void, void_reason = เหตุผลที่ส่ง, void_at มีค่า; จำนวน JV ของ BU ไม่เปลี่ยน (void ถอนยอดโดยไม่สร้าง JV กลับรายการ); ไม่มี JV ใดมี reversal_of_jv_id ชี้มาที่ JV นี้. rule: Void เก็บ reason ห้ามลบ audit (jv:246)",
+            "200, jv_status void, void_reason = เหตุผลที่ส่ง, void_at มีค่า; จำนวน JV ของ BU ไม่เปลี่ยน (void ถอนยอดโดยไม่สร้าง JV กลับรายการ); ไม่มี JV ใดมี reversal_of_jv_id ชี้มาที่ JV นี้. rule: Void เก็บ reason ห้ามลบ audit (jv:246). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); ยืนยันพฤติกรรมที่ BE/FE ใช้จริง (ดู TC-JV-040004)",
         },
         { type: "priority", description: "Critical" },
         { type: "testType", description: "Functional" },
@@ -363,7 +369,7 @@ test.describe("Journal voucher (810)", () => {
         { type: "steps", description: "1. เปิดหน้ารายละเอียด กด Void\n2. อ่านปุ่ม Void ในกล่องยืนยันก่อนกรอกเหตุผล\n3. กรอกเหตุผล กดยืนยัน\n4. อ่านสถานะผ่าน API" },
         {
           type: "expected",
-          description: "ปุ่ม Void ในกล่องยืนยัน disabled จนกรอกเหตุผล; หลังยืนยัน POST gl-posting สำเร็จ toast Voucher voided; API: void, void_reason ตรงที่กรอก",
+          description: "ปุ่ม Void ในกล่องยืนยัน disabled จนกรอกเหตุผล; หลังยืนยัน POST gl-posting สำเร็จ toast Voucher voided; API: void, void_reason ตรงที่กรอก. assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse)",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
@@ -396,7 +402,7 @@ test.describe("Journal voucher (810)", () => {
         {
           type: "expected",
           description:
-            "422 รหัส GL_JV_VOID_REASON_REQUIRED; JV ยัง posted ไม่มี void_at. assumption: oracle บอกแค่ 'เก็บ reason' (jv:246) ไม่ได้บอกว่าบังคับ; เทสต์นี้ยืนยันพฤติกรรมที่ BE ใช้จริง",
+            "422 รหัส GL_JV_VOID_REASON_REQUIRED; JV ยัง posted ไม่มี void_at. assumption: oracle บอกแค่ 'เก็บ reason' (jv:246) ไม่ได้บอกว่าบังคับ และ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เทสต์นี้ยืนยันพฤติกรรมที่ BE ใช้จริง",
         },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },
@@ -456,6 +462,7 @@ test.describe("Journal voucher (810)", () => {
     async () => {
       const orig = await postedJv("reverse");
       const later = nextDay(today());
+      await assertOpenPeriodCovers(later, "the reversal is dated the day after today");
       const r = await reverseJv(orig.id, isoDay(later));
       expect(r.status).toBe(200);
       const o = await getJv(orig.id);

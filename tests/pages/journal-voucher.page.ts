@@ -1,5 +1,6 @@
 import { expect, type Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
+import { field as labelledField, pickDate } from "../helpers/movement/ui";
 
 const BASE = "/accounting/journal-voucher";
 
@@ -76,6 +77,11 @@ export class JournalVoucherPage extends BasePage {
     if (l.dr) await row.getByRole("spinbutton").nth(1).fill(String(l.dr));
     if (l.cr) await row.getByRole("spinbutton").nth(2).fill(String(l.cr));
     if (l.comment) await row.getByRole("textbox").first().fill(l.comment);
+  }
+
+  /** Set the voucher date (`YYYY-MM-DD`) in the date picker; the form otherwise defaults to the UTC date, not the BU's. */
+  async setDate(day: string) {
+    expect(await pickDate(this.page, labelledField(this.page, "Date").getByRole("button"), day), `date ${day} is not selectable in the JV date picker`).toBe(true);
   }
 
   /** Fill the description and every line (the first row exists on a new form, the rest are added). */

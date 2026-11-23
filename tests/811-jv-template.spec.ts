@@ -81,11 +81,24 @@ async function withTemplate<T>(
   });
   expect(r.status, JSON.stringify(r.body?.message ?? r.body)).toBeLessThan(300);
   const id = String(r.body.data.id);
+  let failed = false;
+  let original: unknown;
+  let result!: T;
   try {
-    return await fn({ id, code: c, period });
-  } finally {
-    await buSend(CREATOR, "DELETE", `/gl-jv-templates/${id}`);
+    result = await fn({ id, code: c, period });
+  } catch (e) {
+    failed = true;
+    original = e;
   }
+  // The cleanup must succeed (a leftover template shows in the lists other cases count); it never hides the case's own failure.
+  const del = await buSend(CREATOR, "DELETE", `/gl-jv-templates/${id}`);
+  if (del.status >= 300) {
+    const msg = `811 cleanup: DELETE /gl-jv-templates/${id} -> ${del.status}; template ${c} was NOT removed`;
+    if (!failed) throw new Error(msg);
+    console.error(msg);
+  }
+  if (failed) throw original;
+  return result;
 }
 
 async function generate(templateId: string, periodId: string) {

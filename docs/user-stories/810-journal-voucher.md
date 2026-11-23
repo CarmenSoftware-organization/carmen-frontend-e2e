@@ -13,7 +13,7 @@ _Generated from `tests/810-journal-voucher.spec.ts` annotations. Edit annotation
 | --- | --- | --- | --- |
 | TC-JV-010001 | สร้าง JV ทำมือ 2 บรรทัดผ่าน UI แล้ว Save: Draft saved และ BE เก็บเป็น draft สมดุล | Critical | Functional |
 | TC-JV-010002 | JV ไม่สมดุล (Dr 100.00 / Cr 90.00): ปุ่ม Submit ปิด แสดงข้อความ Unbalanced และไม่มี JV ถูกสร้าง | High | Negative |
-| TC-JV-010003 | Save Draft JV ที่ไม่สมดุล: oracle ให้บันทึกร่างได้ (jv:241) แต่ BE ปฏิเสธ 422 ตั้งแต่ร่าง | Medium | Negative |
+| TC-JV-010003 | Save Draft JV ที่ไม่สมดุล: jv:241 ว่า Save Draft ยังไม่บังคับ balanced ครบทุกกรณี แต่ BE ปฏิเสธ 422 ตั้งแต่ร่าง | Medium | Negative |
 | TC-JV-010004 | รายการ JV แสดง read-set E2E-JV-POSTED: Manual / POSTED / Dr 250.00 / Cr 250.00 | Medium | Functional |
 | TC-JV-020001 | Submit JV จากหน้า UI แล้ว Budget Approve: in_review -> posted และ JV มีวันที่ลงบัญชี | Critical | Functional |
 | TC-JV-020002 | Requestor (view-only) Approve JV ที่รออนุมัติ, Void และ Reverse JV ที่ลงบัญชีแล้ว: ถูกปฏิเสธ และสถานะไม่เปลี่ยน | High | Security |
@@ -40,14 +40,14 @@ Admin login บน TEST BU; ผังบัญชี 5300 / 1110; งวดบ�
 
 **Steps**
 
-1. เปิดหน้า New JV
+1. เปิดหน้า New JV เลือกวันที่เป็นวันนี้
 2. ใส่คำอธิบาย (tag) บรรทัด 1 Dr 5300 100.00, บรรทัด 2 Cr 1110 100.00
 3. กด Save
 4. อ่าน JV ผ่าน API
 
 **Expected**
 
-POST gl-jv สำเร็จ toast Draft saved และไปหน้ารายละเอียด; API: jv_status draft, source manual, total_debit = total_credit = 100.00, 2 บรรทัด (5300 Dr 100.00 / 1110 Cr 100.00)
+POST gl-jv สำเร็จ toast Draft saved และไปหน้ารายละเอียด; API: jv_status draft, source manual, jv_date = วันนี้ (Bangkok) ที่เลือกเองใน date picker (ฟอร์มตั้งค่าเริ่มต้นเป็นวันที่ UTC จึงไม่พึ่งค่าเริ่มต้น), total_debit = total_credit = 100.00, 2 บรรทัด (5300 Dr 100.00 / 1110 Cr 100.00)
 
 ---
 
@@ -74,7 +74,7 @@ Admin login; หน้า New JV
 
 ---
 
-## TC-JV-010003 — Save Draft JV ที่ไม่สมดุล: oracle ให้บันทึกร่างได้ (jv:241) แต่ BE ปฏิเสธ 422 ตั้งแต่ร่าง
+## TC-JV-010003 — Save Draft JV ที่ไม่สมดุล: jv:241 ว่า Save Draft ยังไม่บังคับ balanced ครบทุกกรณี แต่ BE ปฏิเสธ 422 ตั้งแต่ร่าง
 
 > **As a** Admin user, **I want** this Journal Voucher behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -93,7 +93,7 @@ Admin login; หน้า New JV; Dr 100.00 / Cr 90.00
 
 **Expected**
 
-Draft saved และมี JV draft ตาม tag. rule: Save Draft validate shape แต่ยังไม่บังคับ balanced (jv:241 'ยังไม่บังคับ balanced ครบทุกกรณี'). pinned: BE POST gl-jv ตอบ 422 'must have at least two lines with equal base debit and credit'
+Draft saved และมี JV draft ตาม tag. rule (hedged): Save Draft validate shape แต่ยังไม่บังคับ balanced ครบทุกกรณี (jv:241) - อ่านว่าร่างไม่สมดุลบันทึกได้เป็นการตีความ ไม่ใช่ข้อความตรง ๆ. pinned: BE POST gl-jv ตอบ 422 'must have at least two lines with equal base debit and credit'
 
 ---
 
@@ -131,14 +131,14 @@ Admin login; workflow gl_jv (Admin สร้าง/Submit, Budget อนุม�
 
 **Steps**
 
-1. สร้าง JV 2 บรรทัดสมดุลผ่านฟอร์ม กด Submit
+1. สร้าง JV 2 บรรทัดสมดุลผ่านฟอร์ม เลือกวันที่เป็นวันนี้ กด Submit
 2. อ่านสถานะ
 3. Budget Approve ผ่าน API
 4. เปิดหน้ารายละเอียด
 
 **Expected**
 
-หลัง Submit: toast Voucher sent for approval, jv_status in_review; หลัง Approve: posted, posted_at มีค่า, เหลือ JV เดียวตาม tag, บรรทัดตรงกับที่กรอก; หน้ารายละเอียดแสดง POSTED. rule: workflow เปิด = Submit แล้ว in_review, final approval จึง post (jv:242, jv:296)
+หลัง Submit: toast Voucher sent for approval, jv_status in_review; หลัง Approve: posted, posted_at มีค่า, jv_date = วันนี้ (Bangkok) ที่เลือกเองใน date picker, เหลือ JV เดียวตาม tag, บรรทัดตรงกับที่กรอก; หน้ารายละเอียดแสดง POSTED. rule: workflow เปิด = Submit แล้ว in_review, final approval จึง post (jv:242, jv:296)
 
 ---
 
@@ -161,7 +161,7 @@ JV ของเทสต์เอง 1 ใบ in_review และอีก 1 ใ
 
 **Expected**
 
-Approve 422 WORKFLOW_USER_NOT_STAGE_APPROVER (ไม่ใช่ผู้อนุมัติของ stage); Void และ Reverse 403 (ไม่มีสิทธิ์); JV แรกยัง in_review, JV หลังยัง posted และไม่มี JV กลับรายการเกิดขึ้น. rule: 403 ไม่มีสิทธิ์หรือผิด workflow stage (jv:283)
+Approve 422 WORKFLOW_USER_NOT_STAGE_APPROVER (ไม่ใช่ผู้อนุมัติของ stage); Void และ Reverse 403 (ไม่มีสิทธิ์); JV แรกยัง in_review, JV หลังยัง posted และไม่มี JV กลับรายการเกิดขึ้น. rule: 403 ไม่มีสิทธิ์หรือผิด workflow stage (jv:283). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง แต่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เคสนี้ยืนยันเฉพาะว่า role ที่ไม่มีสิทธิ์ถูกปฏิเสธ
 
 ---
 
@@ -205,7 +205,7 @@ JV ของเทสต์เอง posted; Admin มี accounting.gl.void (�
 
 **Expected**
 
-200, jv_status void, void_reason = เหตุผลที่ส่ง, void_at มีค่า; จำนวน JV ของ BU ไม่เปลี่ยน (void ถอนยอดโดยไม่สร้าง JV กลับรายการ); ไม่มี JV ใดมี reversal_of_jv_id ชี้มาที่ JV นี้. rule: Void เก็บ reason ห้ามลบ audit (jv:246)
+200, jv_status void, void_reason = เหตุผลที่ส่ง, void_at มีค่า; จำนวน JV ของ BU ไม่เปลี่ยน (void ถอนยอดโดยไม่สร้าง JV กลับรายการ); ไม่มี JV ใดมี reversal_of_jv_id ชี้มาที่ JV นี้. rule: Void เก็บ reason ห้ามลบ audit (jv:246). assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); ยืนยันพฤติกรรมที่ BE/FE ใช้จริง (ดู TC-JV-040004)
 
 ---
 
@@ -228,7 +228,7 @@ Admin login; JV ของเทสต์เอง posted
 
 **Expected**
 
-ปุ่ม Void ในกล่องยืนยัน disabled จนกรอกเหตุผล; หลังยืนยัน POST gl-posting สำเร็จ toast Voucher voided; API: void, void_reason ตรงที่กรอก
+ปุ่ม Void ในกล่องยืนยัน disabled จนกรอกเหตุผล; หลังยืนยัน POST gl-posting สำเร็จ toast Voucher voided; API: void, void_reason ตรงที่กรอก. assumption: Void ของ JV ที่ posted ถือว่าถูกต้อง ทั้งที่ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse)
 
 ---
 
@@ -250,7 +250,7 @@ JV ของเทสต์เอง posted
 
 **Expected**
 
-422 รหัส GL_JV_VOID_REASON_REQUIRED; JV ยัง posted ไม่มี void_at. assumption: oracle บอกแค่ 'เก็บ reason' (jv:246) ไม่ได้บอกว่าบังคับ; เทสต์นี้ยืนยันพฤติกรรมที่ BE ใช้จริง
+422 รหัส GL_JV_VOID_REASON_REQUIRED; JV ยัง posted ไม่มี void_at. assumption: oracle บอกแค่ 'เก็บ reason' (jv:246) ไม่ได้บอกว่าบังคับ และ jv:246 ไม่นับ posted ใน Void (jv:247 ให้ Reverse); เทสต์นี้ยืนยันพฤติกรรมที่ BE ใช้จริง
 
 ---
 
@@ -344,4 +344,4 @@ Void และ Reverse ได้ 409 รหัส GL_JV_IMMUTABLE ทั้ง�
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 2567d6c</sub>
+<sub>Last regenerated: 2026-11-22 · git c21b49b</sub>
