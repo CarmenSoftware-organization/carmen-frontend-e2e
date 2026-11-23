@@ -108,6 +108,9 @@ test.describe("Inventory Adjustment stock outcomes (Stock In / Stock Out / void)
     method = await calcMethod();
   });
   test.afterAll(async () => {
+    // Cleanup voids / deletes every run document one by one over all list pages of the shared
+    // TEST BU; the default 30 s hook budget ran out (TC-IADJ-800010 reported the timeout).
+    test.setTimeout(180_000);
     await cleanupIaRun("732", leakedBad);
   });
 

@@ -209,6 +209,8 @@ test.beforeAll(async () => {
   ready.v = await assertIaReady();
 });
 test.afterAll(async () => {
+  // Same budget as 732: cleanup walks every list page of the shared TEST BU one document at a time.
+  test.setTimeout(180_000);
   await cleanupIaRun("731");
 });
 
