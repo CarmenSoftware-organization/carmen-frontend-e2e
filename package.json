@@ -13,7 +13,6 @@
     "test:dev": "playwright test",
     "test:prod": "bun run scripts/run-env.ts prod",
     "test:uat": "bun run scripts/run-env.ts uat",
-    "test:movement": "E2E_MOVEMENT=1 playwright test --project=movement",
     "test:period-close": "E2E_PERIOD_CLOSE=1 playwright test --project=period-close",
     "test:unit": "vitest run",
     "e2e": "playwright test",

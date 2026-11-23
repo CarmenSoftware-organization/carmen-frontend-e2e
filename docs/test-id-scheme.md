@@ -53,11 +53,11 @@ Strict regex: `^TC-[A-Z]{2,5}-\d{6}$`
 | `159-pl.spec.ts` | `PL` | 01–08, 90 | CRUD + sub-journeys + edge cases |
 | `160-pl-template.spec.ts` | `PT` | 01–06, 20, 90 | CRUD + sub-journeys + edge cases |
 | `201-my-approvals.spec.ts` | `MA` | 01–06, 90 | CRUD + edge cases |
-| `301-pr.spec.ts` | `PR` | 01–09, 10–13, 20–22, 30–39, 40–49, 60–63, 70, 90 | Module entry point + sub-journeys (05–08); 70 = movement doc flow (`312-pr-doc-flow.spec.ts`) |
+| `301-pr.spec.ts` | `PR` | 01–09, 10–13, 20–22, 30–39, 40–49, 60–63, 70, 90 | Module entry point + sub-journeys (05–08); 70 = doc flow on TEST BU (`312-pr-lifecycle.spec.ts`) |
 | `310-pr-template.spec.ts` | `PRT` | 01–11, 20–29, 90 | CRUD + validation |
-| `401-po.spec.ts` | `PO` | 01–07, 10–19, 20–29, 30–39, 70, 90 | Module entry point + sub-journeys (06–07); 70 = movement doc flow (`404-po-doc-flow.spec.ts`) |
-| `501-grn.spec.ts` | `GRN` | 01–18, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = movement doc flow (`502-grn-doc-flow.spec.ts`) |
-| `601-cn.spec.ts` | `CN` | 01–11, 20–29, 30–39, 50–54, 70, 90 | CRUD + validation + integration; 70 = movement doc flow (`603-cn-doc-flow.spec.ts`) |
+| `401-po.spec.ts` | `PO` | 01–07, 10–19, 20–29, 30–39, 70, 90 | Module entry point + sub-journeys (06–07); 70 = doc flow on TEST BU (`404-po-lifecycle.spec.ts`) |
+| `501-grn.spec.ts` | `GRN` | 01–18, 70–72, 90 | CRUD + sub-journeys + security + edge cases; 70–72 = doc flow + stock posting per TEST BU: 70 AVG / 71 FIFO / 72 AVG-LOCATION (`502-grn-lifecycle.spec.ts`) |
+| `601-cn.spec.ts` | `CN` | 01–11, 20–29, 30–39, 50–54, 70, 90 | CRUD + validation + integration; 70 = doc flow on TEST BU (`603-cn-lifecycle.spec.ts`) |
 | `602-cn-reason.spec.ts` | `CNR` | 01, 03–05, 10, 20 | CRUD + security |
 | `801-ap-invoice.spec.ts` | `APINV` | 01–04, 10, 20, 40 | Accounting AP invoice on TEST BU: list, detail, create, edit, validation, posting (JV), void, viewer permissions |
 | `802-ap-doc-types.spec.ts` | `APDOC` | 01–03 | Accounting AP deposit (01), debit note (02), credit note (03) on TEST BU: create, posting (JV signs), read set |
@@ -67,8 +67,8 @@ Strict regex: `^TC-[A-Z]{2,5}-\d{6}$`
 | `810-journal-voucher.spec.ts` | `JV` | 01–06 | Accounting manual journal voucher on TEST BU: create and unbalanced (01), submit / approve and who may (02), detail header fields (03), void (04), reverse (05), subledger (AP) JV immutability (06) |
 | `811-jv-template.spec.ts` | `JVT` | 01–03 | JV templates on TEST BU: template / recurring / allocation lists (01), JV generated from a recurring template (02), allocation split (03) |
 | `820-accounting-settings.spec.ts` | `ACCT` | 01–03 | Accounting settings and dashboards smoke on TEST BU: seeded `gl_setting` accounts shown by code (01), view-only role cannot save (02), AP and GL dashboards show a figure (03) |
-| `701-sr.spec.ts` | `SR` | 01–12, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = movement doc flow (`702-sr-doc-flow.spec.ts`) |
-| `720-stock-issue.spec.ts` | `SI` | 01–06, 70–71, 90 | CRUD + sub-journeys + edge cases; 70–71 = movement SR → Issue flow, AVG / FIFO (`721-sr-issue-doc-flow.spec.ts`) |
+| `701-sr.spec.ts` | `SR` | 01–12, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = doc flow on TEST BU (`702-sr-lifecycle.spec.ts`) |
+| `720-stock-issue.spec.ts` | `SI` | 01–06, 70–72, 90 | CRUD + sub-journeys + edge cases; 70–72 = SR → Issue flow with issue cost, one chain per TEST BU: AVG / FIFO / AVG-LOCATION (`721-sr-issue.spec.ts`) |
 | `731-inventory-adjustment.spec.ts` | `IADJ` | 01–06, 10, 20, 30, 70–71, 80–82, 90 | Inventory Adjustment on TEST BU (main suite). 731: 70 = Stock In, 71 = Stock Out doc flow (draft, view, edit, delete, Commit); 732 (`732-inventory-adjustment-stock.spec.ts`): 80 = Stock In stock, 81 = Stock Out stock, 82 = void outcome; the rest are open cases in `test-cases/gaps/730-inventory-adjustment-gap.md` |
 | `900-period-end.spec.ts` | `PE` | 01–04, 31–34, 40–42, 44, 46–54, 90 | CRUD + integration + edge cases; 40–54 = movement period-close phases (`910`–`924-period-close-*.spec.ts`, one section per phase; 43 and 45 were p03-only regressions, dropped) |
 | `1001-campaign.spec.ts` | `CAM` | 01–10, 90 | CRUD + sub-journeys + edge cases |
