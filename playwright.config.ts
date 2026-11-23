@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+// Node side of the dev-backend TLS chain fix (Bun gets it from bunfig.toml preload).
+import "./scripts/tls-extra-ca";
 
 // `bun run test` does not hand .env.local to the `playwright` child process (verified: the
 // variable is empty inside this config), so read the one key we need from the file ourselves.

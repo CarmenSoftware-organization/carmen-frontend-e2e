@@ -1,0 +1,2 @@
+# Trust the dev backend's missing intermediates in every `bun run <script>` (see scripts/tls-extra-ca.ts).
+preload = ["./scripts/tls-extra-ca.ts"]
