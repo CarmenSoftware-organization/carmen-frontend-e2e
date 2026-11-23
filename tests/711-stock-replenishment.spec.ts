@@ -92,7 +92,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010001 หน้า Stock Replenishment โหลดสำเร็จ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment" },
         { type: "steps", description: "1. ไปที่ /store-operation/stock-replenishment" },
         { type: "expected", description: "URL ตรงกับ path; หัวข้อและคำอธิบายหน้าแสดง; มีปุ่ม Refresh และช่องค้นหา; แถบสรุปแสดง" },
         { type: "priority", description: "High" },
@@ -113,7 +113,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010002 แถบสรุป (locations / items to reorder / critical / warning / low) ตรงกับข้อมูลจาก API",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. ไปที่ /store-operation/stock-replenishment\n2. ตรวจแถบสรุปเหนือรายการ" },
         { type: "expected", description: "จำนวน locations, items to reorder และ badge critical/warning/low เท่ากับที่คำนวณจาก API; badge ที่เป็น 0 ไม่แสดง" },
         { type: "priority", description: "High" },
@@ -140,7 +140,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010003 แถบหัว location แสดง checkbox + รหัส/ชื่อคลัง + badge จำนวนสินค้า",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. ไปที่ /store-operation/stock-replenishment\n2. ตรวจแถบหัวของ location แรก" },
         { type: "expected", description: "มี checkbox 'Select all products in <ชื่อคลัง>', รหัสและชื่อคลัง และ badge '<n> items' ตรงกับ API" },
         { type: "priority", description: "Medium" },
@@ -162,7 +162,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010004 ขยาย/ยุบ location เดี่ยวได้",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. กดที่หัว location\n2. กดซ้ำ" },
         { type: "expected", description: "ครั้งแรกสถานะ expanded สลับ และตารางสินค้าของ location แสดง/ซ่อน; ครั้งที่สองกลับสภาพเดิม" },
         { type: "priority", description: "Medium" },
@@ -188,7 +188,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010005 ปุ่มสลับ Expand all / Collapse all ทำงาน",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. กดปุ่ม Expand all\n2. กดปุ่มเดิมอีกครั้ง (Collapse all)" },
         { type: "expected", description: "หลัง Expand all ทุก location ขยายและปุ่มกลายเป็น Collapse all; หลังกด Collapse all ทุก location ยุบและปุ่มกลับเป็น Expand all" },
         { type: "priority", description: "Medium" },
@@ -212,7 +212,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010006 คอลัมน์ตารางสินค้า (select/#/Product/Stock level/Reorder/Status) แสดงครบ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080" },
         { type: "steps", description: "1. ไปที่ /store-operation/stock-replenishment\n2. กด Expand all\n3. ตรวจหัวตารางของ location แรก" },
         { type: "expected", description: "หัวตารางมีคอลัมน์ #, Product, Stock level, Reorder Qty, Status และแถวแสดงชื่อสินค้า" },
         { type: "priority", description: "Medium" },
@@ -235,7 +235,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010007 ค้นหาด้วยชื่อ/รหัส/ชื่อท้องถิ่น/หมวด/กลุ่มสินค้า กรอง location และสินค้าที่ตรง",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. พิมพ์รหัสสินค้าชิ้นแรกในช่อง Search\n2. กด Enter" },
         { type: "expected", description: "แสดงเฉพาะ location ที่มีสินค้าตรงรหัสนั้น และสินค้าอื่นหายไป; ตัวนับ locations ตรงกับ API" },
         { type: "priority", description: "Medium" },
@@ -262,7 +262,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010008 ค้นหาคำที่ไม่มีต้องไม่แสดง location ใด ๆ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. พิมพ์คำค้นที่ไม่มีในระบบแล้วกด Enter" },
         { type: "expected", description: "ไม่แสดง location ใด ๆ; แสดง empty state 'No products match' พร้อมปุ่ม Clear search" },
         { type: "priority", description: "Medium" },
@@ -285,7 +285,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010009 ปุ่ม Refresh ยิง request โหลดข้อมูลใหม่",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment" },
         { type: "steps", description: "1. กดปุ่ม Refresh บน toolbar" },
         { type: "expected", description: "ยิง GET /stock-replenishments ซ้ำอีกหนึ่งครั้ง และหน้ายังแสดงข้อมูลเดิม" },
         { type: "priority", description: "Low" },
@@ -305,7 +305,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010010 ล้างคำค้นด้วยปุ่ม Clear search แล้วรายการกลับมาครบ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. ค้นคำที่ไม่มีในระบบ\n2. กดปุ่ม Clear search" },
         { type: "expected", description: "ช่องค้นว่างและจำนวน locations กลับมาเท่ากับ API" },
         { type: "priority", description: "Low" },
@@ -329,9 +329,9 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-010050 request ของหน้านี้ไปที่ BU ที่ active (TEST BU)",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment" },
         { type: "steps", description: "1. ไปที่ /store-operation/stock-replenishment\n2. ตรวจ URL ของ request" },
-        { type: "expected", description: "ยิง GET /api/GR2VYNKQ/stock-replenishments สำเร็จ (200)" },
+        { type: "expected", description: "ยิง GET /api/BU-GR2VYNKQ/stock-replenishments สำเร็จ (200)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Smoke" },
       ],
@@ -349,7 +349,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-020001 สถานะสินค้า (Critical/Warning/Low) ในแถวตรงกับ status จาก API",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080" },
         { type: "steps", description: "1. ไปที่หน้า และกด Expand all\n2. ตรวจคอลัมน์ Status ของสินค้าแต่ละสถานะ" },
         { type: "expected", description: "แถวของสินค้า status=critical/warning/low แสดงป้ายสถานะ Critical/Warning/Low ตามลำดับ" },
         { type: "priority", description: "Medium" },
@@ -376,7 +376,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-020002 คอลัมน์ Reorder แสดง reorder_qty ของสินค้าตรงกับ API",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; viewport 1920x1080" },
         { type: "steps", description: "1. ไปที่หน้า และกด Expand all\n2. ตรวจคอลัมน์ Reorder Qty ของสินค้าแรก" },
         { type: "expected", description: "เซลล์ Reorder ของสินค้าแสดงค่า reorder_qty เดียวกับ API" },
         { type: "priority", description: "Medium" },
@@ -396,7 +396,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-020003 คอลัมน์ Product แสดงชื่อท้องถิ่นเป็นบรรทัดรอง",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีสินค้าที่มี local_name" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีสินค้าที่มี local_name" },
         { type: "steps", description: "1. ไปที่หน้า และกด Expand all\n2. ตรวจเซลล์สินค้าที่มีชื่อท้องถิ่น" },
         { type: "expected", description: "เซลล์สินค้าแสดงชื่อหลักและชื่อท้องถิ่นในเซลล์เดียวกัน" },
         { type: "priority", description: "Low" },
@@ -419,7 +419,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060001 เลือกสินค้าในแถวเดียวด้วย checkbox ได้",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. กด Expand all\n2. ติ๊ก checkbox ของสินค้าแรก" },
         { type: "expected", description: "checkbox ถูกเลือก; แถบล่างแสดง '1 item selected' พร้อมปุ่ม Create SR และ Create PR" },
         { type: "priority", description: "High" },
@@ -443,7 +443,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060002 เลือกทั้งหมดใน location ด้วย checkbox บนแถบหัว location",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. ติ๊ก checkbox บนแถบหัว location แรก" },
         { type: "expected", description: "สินค้าทุกชิ้นใน location ถูกเลือก; ตัวนับเท่ากับจำนวนสินค้าของ location" },
         { type: "priority", description: "Medium" },
@@ -466,7 +466,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060003 checkbox แถบหัว location แสดงสถานะ indeterminate เมื่อเลือกบางส่วน",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; location แรกมีสินค้า >= 2" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; location แรกมีสินค้า >= 2" },
         { type: "steps", description: "1. กด Expand all\n2. ติ๊กสินค้าเพียงชิ้นเดียวใน location" },
         { type: "expected", description: "checkbox บนแถบหัว location เป็น mixed (aria-checked='mixed')" },
         { type: "priority", description: "Medium" },
@@ -486,7 +486,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060004 เลือกข้ามหลาย location แล้วตัวนับรวมถูกต้อง",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location" },
         { type: "steps", description: "1. ติ๊ก checkbox หัว location ที่ 1 และที่ 2" },
         { type: "expected", description: "ตัวนับรวมเท่ากับจำนวนสินค้าของสอง location รวมกัน" },
         { type: "priority", description: "Medium" },
@@ -507,7 +507,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060005 แถบ action ล่างแสดงปุ่ม Create PR / Create SR และจำนวนที่เลือกเมื่อมีการเลือก",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. ยังไม่เลือกอะไร ตรวจแถบ\n2. ติ๊กเลือกสินค้า 1 รายการ" },
         { type: "expected", description: "ก่อนเลือกไม่มีปุ่ม Create PR/SR; หลังเลือกมีปุ่มทั้งสองและข้อความ '1 item selected'" },
         { type: "priority", description: "High" },
@@ -531,7 +531,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060006 ยกเลิกการเลือกทั้งหมดแล้วปุ่ม Create PR/SR หายไป",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. ติ๊กสินค้า\n2. ติ๊กออกอีกครั้ง" },
         { type: "expected", description: "แถบ action และปุ่ม Create PR/SR หายไป" },
         { type: "priority", description: "Medium" },
@@ -556,7 +556,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060007 กด Create PR เปิด wizard พร้อมตารางรายการที่ติ๊ก",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; role Purchase เริ่ม workflow PR ได้" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; role Purchase เริ่ม workflow PR ได้" },
         { type: "steps", description: "1. ติ๊กสินค้า\n2. กดปุ่ม Create PR" },
         { type: "expected", description: "เปิด dialog 'Create Purchase Request' ที่มีแถวของสินค้าที่ติ๊กและช่อง Workflow" },
         { type: "priority", description: "High" },
@@ -582,7 +582,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060008 ปุ่ม Create ใน PR wizard ปิดจนกว่าจะเลือก workflow",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. เปิด PR wizard โดยยังไม่เลือก workflow\n2. เลือก workflow" },
         { type: "expected", description: "ก่อนเลือก workflow ปุ่ม Create ถูก disable; หลังเลือกปุ่ม Create enable" },
         { type: "priority", description: "High" },
@@ -607,7 +607,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060009 ตัดแถวออกจาก PR wizard ด้วยปุ่มถังขยะ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; location แรกมีสินค้า >= 2" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; location แรกมีสินค้า >= 2" },
         { type: "steps", description: "1. ติ๊กสินค้า 2 ชิ้นใน location\n2. เปิด PR wizard\n3. กดถังขยะของแถวแรก" },
         { type: "expected", description: "dialog แสดง '2 items' ก่อนลบ; หลังลบเหลือ '1 item' และสินค้าที่ลบหายจาก dialog" },
         { type: "priority", description: "Medium" },
@@ -634,7 +634,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060010 กด Create SR (ติ๊กคลังเดียว) เปิด wizard พร้อม Workflow / Request From / Deliver To",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; role Purchase เริ่ม workflow SR ได้" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; role Purchase เริ่ม workflow SR ได้" },
         { type: "steps", description: "1. ติ๊กสินค้าจาก location เดียว\n2. กดปุ่ม Create SR" },
         { type: "expected", description: "เปิด dialog 'Create Store Requisition' มีฟิลด์ Workflow, Request From, Deliver To และแถวสินค้าที่ติ๊ก" },
         { type: "priority", description: "High" },
@@ -660,7 +660,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060011 ช่อง Request From ของ SR wizard ไม่มีคลังปลายทางให้เลือก",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location" },
         { type: "steps", description: "1. ติ๊กสินค้าของ location ที่ 1\n2. เปิด SR wizard\n3. เปิด dropdown Request From" },
         { type: "expected", description: "ตัวเลือกใน Request From ไม่มีชื่อ location ที่ 1 (ปลายทาง)" },
         { type: "priority", description: "Medium" },
@@ -686,7 +686,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-060012 ปิด wizard ด้วย Cancel แล้วไม่มีเอกสารเกิดขึ้นและรายการที่ติ๊กยังอยู่",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล" },
         { type: "steps", description: "1. ติ๊กสินค้า\n2. กด Create PR แล้วกด Cancel" },
         { type: "expected", description: "dialog ปิด; จำนวน PR ใน BU ไม่เปลี่ยน (API); ตัวนับยังเป็น '1 item selected'" },
         { type: "priority", description: "Medium" },
@@ -768,7 +768,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-300001 Create PR สร้างใบขอซื้อจากรายการที่เลือกได้สำเร็จ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; Purchase เริ่ม workflow PR ได้ (สร้าง PR จริงใน TEST BU)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; Purchase เริ่ม workflow PR ได้ (สร้าง PR จริงใน TEST BU)" },
         { type: "steps", description: "1. ติ๊กสินค้า 1 ชิ้น\n2. เปิด PR wizard เลือก workflow\n3. กด Create" },
         { type: "expected", description: "toast 'Created 1 purchase request(s)'; dialog ปิด; จำนวน PR ใน BU เพิ่มขึ้น 1 (API); ตัวนับที่เลือกถูกล้าง" },
         { type: "priority", description: "High" },
@@ -800,7 +800,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-300002 Create SR สร้างใบเบิกจากรายการที่เลือกได้สำเร็จ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location (ต้นทาง/ปลายทาง); Purchase เริ่ม workflow SR ได้ (สร้าง SR จริงใน TEST BU)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location (ต้นทาง/ปลายทาง); Purchase เริ่ม workflow SR ได้ (สร้าง SR จริงใน TEST BU)" },
         { type: "steps", description: "1. ติ๊กสินค้า 1 ชิ้น\n2. เปิด SR wizard เลือก workflow และ Request From\n3. กด Create" },
         { type: "expected", description: "toast สร้างสำเร็จ; dialog ปิด; จำนวน SR ใน BU เพิ่มขึ้น 1 (API)" },
         { type: "priority", description: "High" },
@@ -833,7 +833,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-300003 ติ๊กข้ามหลายคลังแล้ว Create PR ได้ใบขอซื้อคลังละใบ",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location; Purchase เริ่ม workflow PR ได้ (สร้าง PR จริงใน TEST BU)" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location; Purchase เริ่ม workflow PR ได้ (สร้าง PR จริงใน TEST BU)" },
         { type: "steps", description: "1. ติ๊กสินค้า 1 ชิ้นจากแต่ละ location (2 คลัง)\n2. เปิด PR wizard เลือก workflow\n3. กด Create" },
         { type: "expected", description: "wizard บอก '2 purchase requests will be created'; หลังกด Create จำนวน PR ใน BU เพิ่มขึ้น 2 (API)" },
         { type: "priority", description: "High" },
@@ -865,7 +865,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-900001 กรณีไม่มีสินค้าต้องเติม แสดง empty state",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; endpoint ถูก mock ให้ตอบ data=[]" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; endpoint ถูก mock ให้ตอบ data=[]" },
         { type: "steps", description: "1. ไปที่ /store-operation/stock-replenishment" },
         { type: "expected", description: "แสดง 'Every location is within its stock levels' และไม่มีแถบสรุป/ตาราง" },
         { type: "priority", description: "Low" },
@@ -886,7 +886,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-900002 กด Create SR ขณะติ๊กข้าม 2 คลังขึ้นไป ต้องเตือนว่าใบเบิกทำได้ทีละคลัง",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment; GET /stock-replenishments ของ TEST BU มีข้อมูล; มีอย่างน้อย 2 location" },
         { type: "steps", description: "1. ติ๊กหัว location ที่ 1 และที่ 2\n2. กดปุ่ม Create SR" },
         { type: "expected", description: "แสดง dialog 'One location per requisition' และไม่เปิด SR wizard" },
         { type: "priority", description: "High" },
@@ -939,7 +939,7 @@ test.describe("Stock Replenishment — Store Operations", () => {
     "TC-SRPL-900004 โหลดข้อมูลล้มเหลวต้องแสดง error state พร้อมปุ่ม Try again",
     {
       annotation: [
-        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (GR2VYNKQ); license store_operations.stock_replenishment" },
+        { type: "preconditions", description: "เข้าสู่ระบบเป็น Purchase (inventory_management.stock_in + เริ่ม workflow PR/SR ได้); active BU = TEST BU (BU-GR2VYNKQ); license store_operations.stock_replenishment" },
         { type: "steps", description: "1. ตั้ง route intercept ตอบ 500 สำหรับ endpoint stock-replenishments\n2. ไปที่หน้านี้\n3. ปลด intercept แล้วกด Try again" },
         { type: "expected", description: "แสดง ErrorState พร้อมปุ่ม Try again; กดลองใหม่แล้วข้อมูลกลับมา" },
         { type: "priority", description: "Low" },

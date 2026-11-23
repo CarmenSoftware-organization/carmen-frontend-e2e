@@ -40,7 +40,7 @@ _Generated from `tests/710-wastage-reporting.spec.ts` annotations. Edit annotati
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); BU มี license store_operations.wastage_reporting
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); BU มี license store_operations.wastage_reporting
 
 **Steps**
 
@@ -60,7 +60,7 @@ URL ตรงกับ path; หัวข้อ 'Wastage Reporting' และค
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); viewport 1920x1080 (ตารางแสดงครบทุกคอลัมน์)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); viewport 1920x1080 (ตารางแสดงครบทุกคอลัมน์)
 
 **Steps**
 
@@ -81,7 +81,7 @@ URL ตรงกับ path; หัวข้อ 'Wastage Reporting' และค
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
 
 **Steps**
 
@@ -103,7 +103,7 @@ URL เพิ่ม search=<คำค้น>; ยิง request ใหม่พ�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); ใช้ API จริง
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); ใช้ API จริง
 
 **Steps**
 
@@ -124,7 +124,7 @@ URL เพิ่ม search=<คำค้น>; ยิง request ใหม่พ�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture มี lot หมดอายุ 1 และใกล้หมด 1
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture มี lot หมดอายุ 1 และใกล้หมด 1
 
 **Steps**
 
@@ -145,7 +145,7 @@ URL เป็น ?status=expired; ยิง request พร้อม status=expir
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture 12 lot (perpage 10 → 2 หน้า)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture 12 lot (perpage 10 → 2 หน้า)
 
 **Steps**
 
@@ -166,7 +166,7 @@ URL เพิ่ม page=2; ยิง request page=2; ตารางแสด�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture หมดอายุ 1 ใกล้หมด 1 (มูลค่ารวม 200)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); fixture หมดอายุ 1 ใกล้หมด 1 (มูลค่ารวม 200)
 
 **Steps**
 
@@ -187,7 +187,7 @@ URL เพิ่ม page=2; ยิง request page=2; ตารางแสด�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
 
 **Steps**
 
@@ -208,7 +208,7 @@ URL ไม่มี status; ตารางกลับมาแสดงทุ�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
 
 **Steps**
 
@@ -230,7 +230,7 @@ URL ไม่มี status; ตารางกลับมาแสดงทุ�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); ใช้ API จริง
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); ใช้ API จริง
 
 **Steps**
 
@@ -251,7 +251,7 @@ URL ไม่มี status; ตารางกลับมาแสดงทุ�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); ผู้ใช้ผูกกับ TEST BU
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); ผู้ใช้ผูกกับ TEST BU
 
 **Steps**
 
@@ -260,7 +260,7 @@ URL ไม่มี status; ตารางกลับมาแสดงทุ�
 
 **Expected**
 
-ยิง GET /api/GR2VYNKQ/wastage-reporting สำเร็จ (200)
+ยิง GET /api/BU-GR2VYNKQ/wastage-reporting สำเร็จ (200)
 
 ---
 
@@ -272,7 +272,7 @@ URL ไม่มี status; ตารางกลับมาแสดงทุ�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
 
 **Steps**
 
@@ -293,7 +293,7 @@ URL ไม่มี status; ตารางกลับมาแสดงทุ�
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset)
 
 **Steps**
 
@@ -354,7 +354,7 @@ URL ยังคงเป็น /store-operation/wastage-reporting
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); license store_operations.wastage_reporting ของ TEST BU
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); license store_operations.wastage_reporting ของ TEST BU
 
 **Steps**
 
@@ -375,7 +375,7 @@ URL ยังคงเป็น /store-operation/wastage-reporting
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); viewport 375x667
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ); endpoint wastage-reporting ถูก mock ด้วย fixture (TEST BU ไม่มี lot ที่ใกล้หมดอายุหลัง data:reset); viewport 375x667
 
 **Steps**
 
@@ -396,7 +396,7 @@ URL ยังคงเป็น /store-operation/wastage-reporting
 
 **Preconditions**
 
-เข้าสู่ระบบเป็น Admin; active BU = TEST BU (GR2VYNKQ)
+เข้าสู่ระบบเป็น Admin; active BU = TEST BU (BU-GR2VYNKQ)
 
 **Steps**
 

@@ -9,7 +9,7 @@ import { expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// AP deposit, debit note and credit note on the TEST BU (GR2VYNKQ): create through the UI, post, JV signs, read set.
+// AP deposit, debit note and credit note on the TEST BU (BU-GR2VYNKQ): create through the UI, post, JV signs, read set.
 //
 // Read set (never mutated, seeded by `bun run data:reset --yes`): E2E-AP-DEPOSIT (2,000.00) · E2E-AP-DN (150.00) ·
 // E2E-AP-CN (120.00), all posted with no VAT. Every state-changing case creates its own document tagged

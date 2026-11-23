@@ -27,7 +27,7 @@ import { expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Sales Consumption on the TEST BU (GR2VYNKQ): mapping blocks Post, line overrides, verify on-hand, post (Stock Outs
+// Sales Consumption on the TEST BU (BU-GR2VYNKQ): mapping blocks Post, line overrides, verify on-hand, post (Stock Outs
 // per location + on-hand deltas), double post, void + late lines and the calendar. Groups 01-07 (06: 5 cases, one skipped by ruling, one pinned).
 //
 // Store key E2E-141; sale days saleDay(141, n) count backward from the end of the open inventory period (spec 140

@@ -6,7 +6,7 @@ describe("resolveResetConfig", () => {
     expect(
       resolveResetConfig({ SEED_BACKEND_URL: "https://h", SEED_X_APP_ID: "a", DATA_RESET_DEPLOY_TOKEN: "t" }),
     ).toEqual({
-      backendUrl: "https://h", xAppId: "a", buCode: "GR2VYNKQ", deployToken: "t",
+      backendUrl: "https://h", xAppId: "a", buCode: "BU-GR2VYNKQ", deployToken: "t",
       adminEmail: "carmensoftware.dev+admin@gmail.com",
     });
   });
@@ -15,7 +15,7 @@ describe("resolveResetConfig", () => {
     const cfg = resolveResetConfig({
       SEED_BACKEND_URL: "https://h", SEED_X_APP_ID: "a", SEED_BU_CODE: "BLAVG", SEED_EMAIL: "admin@blueledgers.com",
     });
-    expect(cfg.buCode).toBe("GR2VYNKQ");
+    expect(cfg.buCode).toBe("BU-GR2VYNKQ");
     expect(cfg.adminEmail).toBe("carmensoftware.dev+admin@gmail.com");
   });
 

@@ -1,11 +1,11 @@
 # Inventory Adjustment — Gap Report
 
-_เคสที่ **สเปกอัตโนมัติยังไม่ครอบ** — โมดูลนี้มีสเปกแล้วคือ `tests/730-inventory-adjustment-doc-flow.spec.ts` (movement suite, opt-in: section 70 = Stock In, 71 = Stock Out บน CARMEN-AVG ด้วยบัญชี fc) ซึ่งเดินวงจรเอกสาร draft → ดู → แก้ → ลบ → Commit และตรวจผลในหลังบ้าน แต่ยังไม่ครอบเคสด้านล่างนี้ (หน้า list, ตัวกรอง, validation, void, สิทธิ์ ฯลฯ) — แคตตาล็อกเดิม: สอบทานกับโค้ดจริงเมื่อ 2026-09-20 จากโมดูล `routes/inventory-management/inventory-adjustment` (`ia-component.tsx`, `use-ia-table.tsx`, `ia-card.tsx`, `ia-form.tsx`, `ia-form-hero.tsx`, `ia-doc-info.tsx`, `ia-item-fields.tsx`, `use-ia-item-table.tsx`, `ia-summary.tsx`, `ia-form-schema.ts`, `use-inventory-adjustment.ts`) + `constant/inventory-adjustment.ts`, `constant/module-list.ts`, `components/route-guard.tsx`, `components/list-filter/list-toolbar.tsx`, `messages/en.json`. Follows the TC-ID scheme in `docs/test-id-scheme.md`._
+_เคสที่ **สเปกอัตโนมัติยังไม่ครอบ** — โมดูลนี้มีสเปกแล้วคือ `tests/731-inventory-adjustment.spec.ts` (ชุดหลัก บน TEST BU ด้วยบัญชี Admin: section 70 = Stock In, 71 = Stock Out; ย้ายมาจาก 730 doc-flow เดิม) และ `tests/732-inventory-adjustment-stock.spec.ts` (section 80/81/82 สต๊อก ต้นทุน และผลของการ void) ซึ่งเดินวงจรเอกสาร draft → ดู → แก้ → ลบ → Commit และตรวจผลในหลังบ้าน แต่ยังไม่ครอบเคสด้านล่างนี้ (หน้า list, ตัวกรอง, validation, void, สิทธิ์ ฯลฯ) — แคตตาล็อกเดิม: สอบทานกับโค้ดจริงเมื่อ 2026-09-20 จากโมดูล `routes/inventory-management/inventory-adjustment` (`ia-component.tsx`, `use-ia-table.tsx`, `ia-card.tsx`, `ia-form.tsx`, `ia-form-hero.tsx`, `ia-doc-info.tsx`, `ia-item-fields.tsx`, `use-ia-item-table.tsx`, `ia-summary.tsx`, `ia-form-schema.ts`, `use-inventory-adjustment.ts`) + `constant/inventory-adjustment.ts`, `constant/module-list.ts`, `components/route-guard.tsx`, `components/list-filter/list-toolbar.tsx`, `messages/en.json`. Follows the TC-ID scheme in `docs/test-id-scheme.md`._
 
 **Module:** Inventory Management — Inventory Adjustment
 **Frontend route:** `routes/inventory-management/inventory-adjustment`  •  **URL:** `/inventory-management/inventory-adjustment` (และ `/inventory-management/inventory-adjustment/new`, `/inventory-management/inventory-adjustment/:id`)
 **Prefix:** `IADJ` (ชุดเดียวกับสเปก — gap report ใช้ prefix ของสเปก)
-**Spec ที่ครอบวงจรเอกสาร:** `tests/730-inventory-adjustment-doc-flow.spec.ts` (TC-IADJ-70xxxx / 71xxxx)
+**Spec ที่ครอบวงจรเอกสาร:** `tests/731-inventory-adjustment.spec.ts` (TC-IADJ-70xxxx / 71xxxx) · สต๊อก/ต้นทุน/void: `tests/732-inventory-adjustment-stock.spec.ts` (TC-IADJ-80xxxx / 81xxxx / 82xxxx)
 **Default role:** Admin (admin@blueledgers.com, active BU = BLAVG)
 **Total test cases:** 60
 
@@ -57,8 +57,8 @@ _เคสที่ **สเปกอัตโนมัติยังไม่�
 | TC-IADJ-020008 | ปุ่มย้อนกลับพากลับหน้า list เสมอ | Medium | Functional |
 | TC-IADJ-020009 | ตารางรายการในโหมด view แสดงค่าอย่างเดียว ไม่มีช่องกรอก | Medium | Functional |
 | TC-IADJ-030001 | เปิดหน้า new Stock In สำเร็จ | High | Smoke |
-| TC-IADJ-030002 | สร้าง Stock In (date/reason/location + 1 รายการ) สำเร็จ | High | CRUD |
-| TC-IADJ-030003 | สร้าง Stock Out สำเร็จ และตารางไม่มีคอลัมน์ Cost/Unit | High | CRUD |
+| TC-IADJ-030002 | สร้าง Stock In (date/reason/location + 1 รายการ) สำเร็จ — ครอบแล้วโดย 731 (TC-IADJ-700002, 2 รายการ) | High | CRUD |
+| TC-IADJ-030003 | สร้าง Stock Out สำเร็จ และตารางไม่มีคอลัมน์ Cost/Unit — สร้างครอบแล้วโดย 731 (TC-IADJ-710002); ส่วนคอลัมน์ Cost/Unit ยังไม่ตรวจ | High | CRUD |
 | TC-IADJ-030004 | เพิ่มรายการได้หลายแถว และสินค้าที่เลือกแล้วไม่ซ้ำ | Medium | Functional |
 | TC-IADJ-030005 | ลบรายการผ่านกล่อง Remove Item | Medium | Functional |
 | TC-IADJ-030006 | เลือกสินค้าแล้ว Cost/Unit กับ Total Cost ถูกเติมอัตโนมัติ | Medium | Functional |
@@ -66,11 +66,11 @@ _เคสที่ **สเปกอัตโนมัติยังไม่�
 | TC-IADJ-030008 | เปิด `/new` โดยไม่มี `?type` ต้องแจ้ง invalid type | Medium | Negative |
 | TC-IADJ-030009 | ออกจากฟอร์มที่ยังไม่บันทึกต้องถามยืนยันก่อน | Medium | Alternate Flow |
 | TC-IADJ-030050 | สร้าง Inventory Adjustment ภายใต้ BU BLAVG สำเร็จ | High | CRUD |
-| TC-IADJ-040001 | แก้ Description ของเอกสาร Draft แล้วบันทึกสำเร็จ | High | CRUD |
+| TC-IADJ-040001 | แก้ Description ของเอกสาร Draft แล้วบันทึกสำเร็จ — ครอบแล้วโดย 731 (TC-IADJ-700004 / 710004) | High | CRUD |
 | TC-IADJ-040050 | ค่าที่แก้ยังอยู่หลังโหลดหน้าใหม่ | High | CRUD |
-| TC-IADJ-050001 | ลบเอกสาร Draft จากหน้า detail | High | CRUD |
+| TC-IADJ-050001 | ลบเอกสาร Draft จากหน้า detail — ครอบแล้วโดย 731 (TC-IADJ-700005 / 710005) | High | CRUD |
 | TC-IADJ-060001 | Void เอกสารพร้อมระบุเหตุผล | High | Functional |
-| TC-IADJ-060002 | Commit เอกสารเพื่อปิดเข้าสต๊อก | High | Functional |
+| TC-IADJ-060002 | Commit เอกสารเพื่อปิดเข้าสต๊อก — ครอบบางส่วนโดย 731 (TC-IADJ-700006 / 710006 commit จากหน้า new) และ 732 (สต๊อก/ต้นทุน) | High | Functional |
 | TC-IADJ-060003 | กด Commit ขณะฟอร์มยังไม่ผ่าน validation | Medium | Negative |
 | TC-IADJ-100001 | ผู้ใช้ที่ไม่มีสิทธิ์เปิด URL ตรง ๆ ต้องเจอกล่องไม่มีสิทธิ์ | High | Authorization |
 | TC-IADJ-100002 | ผู้ที่ยังไม่ล็อกอินเปิด URL ตรง ๆ ต้องถูกพาไป /login | High | Auth-guard |

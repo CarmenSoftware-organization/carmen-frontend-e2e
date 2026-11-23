@@ -7,7 +7,7 @@ import { expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// JV templates on the TEST BU (GR2VYNKQ): template / recurring / allocation lists, a JV generated from a template, and
+// JV templates on the TEST BU (BU-GR2VYNKQ): template / recurring / allocation lists, a JV generated from a template, and
 // the allocation split.
 //
 // Read set (never mutated): E2E-JVT-1, an active recurring template (Dr 5300 250.00 / Cr 1110 250.00, period = the

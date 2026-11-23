@@ -9,7 +9,7 @@ import { expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// AP payment approvals on the TEST BU (GR2VYNKQ): the Payment Approvals queue, approve, reject, who may act.
+// AP payment approvals on the TEST BU (BU-GR2VYNKQ): the Payment Approvals queue, approve, reject, who may act.
 //
 // Workflow `ap_payment` (scripts/data-reset/fixtures/workflows.json): Create Request (Admin, Budget) -> Accounting
 // Approval (Budget) -> Completed. Admin creates and submits, Budget approves and the approval posts. Requestor is the

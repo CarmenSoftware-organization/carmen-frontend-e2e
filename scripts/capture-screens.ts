@@ -5,7 +5,7 @@
  *   bun run create:sitemap:screen
  *   bun run create:sitemap:screen -- --user admin,hod
  *   bun run create:sitemap:screen -- --concurrency 3 --max-pages 50
- *   bun run create:sitemap:screen -- --bu GR2VYNKQ  (default: BU_CODE from tests/test-users.ts; --bu none keeps each user's own default BU)
+ *   bun run create:sitemap:screen -- --bu BU-GR2VYNKQ  (default: BU_CODE from tests/test-users.ts; --bu none keeps each user's own default BU)
  *
  * Output: runs/screens/<datetime>/
  *           index.html            overview, one card per user

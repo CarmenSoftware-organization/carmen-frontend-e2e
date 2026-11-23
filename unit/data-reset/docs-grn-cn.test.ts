@@ -18,7 +18,7 @@ const poLines = (po: string) => ({
 async function run() {
   const store = docStore("good_received_note_detail", "grn_no");
   const backend = fakeBackend(
-    { "GET /api/GR2VYNKQ/purchase-orders/poF": poLines("poF"), "GET /api/GR2VYNKQ/purchase-orders/poP": poLines("poP") },
+    { "GET /api/BU-GR2VYNKQ/purchase-orders/poF": poLines("poF"), "GET /api/BU-GR2VYNKQ/purchase-orders/poP": poLines("poP") },
     store.fallback,
   );
   const ledger = new RowLedger();
@@ -26,8 +26,8 @@ async function run() {
   return { backend, ledger, result };
 }
 
-const grnCreates = (w: any[]) => w.filter((x) => x.path === "/api/GR2VYNKQ/good-received-notes");
-const actionsOn = (w: any[], id: string) => w.filter((x) => x.path.startsWith(`/api/GR2VYNKQ/good-received-notes/${id}/`)).map((x) => x.path.split("/").pop());
+const grnCreates = (w: any[]) => w.filter((x) => x.path === "/api/BU-GR2VYNKQ/good-received-notes");
+const actionsOn = (w: any[], id: string) => w.filter((x) => x.path.startsWith(`/api/BU-GR2VYNKQ/good-received-notes/${id}/`)).map((x) => x.path.split("/").pop());
 
 describe("seedReceiving", () => {
   it("receives the full PO in full and the partial PO by half of line 1, then commits both", async () => {
@@ -53,7 +53,7 @@ describe("seedReceiving", () => {
   it("puts both credit notes on the committed GRN and submits only the second", async () => {
     const { backend, ledger, result } = await run();
     const w = backend.writesBy();
-    const cns = w.filter((x) => x.path === "/api/GR2VYNKQ/credit-notes");
+    const cns = w.filter((x) => x.path === "/api/BU-GR2VYNKQ/credit-notes");
     expect(cns.map((x) => (x.body as any).grn_id)).toEqual(["d1", "d1"]);
     // The backend credits each product on a GRN once (422 otherwise), so the two CNs take different lines.
     expect(cns.map((x) => (x.body as any).credit_note_detail.add[0].product_id)).toEqual(["p1", "p2"]);

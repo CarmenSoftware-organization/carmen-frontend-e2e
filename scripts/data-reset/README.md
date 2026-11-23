@@ -1,6 +1,6 @@
 # data:reset
 
-ล้าง TEST BU (`GR2VYNKQ`) บน dev แล้วสร้างชุดข้อมูลมาตรฐานใหม่ — สั่งเองก่อนรันเทส ไม่ผูกกับ `bun run test`
+ล้าง TEST BU (`BU-GR2VYNKQ`) บน dev แล้วสร้างชุดข้อมูลมาตรฐานใหม่ — สั่งเองก่อนรันเทส ไม่ผูกกับ `bun run test`
 
 ```bash
 bun run data:reset --dry-run   # อ่านอย่างเดียว: ตรวจขั้น 0 แล้วพิมพ์สิ่งที่จะเขียน
@@ -11,7 +11,7 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
 ## ต้องมี
 
 - backend dev ที่ deploy endpoint `POST /api-system/tenant/resets/:bu_id` แล้ว (backend PR #1004) และตั้ง
-  `TENANT_RESET_ALLOWED_BU_CODES=GR2VYNKQ`, `TENANT_MIGRATION_API_ENABLED=true`
+  `TENANT_RESET_ALLOWED_BU_CODES=BU-GR2VYNKQ`, `TENANT_MIGRATION_API_ENABLED=true`
 - `.env.local`: `DATA_RESET_DEPLOY_TOKEN` (= `TENANT_DEPLOY_TOKEN` ของ gateway) และ `SEED_BACKEND_URL` /
   `SEED_X_APP_ID` หรือ `SEED_CONFIG_PATH` ชี้ `config.json` ของ frontend
 - สิทธิ์ของ role purchase ใน TEST BU: `vendor_management.vendor.view`, `product_management.category.view`,
@@ -53,7 +53,8 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    ทำไมทุก PR ผ่าน GM: ราคาของ PR ใส่ได้ตอนขั้น Purchase เท่านั้น และหน้าแก้ workflow ตั้งกฎ "ข้าม GM แล้วจบ" หลัง
    Purchase ไม่ได้ จึงคัด PR มูลค่าสูงด้วยกฎไม่ได้ (ผู้ใช้เลือกเมื่อ 2026-11-05)
    vendor ตัวแรก (เรียงตาม code) ที่ไม่มีอีเมลจะถูกเติม `carmensoftware.dev+vendor@gmail.com` ให้ (flow ส่ง PO ให้ vendor)
-6. งวดสินค้าคงคลังของเดือนนี้ (เวลาไทย) ถ้ายังไม่มีงวดเปิดที่ครอบวันนี้
+6. งวดสินค้าคงคลังของเดือนนี้ (เวลาไทย) ถ้ายังไม่มีงวดเปิดที่ครอบวันนี้ + งวด**เดือนถัดไป** (ธ.ค. → ม.ค. ปีหน้า) สร้างล่วงหน้าผ่าน
+   `POST /inventory-periods/next` (สถานะ open แบบเดียวกับที่การปิดงวดเติมให้ — งวดปัจจุบันของ BE คืองวดเปิดที่เก่าสุด จึงยังเป็นเดือนนี้) ซ้ำได้ ถ้ามีอยู่แล้วข้าม · verify แถว `period.next` · ใช้กับเคส Stock In ลงงวดล่วงหน้า (TC-IADJ-800010)
 
 7. เอกสารและสต๊อก (`docs/`) ตามตารางของ spec ทุกขั้นทำโดย role ที่ทำจริง และทุกใบขึ้นต้นคำอธิบายด้วย `STD <แถว>`:
    - สต๊อก: ใบรับเข้าที่ commit แล้ว ได้ระดับ Critical / Warning / Low ที่ 711 (par 100, คงเหลือ 20 / 40 / 80)
@@ -76,6 +77,11 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    - ใบรับเข้าที่ commit แล้ว `STD pos.stock.l1` / `STD pos.stock.l2`: P1–P4 จำนวน 500 ต้นทุน 10 ที่ location แรก / ที่สอง
      ลงวันที่ **วันแรกของงวดที่เปิดอยู่** (อ่านจาก `inventory-periods/current`) ไม่ใช่วันนี้
    - p7–p8 ซ้อนกับ `stock.on-hand.*` และ p9 ซ้อนกับ lot หมดอายุของ `stock.*` (ไม่มีสินค้าว่าง 4 ตัวติดกัน) — spec ที่อ่านยอดต้องดูเป็นส่วนต่างเสมอ
+7c. ฐาน Inventory Adjustment (`docs/ia.ts`, ขั้น `ia` ต่อจาก `pos`):
+   - สินค้า `E2E-IA-A` / `E2E-IA-B` (สร้างถ้ายังไม่มี — ซ้ำได้ ใช้ code เป็นกุญแจ) คัดลอก item group / หน่วยคลังจากสินค้าตัวแรกของ context
+   - ผูกกับ location แรก (1AG01) **ที่เดียว** และ **ไม่สร้างใบรับเข้า** — สต๊อกเริ่มที่ 0 ให้ spec ทดสอบต้นทุนของ adjustment
+   - ประเภทปรับปรุง active 2 ตัว (ซ้ำได้ ใช้ code เป็นกุญแจ): `E2E-IA-IN` (stock_in) / `E2E-IA-OUT` (stock_out) — spec เลือกด้วย code ไม่พึ่ง EOP-* / SALE
+   - verify: `ia.adjustment-types` (มีทั้งสองตัวและ active) · `ia.products` (มีทั้งสองรหัส) · `ia.no-stock` (`inventory-info` on-hand ของทั้งสองที่ location นั้น = 0)
 8. ตรวจนับทั้ง BU เทียบตาราง (`verify-dataset.ts`) — แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้ แล้วจบด้วย exit 1
 
 ## ถ้า reset ตอบ 504 / timeout

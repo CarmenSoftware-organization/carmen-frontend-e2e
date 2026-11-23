@@ -75,7 +75,7 @@ describe("seedPurchaseRequests", () => {
     expect(new Set(callersOf(/\/submit$/))).toEqual(new Set([email("requestor"), email("owner")]));
     expect(callersOf(/\/reject$/).sort()).toEqual([email("hod"), email("purchase")].sort());
     expect(callersOf(/\/review$/)).toEqual([email("hod")]);
-    const create = writes.find((w) => w.path === "/api/GR2VYNKQ/purchase-requests")!.body as any;
+    const create = writes.find((w) => w.path === "/api/BU-GR2VYNKQ/purchase-requests")!.body as any;
     expect(create).toMatchObject({ stage_role: "create", details: { workflow_id: "wf-pr", department_id: "dA" } });
     expect(create.details.description).toMatch(/^STD pr\./);
     const purchaseStep = writes.find((w) => (w.body as any)?.stage_role === "purchase")!.body as any;

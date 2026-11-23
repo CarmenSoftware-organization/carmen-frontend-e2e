@@ -10,7 +10,7 @@ import type { ResetConfig } from "../../scripts/data-reset/config";
 import { TEST_USERS } from "../../tests/test-users";
 
 const cfg: ResetConfig = {
-  backendUrl: "http://h", xAppId: "app", buCode: "GR2VYNKQ", deployToken: "t",
+  backendUrl: "http://h", xAppId: "app", buCode: "BU-GR2VYNKQ", deployToken: "t",
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 
@@ -20,24 +20,24 @@ const profile = (units: Array<{ id: string; code: string; is_default: boolean }>
 
 describe("checkMembership", () => {
   it("passes a member whose default BU is TEST BU", () => {
-    expect(checkMembership("a@x", profile([{ id: "b", code: "GR2VYNKQ", is_default: true }]), "GR2VYNKQ")).toBeNull();
+    expect(checkMembership("a@x", profile([{ id: "b", code: "BU-GR2VYNKQ", is_default: true }]), "BU-GR2VYNKQ")).toBeNull();
   });
 
   it("names the BU that is default instead", () => {
     const body = profile([
-      { id: "b", code: "GR2VYNKQ", is_default: false },
+      { id: "b", code: "BU-GR2VYNKQ", is_default: false },
       { id: "c", code: "CARMEN-AVG", is_default: true },
     ]);
-    expect(checkMembership("a@x", body, "GR2VYNKQ")).toBe("a@x: default BU is CARMEN-AVG, not GR2VYNKQ");
+    expect(checkMembership("a@x", body, "BU-GR2VYNKQ")).toBe("a@x: default BU is CARMEN-AVG, not BU-GR2VYNKQ");
   });
 
   it("passes an account whose only BU is TEST BU even without is_default", () => {
-    expect(checkMembership("a@x", profile([{ id: "b", code: "GR2VYNKQ", is_default: false }]), "GR2VYNKQ")).toBeNull();
+    expect(checkMembership("a@x", profile([{ id: "b", code: "BU-GR2VYNKQ", is_default: false }]), "BU-GR2VYNKQ")).toBeNull();
   });
 
   it("reports a non-member", () => {
-    expect(checkMembership("a@x", profile([{ id: "c", code: "OTHER", is_default: true }]), "GR2VYNKQ")).toBe(
-      "a@x: not a member of GR2VYNKQ",
+    expect(checkMembership("a@x", profile([{ id: "c", code: "OTHER", is_default: true }]), "BU-GR2VYNKQ")).toBe(
+      "a@x: not a member of BU-GR2VYNKQ",
     );
   });
 });
@@ -75,7 +75,7 @@ describe("verifyEnvironment", () => {
       const email = tokenOf[(init!.headers as Record<string, string>).Authorization];
       if (url.endsWith("/api/user/profile")) {
         const isHod = email === "carmensoftware.dev+hod@gmail.com";
-        const units = [{ id: "bu-1", code: "GR2VYNKQ", is_default: !isHod }];
+        const units = [{ id: "bu-1", code: "BU-GR2VYNKQ", is_default: !isHod }];
         if (isHod) units.push({ id: "bu-2", code: "CARMEN-AVG", is_default: true });
         return jsonResponse(200, {
           data: { id: `id-${email}`, user_info: { firstname: "F", middlename: "", lastname: "L" }, business_unit: units },
@@ -91,7 +91,7 @@ describe("verifyEnvironment", () => {
     }) as unknown as typeof fetch;
 
     const result = await verifyEnvironment(createSessions(cfg, fakeFetch), cfg);
-    expect(result.problems).toEqual(["carmensoftware.dev+hod@gmail.com: default BU is CARMEN-AVG, not GR2VYNKQ"]);
+    expect(result.problems).toEqual(["carmensoftware.dev+hod@gmail.com: default BU is CARMEN-AVG, not BU-GR2VYNKQ"]);
     expect(Object.keys(result.userIds)).toHaveLength(TEST_USERS.length);
     expect(result.userIds["carmensoftware.dev+purchase@gmail.com"]).toBe("id-carmensoftware.dev+purchase@gmail.com");
     expect(result.buId).toBe("bu-1");
@@ -103,7 +103,7 @@ describe("verifyEnvironment", () => {
   it("reports purchase's missing permissions", async () => {
     const fakeFetch = (async (url: string) => {
       if (url.endsWith("/api/auth/login")) return jsonResponse(200, { data: { access_token: "tok" } });
-      if (url.endsWith("/api/user/profile")) return jsonResponse(200, profile([{ id: "bu-1", code: "GR2VYNKQ", is_default: true }]));
+      if (url.endsWith("/api/user/profile")) return jsonResponse(200, profile([{ id: "bu-1", code: "BU-GR2VYNKQ", is_default: true }]));
       if (url.includes("/user-application-roles/")) return jsonResponse(200, { data: { application_roles: [{ application_role_id: "r1" }] } });
       if (url.includes("/application-roles/r1")) return jsonResponse(200, { data: { permissions: [] } });
       return jsonResponse(404, {});
@@ -111,7 +111,7 @@ describe("verifyEnvironment", () => {
     const result = await verifyEnvironment(createSessions(cfg, fakeFetch), cfg);
     expect(result.problems).toHaveLength(3);
     expect(result.problems[0]).toBe(
-      "purchase lacks vendor_management.vendor.view in GR2VYNKQ — grant it once in the purchase role (platform schema, survives every reset)",
+      "purchase lacks vendor_management.vendor.view in BU-GR2VYNKQ — grant it once in the purchase role (platform schema, survives every reset)",
     );
   });
 });

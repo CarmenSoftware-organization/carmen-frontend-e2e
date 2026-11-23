@@ -33,5 +33,13 @@ export function fakeBackend(
 
 /** Profile answer for a BU whose default currency resolves (what verifyDataset's BU-base check reads). */
 export const healthyProfile = {
-  data: { business_unit: [{ code: "GR2VYNKQ", config: { default_currency_id: "c-thb", default_currency: { code: "THB" } } }] },
+  data: { business_unit: [{ code: "BU-GR2VYNKQ", config: { default_currency_id: "c-thb", default_currency: { code: "THB" } } }] },
+};
+
+/** Inventory-period list holding this and next month (2026-11 / 2026-12), what verifyDataset's period.next row reads. */
+export const periodsWithNext = {
+  data: [
+    { fiscal_year: 2026, fiscal_month: 11, status: "open" },
+    { fiscal_year: 2026, fiscal_month: 12, status: "open" },
+  ],
 };

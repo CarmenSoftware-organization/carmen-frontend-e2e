@@ -10,7 +10,7 @@ import { expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// AP payment on the TEST BU (GR2VYNKQ), money path: WHT 3%, partial payments, void, refusals, read set.
+// AP payment on the TEST BU (BU-GR2VYNKQ), money path: WHT 3%, partial payments, void, refusals, read set.
 //
 // Roles: Admin creates / submits (UI + API); Budget approves through the seeded `ap_payment` workflow
 // (Create Request -> Accounting Approval -> Completed); the approval itself is 804. Seeded: bank E2E-BANK (COA 1110),

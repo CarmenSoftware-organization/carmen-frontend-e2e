@@ -5,7 +5,9 @@
 import type { ApiClient } from "../seed-master/api-client";
 import type { ResetConfig } from "./config";
 import { READ_SET, listAll } from "./docs/accounting";
+import { refId } from "./docs/refs";
 import type { RowLedger } from "./docs/row-ledger";
+import { localDate, planNextPeriod } from "./period";
 import type { Sessions } from "./sessions";
 
 export interface ExpectedRow {
@@ -139,8 +141,61 @@ async function verifyPos(admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<
   return { lines, short };
 }
 
+/**
+ * Read back what the ia step promises: both E2E-IA products exist and have no stock at their location.
+ * Only runs when the ia step recorded its rows.
+ */
+async function verifyIa(admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<RowLedger["rows"]>): Promise<{ lines: string[]; short: string[] }> {
+  const lines: string[] = [];
+  const short: string[] = [];
+  const codes = ["E2E-IA-A", "E2E-IA-B"];
+  if (!codes.some((c) => seeded[`ia.${c}`])) return { lines, short };
+  const bu = cfg.buCode;
+  const check = (row: string, ok: boolean, detail: string) => {
+    lines.push(`${row.padEnd(22)}${String(1).padStart(5)}${String(ok ? 1 : 0).padStart(7)}${ok ? "" : "  ✗"}`);
+    if (!ok) short.push(`${row}: ${detail}`);
+  };
+  const products = new Map((await listAll(admin, `/api/config/${bu}/products`)).map((r) => [String(r.code), r]));
+  const missing = codes.filter((c) => !products.has(c));
+  const types = await listAll(admin, `/api/config/${bu}/adjustment-types`);
+  const badTypes = (["E2E-IA-IN:stock_in", "E2E-IA-OUT:stock_out"] as const)
+    .filter((x) => { const [code, kind] = x.split(":"); return !types.some((t) => t.code === code && t.type === kind && t.is_active !== false); })
+    .map((x) => x.split(":")[0]);
+  check("ia.adjustment-types", badTypes.length === 0, `missing or inactive adjustment type ${badTypes.join(", ")}`);
+  check("ia.products", missing.length === 0, `missing product ${missing.join(", ")}`);
+  const today = localDate(new Date()).day;
+  const stocked: string[] = [];
+  for (const code of codes) {
+    const id = products.get(code)?.id;
+    if (!id) continue;
+    const detail = await admin.get(`/api/config/${bu}/products/${id}`);
+    const locationId = refId((detail.body?.data?.locations ?? [])[0], "location");
+    if (!locationId) {
+      stocked.push(`${code} (no linked location)`);
+      continue;
+    }
+    const info = await admin.get(`/api/${bu}/inventory-info/${id}/${locationId}?at_date=${today}`);
+    const onHand = Number(info.body?.data?.on_hand_qty);
+    if (!info.ok || onHand !== 0) stocked.push(`${code} (on hand ${info.ok ? onHand : `HTTP ${info.status}`})`);
+  }
+  check("ia.no-stock", missing.length === 0 && stocked.length === 0, `expected 0 on hand, found ${stocked.join(", ") || "unreadable"}`);
+  return { lines, short };
+}
+
+/** The period step promises next month's inventory period (pre-generated, open) beside the current one. */
+async function verifyNextPeriod(admin: ApiClient, cfg: ResetConfig, now: Date): Promise<{ lines: string[]; short: string[] }> {
+  const next = planNextPeriod(now);
+  const res = await admin.get(`/api/${cfg.buCode}/inventory-periods?perpage=100`);
+  const rows: any[] = Array.isArray(res.body?.data) ? res.body.data : [];
+  const found = rows.some((p) => p.fiscal_year === next.fiscal_year && p.fiscal_month === next.fiscal_month && p.status === "open");
+  return {
+    lines: [`${"period.next".padEnd(22)}${String(1).padStart(5)}${String(found ? 1 : 0).padStart(7)}${found ? "" : "  ✗"}`],
+    short: found ? [] : [`period.next: no open inventory period for ${next.fiscal_year}-${String(next.fiscal_month).padStart(2, "0")} (HTTP ${res.status})`],
+  };
+}
+
 export async function verifyDataset(
-  sessions: Sessions, cfg: ResetConfig, ledger: RowLedger,
+  sessions: Sessions, cfg: ResetConfig, ledger: RowLedger, now: Date = new Date(),
 ): Promise<{ short: string[]; table: string }> {
   const admin = await sessions.client(cfg.adminEmail);
   const seeded = ledger.rows();
@@ -169,5 +224,11 @@ export async function verifyDataset(
   const pos = await verifyPos(admin, cfg, seeded);
   lines.push(...pos.lines);
   short.push(...pos.short);
+  const ia = await verifyIa(admin, cfg, seeded);
+  lines.push(...ia.lines);
+  short.push(...ia.short);
+  const nextPeriod = await verifyNextPeriod(admin, cfg, now);
+  lines.push(...nextPeriod.lines);
+  short.push(...nextPeriod.short);
   return { short, table: lines.join("\n") };
 }

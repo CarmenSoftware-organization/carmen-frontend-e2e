@@ -1,6 +1,6 @@
 {
   "note": "Hand-authored 2026-11-05: TEST BU had no workflows to capture. assigned_users carry emails; data:reset fills id, names and department from each account's profile. Every PR passes GM (user decision 2026-11-05: PR prices exist only from the Purchase stage, so an amount rule cannot pick high-value PRs). 2026-11-23: added AP Payment (ap_payment) and Journal Voucher (gl_jv, manual vouchers only) — Admin creates, Budget approves. AP invoices have no workflow: submit posts.",
-  "bu_code": "GR2VYNKQ",
+  "bu_code": "BU-GR2VYNKQ",
   "workflows": [
     {
       "order": 0,

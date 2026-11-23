@@ -7,7 +7,7 @@ import { TEST_USERS } from "../../tests/test-users";
 import { fakeBackend } from "./fake-backend";
 
 const cfg: ResetConfig = {
-  backendUrl: "http://h", xAppId: "app", buCode: "GR2VYNKQ", deployToken: "t",
+  backendUrl: "http://h", xAppId: "app", buCode: "BU-GR2VYNKQ", deployToken: "t",
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 const users = Object.fromEntries(
@@ -45,12 +45,12 @@ describe("resolveWorkflow", () => {
 });
 
 describe("seedWorkflows", () => {
-  const base = "/api/config/GR2VYNKQ/workflows";
+  const base = "/api/config/BU-GR2VYNKQ/workflows";
 
   it("posts in fixture order and skips names that already exist", async () => {
     const backend = fakeBackend({
       [`GET ${base}`]: { data: [{ id: "w", name: "General PO" }] },
-      "GET /api/config/GR2VYNKQ/products": { data: products },
+      "GET /api/config/BU-GR2VYNKQ/products": { data: products },
     });
     const result = await seedWorkflows(createSessions(cfg, backend.fetchFn), cfg, loadWorkflowFixture(), users, department);
     expect(result).toEqual({ step: "workflows", created: 4, skipped: 1, failed: [] });
@@ -63,7 +63,7 @@ describe("seedWorkflows", () => {
   });
 
   it("posts all five on an empty BU, PR first", async () => {
-    const backend = fakeBackend({ [`GET ${base}`]: { data: [] }, "GET /api/config/GR2VYNKQ/products": { data: products } });
+    const backend = fakeBackend({ [`GET ${base}`]: { data: [] }, "GET /api/config/BU-GR2VYNKQ/products": { data: products } });
     await seedWorkflows(createSessions(cfg, backend.fetchFn), cfg, loadWorkflowFixture(), users, department);
     expect(backend.writes().map((c) => (c.body as { name: string }).name)).toEqual([
       "Purchase Request", "General PO", "Store Requisition", "AP Payment", "Journal Voucher",
@@ -71,14 +71,14 @@ describe("seedWorkflows", () => {
   });
 
   it("refuses to create workflows when the BU has no product", async () => {
-    const backend = fakeBackend({ [`GET ${base}`]: { data: [] }, "GET /api/config/GR2VYNKQ/products": { data: [] } });
+    const backend = fakeBackend({ [`GET ${base}`]: { data: [] }, "GET /api/config/BU-GR2VYNKQ/products": { data: [] } });
     const result = await seedWorkflows(createSessions(cfg, backend.fetchFn), cfg, loadWorkflowFixture(), users, department);
-    expect(result.failed).toEqual(["no product in GR2VYNKQ — a workflow without products leaves the item picker empty"]);
+    expect(result.failed).toEqual(["no product in BU-GR2VYNKQ — a workflow without products leaves the item picker empty"]);
     expect(backend.writes()).toEqual([]);
   });
 
   it("fails instead of guessing when the workflow list cannot be read", async () => {
-    const backend = fakeBackend({ [`GET ${base}`]: { __status: 500 }, "GET /api/config/GR2VYNKQ/products": { data: products } });
+    const backend = fakeBackend({ [`GET ${base}`]: { __status: 500 }, "GET /api/config/BU-GR2VYNKQ/products": { data: products } });
     const result = await seedWorkflows(createSessions(cfg, backend.fetchFn), cfg, loadWorkflowFixture(), users, department);
     expect(result.failed).toEqual([`GET ${base} → 500`]);
     expect(backend.writes()).toEqual([]);

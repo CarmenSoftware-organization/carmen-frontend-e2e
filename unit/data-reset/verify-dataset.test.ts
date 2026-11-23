@@ -3,7 +3,7 @@ import { EXPECTED_ROWS, verifyDataset } from "../../scripts/data-reset/verify-da
 import { seedAllDocuments } from "../../scripts/data-reset/docs/seed-all";
 import { RowLedger } from "../../scripts/data-reset/docs/row-ledger";
 import { createSessions } from "../../scripts/data-reset/sessions";
-import { fakeBackend, healthyProfile } from "./fake-backend";
+import { fakeBackend, healthyProfile, periodsWithNext } from "./fake-backend";
 import { cfg, ctx, users } from "./docs-fixtures";
 
 
@@ -37,11 +37,21 @@ describe("verifyDataset", () => {
     const stageRows = [
       ...Array(19).fill("HOD Approval"), ...Array(8).fill("Purchase"), ...Array(2).fill("GM Approval"), "Create Request",
     ].map((s) => ({ workflow_current_stage: s }));
-    const backend = fakeBackend({ "GET /api/user/profile": healthyProfile }, (_m, path) =>
+    const backend = fakeBackend({ "GET /api/user/profile": healthyProfile, [`GET /api/${cfg.buCode}/inventory-periods`]: periodsWithNext }, (_m, path) =>
       path === "/api/purchase-requests" ? { data: stageRows, paginate: { total: 99 } } : { data: [], paginate: { total: 99 } },
     );
-    const { short } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger());
+    const { short } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger(), new Date("2026-11-05T03:00:00Z"));
     expect(short).toEqual([]);
+  });
+
+  it("reports a missing next-month inventory period", async () => {
+    const backend = fakeBackend({
+      "GET /api/user/profile": healthyProfile,
+      [`GET /api/${cfg.buCode}/inventory-periods`]: { data: [{ fiscal_year: 2026, fiscal_month: 11, status: "open" }] },
+    }, () => ({ data: [], paginate: { total: 99 } }));
+    const { short, table } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger(), new Date("2026-11-05T03:00:00Z"));
+    expect(short).toContain("period.next: no open inventory period for 2026-12 (HTTP 200)");
+    expect(table).toContain("period.next");
   });
 });
 
@@ -70,9 +80,9 @@ describe("seedAllDocuments", () => {
 
   it("fails one step, not the run, when the context cannot be resolved", async () => {
     const results = await seedAllDocuments(createSessions(cfg, fakeBackend({}).fetchFn), cfg, users, new Date(), {
-      context: async () => { throw new Error("no Purchase Request workflow in GR2VYNKQ"); },
+      context: async () => { throw new Error("no Purchase Request workflow in BU-GR2VYNKQ"); },
     });
-    expect(results).toEqual([{ step: "documents", created: 0, skipped: 0, failed: ["no Purchase Request workflow in GR2VYNKQ"] }]);
+    expect(results).toEqual([{ step: "documents", created: 0, skipped: 0, failed: ["no Purchase Request workflow in BU-GR2VYNKQ"] }]);
   });
 });
 
@@ -81,12 +91,12 @@ describe("verifyDataset BU base", () => {
     path === "/api/purchase-requests" || path.endsWith("/purchase-requests") || path.endsWith("/store-requisitions")
       ? { data: [], paginate: { total: 99 } }
       : { data: Array.from({ length: 30 }, () => ({ workflow_current_stage: "x" })), paginate: { total: 99 } };
-  const profileWith = (config: object) => ({ data: { business_unit: [{ code: "GR2VYNKQ", config }] } });
+  const profileWith = (config: object) => ({ data: { business_unit: [{ code: "BU-GR2VYNKQ", config }] } });
 
   it("flags a default currency id that no longer resolves", async () => {
     const backend = fakeBackend({ "GET /api/user/profile": profileWith({ default_currency_id: "old", default_currency: null }) }, listAnswer);
     const { short } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger());
-    expect(short).toContain("BU default currency: old no longer exists in GR2VYNKQ");
+    expect(short).toContain("BU default currency: old no longer exists in BU-GR2VYNKQ");
   });
 
   it("flags a BU with no default currency and an empty chart of accounts", async () => {
@@ -95,7 +105,7 @@ describe("verifyDataset BU base", () => {
       listAnswer,
     );
     const { short } = await verifyDataset(createSessions(cfg, backend.fetchFn), cfg, new RowLedger());
-    expect(short).toContain("BU default currency: not set on GR2VYNKQ");
+    expect(short).toContain("BU default currency: not set on BU-GR2VYNKQ");
     expect(short).toContain("Chart of accounts: expected ≥ 1 account, found 0");
   });
 });

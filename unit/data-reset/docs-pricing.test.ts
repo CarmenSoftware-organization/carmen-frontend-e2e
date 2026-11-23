@@ -24,12 +24,12 @@ describe("seedPricing", () => {
     expect(result.failed).toEqual([]);
     const w = backend.writesBy();
     expect(w.every((x) => x.caller === email("purchase"))).toBe(true);
-    const lists = w.filter((x) => x.path === "/api/GR2VYNKQ/pricelists").map((x) => x.body as any);
+    const lists = w.filter((x) => x.path === "/api/BU-GR2VYNKQ/pricelists").map((x) => x.body as any);
     expect(lists).toHaveLength(3);
     expect(lists.every((b) => b.status === "active" && b.effective_from_date <= "2026-11-05" && b.effective_to_date >= "2026-11-05")).toBe(true);
     expect(lists[0].pricelist_detail.add).toHaveLength(5);
-    expect(w.filter((x) => x.path === "/api/GR2VYNKQ/pricelist-templates")).toHaveLength(1);
-    const rfps = w.filter((x) => x.path === "/api/GR2VYNKQ/request-for-pricings").map((x) => x.body as any);
+    expect(w.filter((x) => x.path === "/api/BU-GR2VYNKQ/pricelist-templates")).toHaveLength(1);
+    const rfps = w.filter((x) => x.path === "/api/BU-GR2VYNKQ/request-for-pricings").map((x) => x.body as any);
     expect(rfps).toHaveLength(3);
     expect(rfps.every((b) => b.vendors.add.length === 1 && b.vendors.add[0].contact_email === ctx.vendor.email)).toBe(true);
     expect(Object.keys(ledger.rows()).sort()).toEqual(["campaign.active", "campaign.draft", "campaign.expired", "pricelist.active"]);

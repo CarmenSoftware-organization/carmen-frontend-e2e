@@ -42,7 +42,8 @@ const MODULE_NAME_OVERRIDES: Record<string, string> = {
   "603-cn-doc-flow": "Credit Note — Doc Flow (movement suite)",
   "702-sr-doc-flow": "Store Requisition — Doc Flow (movement suite)",
   "721-sr-issue-doc-flow": "Store Requisition → Issue — Doc Flow (movement suite)",
-  "730-inventory-adjustment-doc-flow": "Inventory Adjustment — Doc Flow (movement suite)",
+  "731-inventory-adjustment": "Inventory Adjustment — Doc Flow",
+  "732-inventory-adjustment-stock": "Inventory Adjustment — Stock and Cost",
 };
 
 interface Annotations {

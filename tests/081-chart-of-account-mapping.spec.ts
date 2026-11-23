@@ -84,7 +84,7 @@ test.describe("Chart of Accounts Mapping — List / Search / Tabs", () => {
     "TC-ACMAP-010001 แสดงหน้า Chart of Accounts Mapping พร้อมตารางของแท็บ AP",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = GR2VYNKQ; BU มีแถว account mapping อย่างน้อย 1 แถว" },
+        { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BU-GR2VYNKQ; BU มีแถว account mapping อย่างน้อย 1 แถว" },
         { type: "steps", description: "1. ไปที่ /config/chart-of-account-mapping\n2. รอให้ตารางโหลดเสร็จ" },
         { type: "expected", description: "เห็นหัวข้อ Chart of Accounts Mapping พร้อมแท็บ Post to AP / Post to GL โดยแท็บ Post to AP ถูกเลือกอยู่ และตารางมีข้อมูลอย่างน้อย 1 แถว" },
         { type: "priority", description: "High" },

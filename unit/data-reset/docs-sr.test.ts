@@ -33,7 +33,7 @@ describe("seedStoreRequisitions", () => {
     expect(result).toMatchObject({ created: 7, failed: [] });
     const w = backend.writesBy();
     expect(w.every((x) => x.caller === email("purchase"))).toBe(true);
-    const create = w.find((x) => x.path === "/api/GR2VYNKQ/store-requisitions")!.body as any;
+    const create = w.find((x) => x.path === "/api/BU-GR2VYNKQ/store-requisitions")!.body as any;
     expect(create.details).toMatchObject({ from_location_id: "l1", to_location_id: "l2", workflow_id: "wf-sr" });
     expect(create.details.store_requisition_detail.add).toEqual([
       { product_id: "p4", requested_qty: 5 },

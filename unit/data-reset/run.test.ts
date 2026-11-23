@@ -8,13 +8,13 @@ import { TEST_USERS } from "../../tests/test-users";
 import { fakeBackend } from "./fake-backend";
 
 const cfg: ResetConfig = {
-  backendUrl: "https://dev.example", xAppId: "app", buCode: "GR2VYNKQ", deployToken: "t",
+  backendUrl: "https://dev.example", xAppId: "app", buCode: "BU-GR2VYNKQ", deployToken: "t",
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 const args = (over: Partial<ResetArgs> = {}): ResetArgs => ({
   dryRun: false, yes: true, skipReset: false, verbose: false, help: false, ...over,
 });
-const base = "/api/config/GR2VYNKQ";
+const base = "/api/config/BU-GR2VYNKQ";
 const now = new Date("2026-11-05T03:00:00Z");
 
 // The accounting step resolves account ids from the COA list, so POSTed accounts must come back on GET.
@@ -22,11 +22,19 @@ const accountingCodes = ["2100", "1170", "2150", "1180", "5300", "1140", "1110",
 
 function routes(over: Record<string, unknown> = {}) {
   const coa = accountingCodes.map((code) => ({ id: `coa-${code}`, code }));
+  let generated = false;
   return {
+    "GET /api/BU-GR2VYNKQ/inventory-periods": () => ({
+      data: [
+        { fiscal_year: 2026, fiscal_month: 11, status: "open" },
+        ...(generated ? [{ fiscal_year: 2026, fiscal_month: 12, status: "open" }] : []),
+      ],
+    }),
+    "POST /api/BU-GR2VYNKQ/inventory-periods/next": () => { generated = true; return { data: { total_created: 1 } }; },
     "GET /api/user/profile": {
       data: {
         id: "user-x", user_info: { firstname: "F", middlename: "", lastname: "L" },
-        business_unit: [{ id: "bu-1", code: "GR2VYNKQ", is_default: true }],
+        business_unit: [{ id: "bu-1", code: "BU-GR2VYNKQ", is_default: true }],
       },
     },
     [`GET ${base}/user-application-roles/user-x`]: { data: { application_roles: [{ application_role_id: "r1" }] } },
@@ -40,9 +48,9 @@ function routes(over: Record<string, unknown> = {}) {
       },
     },
     "POST /api-system/tenant/resets/bu-1": {
-      data: { bu_id: "bu-1", bu_code: "GR2VYNKQ", schema: "S", tables_truncated: 3, rows_removed: {}, seeds: { success: true, created: 1, skipped: 0 } },
+      data: { bu_id: "bu-1", bu_code: "BU-GR2VYNKQ", schema: "S", tables_truncated: 3, rows_removed: {}, seeds: { success: true, created: 1, skipped: 0 } },
     },
-    "GET /api/GR2VYNKQ/purchase-requests": { data: [], paginate: { total: 0 } },
+    "GET /api/BU-GR2VYNKQ/purchase-requests": { data: [], paginate: { total: 0 } },
     [`GET ${base}/departments`]: { data: [{ id: "dA", code: "A", name: "Admin" }, { id: "dB", code: "B", name: "Bar" }] },
     [`GET ${base}/locations`]: { data: [{ id: "l1", code: "L1" }, { id: "l2", code: "L2" }] },
     [`GET ${base}/vendors`]: { data: [{ id: "v1", code: "A001" }] },
@@ -62,13 +70,13 @@ function routes(over: Record<string, unknown> = {}) {
       },
     },
     [`POST ${base}/application-roles`]: (b: unknown) => ({ data: { id: `new-${(b as { application_role_name: string }).application_role_name}` } }),
-    "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 1, default_currency_id: null } },
+    "GET /api/business-units": { data: { id: "bu-1", code: "BU-GR2VYNKQ", doc_version: 1, default_currency_id: null } },
     [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
     [`GET ${base}/workflows`]: { data: [] },
     [`GET ${base}/products`]: { data: [{ id: "p1", code: "P1", name: "Rice" }] },
-    "GET /api/GR2VYNKQ/inventory-periods/current": { __status: 404 },
+    "GET /api/BU-GR2VYNKQ/inventory-periods/current": { __status: 404 },
     [`GET ${base}/currencies`]: { data: [{ id: "c-thb", code: "THB" }] },
-    "GET /api/business-units": { data: { id: "bu-1", code: "GR2VYNKQ", doc_version: 4, default_currency_id: "c-old" } },
+    "GET /api/business-units": { data: { id: "bu-1", code: "BU-GR2VYNKQ", doc_version: 4, default_currency_id: "c-old" } },
     "PATCH /api/business-units": { data: { id: "bu-1", doc_version: 5 } },
     [`GET ${base}/chart-of-accounts`]: { data: coa },
     [`POST ${base}/chart-of-accounts`]: { data: { id: "a1" } },
@@ -136,7 +144,7 @@ describe("runDataReset", () => {
       `POST ${base}/user-application-roles`,
       `POST ${base}/application-roles`,
       `POST ${base}/workflows`,
-      "POST /api/GR2VYNKQ/inventory-periods",
+      "POST /api/BU-GR2VYNKQ/inventory-periods",
     ].map((p) => firstWrite(writes, p));
     expect(order.every((i) => i >= 0)).toBe(true);
     expect([...order].sort((x, y) => x - y)).toEqual(order);
@@ -202,7 +210,7 @@ describe("runDataReset", () => {
 
   it("--skip-reset refuses a BU that already holds PRs", async () => {
     const { code, backend, out } = await run(
-      { "GET /api/GR2VYNKQ/purchase-requests": { data: [{ id: "pr" }], paginate: { total: 1 } } },
+      { "GET /api/BU-GR2VYNKQ/purchase-requests": { data: [{ id: "pr" }], paginate: { total: 1 } } },
       { skipReset: true },
     );
     expect(code).toBe(1);
@@ -215,7 +223,7 @@ describe("runDataReset", () => {
     ["has no paginate total", { data: [] }],
   ] as const) {
     it(`--skip-reset refuses when the PR list ${label}`, async () => {
-      const { code, backend } = await run({ "GET /api/GR2VYNKQ/purchase-requests": answer }, { skipReset: true });
+      const { code, backend } = await run({ "GET /api/BU-GR2VYNKQ/purchase-requests": answer }, { skipReset: true });
       expect(code).toBe(1);
       expect(backend.writes()).toEqual([]);
     });
@@ -228,7 +236,7 @@ describe("runDataReset", () => {
   });
 
   it("exits 1 when a later step records a failure", async () => {
-    const { code, out } = await run({ "POST /api/GR2VYNKQ/inventory-periods": { __status: 400, message: "x" } });
+    const { code, out } = await run({ "POST /api/BU-GR2VYNKQ/inventory-periods": { __status: 400, message: "x" } });
     expect(code).toBe(1);
     expect(out).toContain("period");
   });
@@ -238,7 +246,7 @@ describe("runDataReset", () => {
     expect(ok.code).toBe(0);
     expect(ok.documentCalls).toHaveLength(1);
     const lastWrite = ok.backend.writes().at(-1)!;
-    expect(lastWrite.path).toBe("/api/GR2VYNKQ/inventory-periods");
+    expect(lastWrite.path).toBe("/api/BU-GR2VYNKQ/inventory-periods/next");
     const short = await run({}, {}, okSeed, [{ step: "verify", created: 0, skipped: 0, failed: ["PR draft: expected ≥ 3, found 0"] }]);
     expect(short.code).toBe(1);
     expect(short.out).toContain("PR draft: expected ≥ 3, found 0");
@@ -251,7 +259,7 @@ describe("runDataReset", () => {
   });
 
   it("does not seed documents after a failed earlier step", async () => {
-    const { documentCalls } = await run({ "POST /api/GR2VYNKQ/inventory-periods": { __status: 400 } });
+    const { documentCalls } = await run({ "POST /api/BU-GR2VYNKQ/inventory-periods": { __status: 400 } });
     expect(documentCalls).toEqual([]);
   });
 

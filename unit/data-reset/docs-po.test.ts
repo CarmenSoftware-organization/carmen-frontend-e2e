@@ -29,8 +29,8 @@ describe("seedPurchaseOrders", () => {
   const run = async () => {
     const store = docStore("purchase_order_detail", "po_no");
     const backend = fakeBackend(
-      { "POST /api/GR2VYNKQ/purchase-orders/confirm-pr": { data: [{ id: "po-from-pr", po_no: "PO-PR" }] },
-        "GET /api/GR2VYNKQ/purchase-orders/po-from-pr": { data: { id: "po-from-pr", doc_version: 0, purchase_order_detail: [{ id: "x" }] } } },
+      { "POST /api/BU-GR2VYNKQ/purchase-orders/confirm-pr": { data: [{ id: "po-from-pr", po_no: "PO-PR" }] },
+        "GET /api/BU-GR2VYNKQ/purchase-orders/po-from-pr": { data: { id: "po-from-pr", doc_version: 0, purchase_order_detail: [{ id: "x" }] } } },
       store.fallback,
     );
     const ledger = new RowLedger();
@@ -50,10 +50,10 @@ describe("seedPurchaseOrders", () => {
   it("creates manual POs and walks the PR's PO to approved", async () => {
     const { backend, result, ledger } = await run();
     expect(result.failed).toEqual([]);
-    const creates = backend.writesBy().filter((w) => w.path === "/api/GR2VYNKQ/purchase-orders");
+    const creates = backend.writesBy().filter((w) => w.path === "/api/BU-GR2VYNKQ/purchase-orders");
     expect(creates).toHaveLength(6);
     expect((creates[0].body as any).details).toMatchObject({ po_type: "manual", vendor_id: "v1", workflow_id: "wf-po" });
-    const fromPr = backend.writesBy().filter((w) => w.path.startsWith("/api/GR2VYNKQ/purchase-orders/po-from-pr/"));
+    const fromPr = backend.writesBy().filter((w) => w.path.startsWith("/api/BU-GR2VYNKQ/purchase-orders/po-from-pr/"));
     expect(fromPr.map((w) => `${w.caller.split("+")[1].split("@")[0]} ${w.path.split("/").pop()}`)).toEqual(["fc approve", "gm approve"]);
     expect(ledger.rows()["pr.completed"].docNos).toEqual(["PO-PR"]);
     expect(Object.keys(result.forGrn)).toEqual(["full", "partial"]);

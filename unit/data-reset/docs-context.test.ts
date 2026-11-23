@@ -4,7 +4,7 @@ import { createSessions } from "../../scripts/data-reset/sessions";
 import { fakeBackend } from "./fake-backend";
 import { cfg, users } from "./docs-fixtures";
 
-const base = "/api/config/GR2VYNKQ";
+const base = "/api/config/BU-GR2VYNKQ";
 const routes = (over: Record<string, unknown> = {}) => ({
   [`GET ${base}/departments`]: { data: [{ id: "dB", code: "B", name: "Bar" }, { id: "dA", code: "A", name: "Admin" }] },
   [`GET ${base}/locations`]: {
@@ -53,6 +53,6 @@ describe("resolveSeedContext", () => {
     const backend = fakeBackend(routes({ [`GET ${base}/workflows`]: { data: [] } }));
     await expect(
       resolveSeedContext(createSessions(cfg, backend.fetchFn), cfg, users, new Date("2026-11-05T03:00:00Z")),
-    ).rejects.toThrow("no Purchase Request workflow in GR2VYNKQ");
+    ).rejects.toThrow("no Purchase Request workflow in BU-GR2VYNKQ");
   });
 });

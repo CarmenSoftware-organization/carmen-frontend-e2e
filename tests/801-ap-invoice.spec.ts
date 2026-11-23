@@ -9,7 +9,7 @@ import { expectBlocked, expectRefused, expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
-// AP invoice on the TEST BU (GR2VYNKQ), money path: list, detail, create, edit, validation, posting, void, permissions.
+// AP invoice on the TEST BU (BU-GR2VYNKQ), money path: list, detail, create, edit, validation, posting, void, permissions.
 //
 // Roles: Admin creates / submits / voids (UI + API, bypasses permission keys); Budget is the accounting approver;
 // Requestor is the accounting viewer. AP invoices have no workflow, so Submit posts them.
