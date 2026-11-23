@@ -36,7 +36,7 @@ import { uid } from "./helpers/test-data";
 // Oracle points: reverse = posted manual JV only, creates a linked mirror JV with sides swapped (jv:247, jv:221-222);
 // void "keeps a reason" (jv:246, the doc does not say the reason is required: the BE refuses a missing one, asserted
 // as observed behaviour); AP/AR/inventory JVs are immutable projections, corrected from the source owner (jv:315).
-// Divergences from jv:241 / jv:246 are pinned `test.fail` with "needs product decision:" (bug list section 2).
+// Divergence from jv:241 is pinned `test.fail` with "needs product decision:" (bug list section 2); the draft-void refusal (jv:246) is a "suspected bug:" pin (section 1a, owner 2026-11-23).
 // Auto-reverse (jv:300) and Schedule Post run from a scheduler, not on demand: out of scope, no case.
 // ─────────────────────────────────────────────────────────────────────────
 const test = createAuthTest("carmensoftware.dev+admin@gmail.com");
@@ -446,7 +446,7 @@ test.describe("Journal voucher (810)", () => {
       const r = await voidJv(jv.id, "e2e");
       expect(r.status, "void call did not get a real answer from the BE").not.toBe(401);
       expect(r.status).toBeLessThan(500);
-      test.fail(true, `needs product decision: jv:246 allows void of a draft JV, the BE answers 409 GL_JV_IMMUTABLE. See ${BUG_LIST}`);
+      test.fail(true, `suspected bug: jv:246 allows void of a draft JV (owner confirmed 2026-11-23: draft must be voidable), the BE answers 409 GL_JV_IMMUTABLE. See ${BUG_LIST}`);
       expect(r.status).toBe(200);
       expect((await getJv(jv.id)).jv_status).toBe("void");
     },
