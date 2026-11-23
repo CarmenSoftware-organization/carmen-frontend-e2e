@@ -9,6 +9,9 @@ import type { ResetConfig } from "./config";
 import type { Sessions } from "./sessions";
 import { rowsOf, type StepResult } from "./step-result";
 import { withAdminDefaultBu } from "./bu-base";
+import { copyRolesFromSource } from "./roles";
+import { BU_CODE } from "../../tests/test-users";
+import { PURCHASE_EMAIL, purchaseProblems } from "./verify-env";
 
 const email = (local: string) => `carmensoftware.dev+${local}@gmail.com`;
 const localPart = (account: string) => account.split("+")[1].split("@")[0];
@@ -93,6 +96,13 @@ export async function seedAccess(
   const result: StepResult = { step: "access", created: 0, skipped: 0, failed: [] };
   const nameOf = new Map(Object.entries(userIds).map(([account, id]) => [id, localPart(account)]));
 
+  if (cfg.buCode !== BU_CODE) {
+    const copied = await copyRolesFromSource(sessions, cfg);
+    result.created += copied.created;
+    result.skipped += copied.skipped;
+    result.failed.push(...copied.failed);
+    if (copied.failed.length > 0) return result;
+  }
   const roles = rowsOf<Role>((await admin.get(`${base}/application-roles?perpage=100`)).body);
   const current = rowsOf<UserRoles>((await admin.get(`${base}/user-application-roles?perpage=100`)).body);
   const { plans, problems } = planRoleAssignments(roles, current, userIds);
@@ -105,6 +115,9 @@ export async function seedAccess(
     else result.failed.push(`${nameOf.get(plan.user_id)}: POST ${path} → ${res.status}`);
   }
 
+  if (cfg.buCode !== BU_CODE && userIds[PURCHASE_EMAIL]) {
+    result.failed.push(...(await purchaseProblems(sessions, cfg, userIds[PURCHASE_EMAIL])));
+  }
   return withAdminDefaultBu(sessions, cfg, result, async () => {
     const bu = ((await admin.get("/api/business-units")).body as { data?: BusinessUnit })?.data;
     const currencies = rowsOf<{ id: string; code: string }>((await admin.get(`${base}/currencies?perpage=100`)).body);

@@ -5,6 +5,7 @@ import { BU_CODE, TEST_BUS, TEST_USERS } from "../../tests/test-users";
 import type { ResetConfig } from "./config";
 import { findBuId } from "./reset";
 import type { Sessions } from "./sessions";
+import { rowsOf } from "./step-result";
 
 export const PURCHASE_EMAIL = "carmensoftware.dev+purchase@gmail.com";
 
@@ -63,12 +64,28 @@ export function missingPermissions(roles: Array<{ permissions: Permission[] }>, 
   return required.filter((key) => !granted.has(key));
 }
 
-async function purchaseProblems(sessions: Sessions, cfg: ResetConfig, purchaseId: string): Promise<string[]> {
+export async function purchaseProblems(
+  sessions: Sessions, cfg: ResetConfig, purchaseId: string, notes?: string[],
+): Promise<string[]> {
   const admin = await sessions.client(cfg.adminEmail);
+  if (notes && cfg.buCode !== BU_CODE) {
+    // A fresh TEST BU has no roles yet: the access step copies them from BU_CODE.
+    // BU ใหม่ยังไม่มี role — ขั้น access จะคัดลอกมาจาก BU_CODE
+    const list = await admin.get(`/api/config/${cfg.buCode}/application-roles?perpage=100`);
+    const names = rowsOf<{ name?: string; application_role_name?: string }>(list.body).map((r) => r.name ?? r.application_role_name);
+    if (list.ok && !names.includes("Purchase")) {
+      notes.push(`purchase role will be copied from ${BU_CODE}`);
+      return [];
+    }
+  }
   const assigned = await admin.get(`/api/config/${cfg.buCode}/user-application-roles/${purchaseId}`);
   if (!assigned.ok) return [`cannot read purchase's roles in ${cfg.buCode} (${assigned.status})`];
   const roleIds = (dataOf<{ application_roles?: Array<{ application_role_id: string }> }>(assigned.body)
     ?.application_roles ?? []).map((r) => r.application_role_id);
+  if (notes && cfg.buCode !== BU_CODE && roleIds.length === 0) {
+    notes.push(`purchase has no role in ${cfg.buCode} yet; it will be assigned after the roles are copied from ${BU_CODE}`);
+    return [];
+  }
   const roles: Array<{ permissions: Permission[] }> = [];
   for (const id of roleIds) {
     const role = await admin.get(`/api/config/${cfg.buCode}/application-roles/${id}`);
@@ -84,8 +101,9 @@ async function purchaseProblems(sessions: Sessions, cfg: ResetConfig, purchaseId
 export async function verifyEnvironment(
   sessions: Sessions,
   cfg: ResetConfig,
-): Promise<{ problems: string[]; userIds: Record<string, string>; users: Record<string, TestUserInfo>; buId: string }> {
+): Promise<{ problems: string[]; notes: string[]; userIds: Record<string, string>; users: Record<string, TestUserInfo>; buId: string }> {
   const problems: string[] = [];
+  const notes: string[] = [];
   const userIds: Record<string, string> = {};
   const users: Record<string, TestUserInfo> = {};
   let buId = "";
@@ -110,9 +128,9 @@ export async function verifyEnvironment(
   }
   const calc = await calcMethodProblem(sessions, cfg);
   if (calc) problems.push(calc);
-  if (userIds[PURCHASE_EMAIL]) problems.push(...(await purchaseProblems(sessions, cfg, userIds[PURCHASE_EMAIL])));
+  if (userIds[PURCHASE_EMAIL]) problems.push(...(await purchaseProblems(sessions, cfg, userIds[PURCHASE_EMAIL], notes)));
   if (!buId && !problems.some((p) => p.startsWith(cfg.adminEmail))) {
     problems.push(`${cfg.adminEmail}: could not resolve the id of ${cfg.buCode}`);
   }
-  return { problems, userIds, users, buId };
+  return { problems, notes, userIds, users, buId };
 }

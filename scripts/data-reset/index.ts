@@ -14,6 +14,7 @@ import { resolveResetConfig, type ResetConfig } from "./config";
 import { DEFAULT_CURRENCY_CODE, loadCoaFixture, seedBuCurrency, seedChartOfAccounts } from "./bu-base";
 import { seedAccountingBase } from "./accounting";
 import { seedMappings } from "./mappings";
+import { countRolesToCopy } from "./roles";
 import { seedAccess, seedAccountingRoles } from "./access";
 import { seedPeriod, planPeriod, planNextPeriod } from "./period";
 import { callReset } from "./reset";
@@ -101,6 +102,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     return 1;
   }
   log(`step 0: 9 accounts in ${cfg.buCode}, default ${BU_CODE}, cost method ${TEST_BUS.find((b) => b.code === cfg.buCode)?.method}, purchase permissions present`);
+  env.notes.forEach((n) => log(`  note: ${n}`));
   const admin = await sessions.client(cfg.adminEmail);
 
   if (args.dryRun) {
@@ -111,6 +113,8 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log(`coa: would POST ${loadCoaFixture().length} accounts unless their codes exist`);
     log("accounting: would PUT gl_setting (AP / VAT / WHT / deposit / FX accounts, ap_auto_from_grn off), POST a GL fiscal year unless an open period covers today, POST bank account E2E-BANK, map the Vat 7% profile and POST WHT 3%, and PUT the AP control account on every vendor — each skipped when already set");
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
+    const toCopy = await countRolesToCopy(sessions, cfg);
+    if (cfg.buCode !== BU_CODE) log(`copy-roles: would copy ${toCopy} roles from ${BU_CODE} (name + granted permissions, mapped by resource.action) before assigning them`);
     log("access: would POST each account's missing role (requestor, hod, purchase, fc/gm/owner/storemanager → Approval, budget → Accounting) and set THB as the BU's default currency if none is set");
     log("accounting-roles: would create \"Accounting Approver\" (budget: AP void, JV void / post / reverse) and \"Accounting Viewer\" (requestor: view only) from the BU's permission catalog, unless they exist");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
