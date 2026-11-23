@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planIa } from "../../scripts/data-reset/docs/ia";
+import { IA_TYPES, planIa } from "../../scripts/data-reset/docs/ia";
 import { ctx } from "./docs-fixtures";
 
 describe("planIa", () => {
@@ -12,5 +12,12 @@ describe("planIa", () => {
 
   it("throws when there is no product to copy from", () => {
     expect(() => planIa({ ...ctx, products: [] })).toThrow(/product/);
+  });
+
+  it("creates one stock_in and one stock_out type under its own codes", () => {
+    expect(IA_TYPES.map((t) => [t.code, t.type])).toEqual([
+      ["E2E-IA-IN", "stock_in"],
+      ["E2E-IA-OUT", "stock_out"],
+    ]);
   });
 });

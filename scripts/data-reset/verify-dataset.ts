@@ -157,6 +157,11 @@ async function verifyIa(admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<R
   };
   const products = new Map((await listAll(admin, `/api/config/${bu}/products`)).map((r) => [String(r.code), r]));
   const missing = codes.filter((c) => !products.has(c));
+  const types = await listAll(admin, `/api/config/${bu}/adjustment-types`);
+  const badTypes = (["E2E-IA-IN:stock_in", "E2E-IA-OUT:stock_out"] as const)
+    .filter((x) => { const [code, kind] = x.split(":"); return !types.some((t) => t.code === code && t.type === kind && t.is_active !== false); })
+    .map((x) => x.split(":")[0]);
+  check("ia.adjustment-types", badTypes.length === 0, `missing or inactive adjustment type ${badTypes.join(", ")}`);
   check("ia.products", missing.length === 0, `missing product ${missing.join(", ")}`);
   const today = localDate(new Date()).day;
   const stocked: string[] = [];

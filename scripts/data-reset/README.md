@@ -79,7 +79,8 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
 7c. ฐาน Inventory Adjustment (`docs/ia.ts`, ขั้น `ia` ต่อจาก `pos`):
    - สินค้า `E2E-IA-A` / `E2E-IA-B` (สร้างถ้ายังไม่มี — ซ้ำได้ ใช้ code เป็นกุญแจ) คัดลอก item group / หน่วยคลังจากสินค้าตัวแรกของ context
    - ผูกกับ location แรก (1AG01) **ที่เดียว** และ **ไม่สร้างใบรับเข้า** — สต๊อกเริ่มที่ 0 ให้ spec ทดสอบต้นทุนของ adjustment
-   - verify: `ia.products` (มีทั้งสองรหัส) · `ia.no-stock` (`inventory-info` on-hand ของทั้งสองที่ location นั้น = 0)
+   - ประเภทปรับปรุง active 2 ตัว (ซ้ำได้ ใช้ code เป็นกุญแจ): `E2E-IA-IN` (stock_in) / `E2E-IA-OUT` (stock_out) — spec เลือกด้วย code ไม่พึ่ง EOP-* / SALE
+   - verify: `ia.adjustment-types` (มีทั้งสองตัวและ active) · `ia.products` (มีทั้งสองรหัส) · `ia.no-stock` (`inventory-info` on-hand ของทั้งสองที่ location นั้น = 0)
 8. ตรวจนับทั้ง BU เทียบตาราง (`verify-dataset.ts`) — แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้ แล้วจบด้วย exit 1
 
 ## ถ้า reset ตอบ 504 / timeout

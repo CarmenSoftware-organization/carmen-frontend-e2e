@@ -152,8 +152,8 @@ export interface IaReady {
 
 /**
  * Preconditions of 731/732, each failing with a named reason: the two `ia` products exist and are linked to
- * exactly the same single location; Admin may read Stock In / Out (first GET not 403); a valid stock_in and
- * stock_out adjustment type exists (never `SALE`, that is Sales Consumption's); an open period contains today.
+ * exactly the same single location; Admin may read Stock In / Out (first GET not 403); the data-reset types
+ * `E2E-IA-IN` (stock_in) and `E2E-IA-OUT` (stock_out) exist and are active (never SALE / EOP-*); an open period contains today.
  */
 export async function assertIaReady(): Promise<IaReady> {
   const fail = (why: string): never => {
@@ -177,9 +177,10 @@ export async function assertIaReady(): Promise<IaReady> {
   }
 
   const types = rows(must("adjustment-types", await buConfigSend(ROLE, "GET", "/adjustment-types?perpage=100")).body);
-  const pick = (kind: "stock_in" | "stock_out") => types.find((t) => t.type === kind && t.is_active && t.code !== "SALE")?.id as string | undefined;
-  const adjustmentTypeIn = pick("stock_in") ?? fail("no active adjustment type of kind stock_in (SALE excluded)");
-  const adjustmentTypeOut = pick("stock_out") ?? fail("no active adjustment type of kind stock_out (SALE excluded)");
+  const pick = (code: string, kind: "stock_in" | "stock_out") =>
+    types.find((t) => t.code === code && t.type === kind && t.is_active)?.id as string | undefined;
+  const adjustmentTypeIn = pick("E2E-IA-IN", "stock_in") ?? fail("adjustment type E2E-IA-IN (active, stock_in) is missing - run data:reset");
+  const adjustmentTypeOut = pick("E2E-IA-OUT", "stock_out") ?? fail("adjustment type E2E-IA-OUT (active, stock_out) is missing - run data:reset");
 
   const p = await buSend(ROLE, "GET", "/period-ends/current");
   if (p.status !== 200 || !p.body?.data?.start_at) fail(`current period -> ${p.status}`);

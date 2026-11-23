@@ -14,6 +14,14 @@ import { why } from "./transition";
 export const IA_PRODUCT_A = "E2E-IA-A";
 export const IA_PRODUCT_B = "E2E-IA-B";
 
+export const IA_TYPE_IN = "E2E-IA-IN";
+export const IA_TYPE_OUT = "E2E-IA-OUT";
+/** Adjustment types ia creates (active, own codes so specs never depend on EOP-* / SALE). */
+export const IA_TYPES = [
+  { code: IA_TYPE_IN, name: "E2E IA stock in", type: "stock_in" },
+  { code: IA_TYPE_OUT, name: "E2E IA stock out", type: "stock_out" },
+] as const;
+
 export interface IaPlan {
   products: Array<{ code: string; name: string; templateId: string }>;
   locationId: string;
@@ -46,6 +54,25 @@ export async function seedIa(sessions: Sessions, cfg: ResetConfig, ctx: SeedCont
   if (!inventoryUnit) {
     result.failed.push("template product has no inventory unit");
     return result;
+  }
+
+  const typePath = `/api/config/${cfg.buCode}/adjustment-types`;
+  const haveTypes = new Set((await listAll(admin, typePath)).map((r) => String(r.code)));
+  for (const t of IA_TYPES) {
+    if (haveTypes.has(t.code)) {
+      result.skipped++;
+      ledger.record(`ia.${t.code}`, t.code, true);
+      continue;
+    }
+    const res = await admin.post(typePath, { code: t.code, name: t.name, type: t.type, description: "", is_active: true });
+    if (res.ok) {
+      result.created++;
+      ledger.record(`ia.${t.code}`, t.code, true);
+    } else {
+      const reason = why(`adjustment type ${t.code}`, res);
+      result.failed.push(reason);
+      ledger.record(`ia.${t.code}`, null, false, reason);
+    }
   }
 
   const have = new Set((await listAll(admin, path)).map((r) => String(r.code)));
