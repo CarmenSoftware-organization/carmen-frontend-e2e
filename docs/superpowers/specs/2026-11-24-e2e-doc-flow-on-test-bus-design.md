@@ -177,6 +177,13 @@ This project moves the six doc-flow specs (312 PR, 404 PO, 502 GRN, 603 CN, 702 
   fresh BU has only {this month, next month}. Moved to the period-close project, where period
   history is built. Each skipped TC keeps its id with a skip reason naming this doc. The AVG
   issue itself is still covered by a same-period issue case on all three BUs.
+- **TC-SI-700005** (`tests/721-sr-issue.spec.ts`, submit after periods created in advance): skipped with
+  `test.skip(true, "gap: ...")`; needs an active period older than today, a fresh TEST BU has only this month and
+  next. Moved to the period-close project.
+- **721 pre/post phase** (`tests/721-sr-issue.spec.ts`): the `E2E_SRI_PHASE` split of the old AVG issue case is removed
+  with the variants. There is no second TC id; TC-SI-700004 runs as the same-period issue (and, with 710004 / 720004,
+  also checks the issue cost per cost method). The "issued while periods are created in advance" variant is covered
+  by the same period-close follow-up as TC-SI-700005.
 - Any further gap the builder finds is added here with a reason, not skipped silently.
 
 ## Constraints (repo rules)
