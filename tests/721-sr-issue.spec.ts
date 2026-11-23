@@ -1,8 +1,8 @@
 import type { Page } from "@playwright/test";
 import { test, gotoBu, expect, observed } from "./fixtures/doc-flow.fixture";
 import { BU_CODE, TEST_BUS } from "./test-users";
-import { buConfigSend, buSend, rootGet } from "./helpers/bu-api";
-import { dfGet, txOfDoc } from "./helpers/doc-flow/api";
+import { buConfigSend, buSend } from "./helpers/bu-api";
+import { dfGet, multiBuRows, txOfDoc } from "./helpers/doc-flow/api";
 import { createGrn } from "./helpers/doc-flow/docs";
 import { DF as P, activePeriodDate, firstVendor, itemRow, srLocations, srWorkflowName, stamp } from "./helpers/doc-flow/data";
 import { calcMethod, costLayers, expectedIssueCost, stockAt } from "./helpers/costing";
@@ -198,10 +198,9 @@ async function issueSr(page: Page, bu: string, c: SrCtx, id: string, fillQty: bo
 
 /** Void/delete what this run left open — drafts are deleted; in-progress SRs cannot be removed from here and wait for the next reset. Failures throw. */
 async function cleanupSrs(bu: string) {
-  const { status, body } = await rootGet("Admin", `/store-requisitions?perpage=100&bu_code=${bu}&search=${encodeURIComponent(`FE-CRUD SR issue ${stamp}`)}`);
-  if (status !== 200) throw new Error(`cleanup: list store-requisitions on ${bu} HTTP ${status} ${JSON.stringify(body).slice(0, 300)}`);
+  const rows = await multiBuRows(`/store-requisitions?perpage=100&search=${encodeURIComponent(`FE-CRUD SR issue ${stamp}`)}`, bu);
   const failures: string[] = [];
-  for (const d of (body?.data ?? []) as any[]) {
+  for (const d of rows) {
     if (!String(d.description ?? "").startsWith(`FE-CRUD SR issue ${stamp}`)) continue;
     if (d.doc_status !== "draft") {
       console.warn(`cleanup: ${bu} left ${d.sr_no} in ${d.doc_status} until next data:reset`);

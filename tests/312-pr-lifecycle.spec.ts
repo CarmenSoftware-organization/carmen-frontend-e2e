@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, gotoBu, expect, observed } from "./fixtures/doc-flow.fixture";
 import { BU_CODE } from "./test-users";
 import { buSend } from "./helpers/bu-api";
-import { dfGet } from "./helpers/doc-flow/api";
+import { dfGet, multiBuRows } from "./helpers/doc-flow/api";
 import { DF, itemRow, srLocations, stamp } from "./helpers/doc-flow/data";
 import { addRow, button, confirmDialog, numRe, shownText, pickLookup, pickSelectIn, toasts, typeInto } from "./helpers/movement/ui";
 
@@ -35,10 +35,9 @@ test.beforeAll(async () => {
  */
 test.afterAll(async () => {
   test.setTimeout(180_000);
-  const { status, body } = await dfGet(`/purchase-requests?search=${encodeURIComponent(DESC)}&perpage=100`, "Admin", BU);
-  if (status !== 200) throw new Error(`cleanup: list purchase-requests HTTP ${status} ${JSON.stringify(body).slice(0, 300)}`);
+  const rows = await multiBuRows(`/purchase-requests?perpage=100&search=${encodeURIComponent(DESC)}`, BU);
   const failures: string[] = [];
-  for (const d of (body?.data ?? []) as any[]) {
+  for (const d of rows) {
     if (!String(d.description ?? "").startsWith(DESC)) continue;
     if (d.pr_status !== "draft") {
       // only drafts can be deleted (no cancel endpoint) — submitted docs wait for the next data:reset
@@ -158,7 +157,8 @@ test(
     for (const l of LINES) {
       const row = itemRow(page, l.product);
       await expect(row).toBeVisible();
-      await expect(row).toContainText(numRe(l.qty));
+      // The row text runs the product code into the qty ("E2E-DF-13.00KG"), so drop the code first.
+      await expect.poll(async () => (await row.innerText()).replace(l.product, " ")).toMatch(numRe(l.qty));
       seen.push(`${l.product}: ${(await row.innerText()).replace(/\s+/g, " ").slice(0, 80)}`);
     }
     await observed(seen.join(" · "));

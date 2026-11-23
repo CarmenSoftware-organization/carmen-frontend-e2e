@@ -14,6 +14,7 @@ import type { RowLedger } from "./row-ledger";
 import { why } from "./transition";
 
 export const DF_PRODUCTS = ["E2E-DF-1", "E2E-DF-2", "E2E-DF-3", "E2E-DF-4"] as const;
+export const DF_CN_REASON = "E2E-DF damaged";
 
 export interface DocFlowPlan {
   products: Array<{ code: string; name: string; templateId: string }>;
@@ -174,6 +175,21 @@ export async function seedDocFlow(sessions: Sessions, cfg: ResetConfig, ctx: See
   const absent = DF_PRODUCTS.filter((c) => !offered.has(c));
   if (!lookup.ok || absent.length > 0) {
     result.failed.push(`SR product lookup between the doc-flow locations misses ${absent.join(", ") || `(HTTP ${lookup.status})`}`);
+  }
+
+  // Step 3: a credit-note reason. The reset empties them and the master workbook ships none, but the
+  // CN spec (603) must pick one — keep an active one, create DF_CN_REASON when there is none.
+  // reset ล้างเหตุผลใบลดหนี้ และ workbook ไม่มี — 603 ต้องเลือกได้อย่างน้อยหนึ่งตัว
+  const reasonsPath = `/api/config/${bu}/credit-note-reasons`;
+  const reasons = await admin.get(`${reasonsPath}?perpage=100`);
+  if (!reasons.ok) {
+    result.failed.push(why("list credit-note reasons", reasons));
+  } else if (rowsOf<Row>(reasons.body).some((r) => r.is_active !== false)) {
+    result.skipped++;
+  } else {
+    const res = await admin.post(reasonsPath, { name: DF_CN_REASON, description: "doc-flow E2E (data:reset)" });
+    if (res.ok) result.created++;
+    else result.failed.push(why(`credit-note reason ${DF_CN_REASON}`, res));
   }
   return result;
 }

@@ -213,7 +213,8 @@ test(
     for (const l of LINES) {
       const row = itemRow(page, l.product);
       await expect(row).toBeVisible();
-      const all = (await row.innerText()).replace(/\s+/g, " ").replace(/,/g, "");
+      // Drop the product code: the row text can run it into the qty ("E2E-DF-13.00").
+      const all = (await row.innerText()).replace(l.product, " ").replace(/\s+/g, " ").replace(/,/g, "");
       expect(all, `${l.product} return qty`).toMatch(numRe(l.qty));
       seen.push(`${l.product}: ${all.slice(0, 90)}`);
     }
