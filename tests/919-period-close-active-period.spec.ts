@@ -22,9 +22,8 @@ import { L, P as PROD, PX, SCN } from "./helpers/period-close/scenarios";
  * own evidence folder (active-r4-avg / active-r4-fifo), so set E2E_EVIDENCE_DIR.
  * Setup first: phase 910 ran (L holds E2E-PC-1 with stock in the active period — GRN "grnA").
  *
- * Several cases pin known bugs with `test.fail()` (latest evidence 2026-10-02 r4):
- *   TC-PE-490005  A5c  — CN dated the 1st of the active period (Thai time) refused
- *   TC-PE-490008  A8   — SO / SI created without a date get no date at all
+ * Two cases pin known bugs with `test.fail()` (evidence 2026-10-02 r4; A5c / A8 passed on the FIFO TEST BU
+ * on 2026-11-24 — their markers are dropped, the cases now assert the correct behaviour):
  *   TC-PE-490009  A9ab — reports lookups current/previous period follow the newest period
  *   TC-PE-490011  A10  — v_inventory_eop_checklist.period follows the newest period
  * Once one turns red ("unexpectedly passed"), drop its marker.
@@ -431,7 +430,6 @@ test(
     ],
   },
   async ({ page }) => {
-    test.fail(true, "known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD");
     test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     test.setTimeout(5 * 60_000);
     const P = periods();
@@ -658,7 +656,6 @@ test(
     ],
   },
   async () => {
-    test.fail(true, "known bug A8 (#724 follow-up): a Stock Out / Stock In created via API without a date is stored with no date instead of one inside the active period");
     test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     const P = periods();
     const lid = idOf("tb_location", `code = '${stock().loc}'`);

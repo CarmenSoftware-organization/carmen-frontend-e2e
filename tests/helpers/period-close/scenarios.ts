@@ -135,7 +135,7 @@ export function scenarioFor(bu: TestBuCode, today: string, loc: { code: string; 
     nextGrn: { product: P.P3, price: price.next3, date: d(nextYm, 1), note: 'ใช้เป็น "GRN งวดหน้า" ของ P3 ในข้อ 2.9' },
     nextGrnDraftDate: d(nextYm, 2),
     cnNext: { grnKey: "grnA", product: P.P3, date: d(nextYm, 3) },
-    cnDraftIn: { grnKey: "grnA", product: P.P1, date: d(ym, 20) },
+    cnDraftIn: { grnKey: "grnA", product: P.P4, date: d(ym, 20) }, // not P1: 919 returns P1 of grnA, and a product already credited from a GRN is locked in the CN dialog
     preClean: [],
     preCleanAuto: false,
     receipts: [

@@ -190,7 +190,7 @@ export function layers(locationCode: string, productCode: string) {
 
 export async function review(bu: string = BU) {
   const { status, body } = await apiGet(`/api/${bu}/period-ends/review`);
-  if (status !== 200) throw new Error(`review ${status}`);
+  if (status !== 200) throw new Error(`review ${status} ${JSON.stringify(body)?.slice(0, 300)}`);
   return body.data as {
     status: string;
     start_date: string;
