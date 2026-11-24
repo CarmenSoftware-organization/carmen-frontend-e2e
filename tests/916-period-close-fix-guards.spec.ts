@@ -17,7 +17,6 @@ import {
   createGrn,
   commitGrn,
   deleteCreditNoteDraft,
-  submitCreditNote,
   tryVoidGrn,
   type CreatedDoc,
 } from "./helpers/period-close/docs";
@@ -29,7 +28,7 @@ import {
  *   TC-PE-460001  #712 — a new CN number never reuses the number of a deleted draft
  *   TC-PE-460002  #713 — voiding a GRN whose stock was already issued is refused (409)
  *   TC-PE-460003  the toast of that refusal names the real reason (known bug, test.fail)
- *   TC-PE-460004  #713 — a CN returning more than is on hand only takes what is there
+ *   TC-PE-460004  #713 → backend 490fc9ee1 — a CN returning more than is on hand is refused 422 CREDIT_NOTE_INSUFFICIENT_STOCK
  *
  * Not reversible: posts real documents into the scenario's period (GRN saved then
  * committed, Stock Out completed, CN completed; two CN drafts created and deleted).
@@ -295,7 +294,7 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
 });
 
 test(
-  "TC-PE-460004 ใบลดหนี้คืนของเกินยอดคลังจริงต้องตัดสต๊อกได้แค่ที่มี (#713)",
+  "TC-PE-460004 ใบลดหนี้คืนของเกินยอดคลังจริงต้องถูกปฏิเสธ 422 และคลังไม่ติดลบ (#713)",
   {
     annotation: [
       {
@@ -306,12 +305,12 @@ test(
       {
         type: "steps",
         description:
-          "1. สร้าง GRN committed ที่คลัง L: E2E-PC-2 10 @290\n2. สร้าง Stock Out (completed) จ่าย E2E-PC-2 จนยอดหยิบได้เหลือ 2\n3. สร้างใบลดหนี้อ้าง GRN นั้น คืน E2E-PC-2 10 → Create → Submit (ถ้ามีใบร่างค้างจากรอบที่ถูกขัดจังหวะ ใช้ใบนั้น Submit ต่อ)\n4. อ่าน cost layer ของใบลดหนี้ (ตัดไปเท่าไร, note shortfall) และยอดหยิบได้หลัง CN",
+          "1. สร้าง GRN committed ที่คลัง L: E2E-PC-2 10 @290\n2. สร้าง Stock Out (completed) จ่าย E2E-PC-2 จนยอดหยิบได้เหลือ 2\n3. สร้างใบลดหนี้อ้าง GRN นั้น คืน E2E-PC-2 10 → Create (ถูกปฏิเสธ)\n4. อ่าน cost layer ของใบลดหนี้ (ตัดไปเท่าไร, note shortfall) และยอดหยิบได้หลัง CN",
       },
       {
         type: "expected",
         description:
-          "ใบลดหนี้เป็น completed, ตัดสต๊อกได้เท่ายอดที่เหลือจริง (2), อีก 8 ลงเป็น shortfall \"No stock available …\" (ส่วนต่างราคา ไม่ตัดสต๊อก) และยอดหยิบได้หลัง CN = 0 ไม่ติดลบ (ก่อน #713 ตัดจากล็อตของ GRN ที่ดูยังเต็ม 10 → คลัง −8)",
+          "สร้างใบลดหนี้คืน 10 ขณะที่เหลือจริง 2 แล้วหลังบ้านตอบ 422 CREDIT_NOTE_INSUFFICIENT_STOCK (on_hand 2, requested 10) ไม่มีใบลดหนี้ถูกสร้าง และยอดหยิบได้ของคลังยังเท่าเดิม ไม่ติดลบ",
       },
       { type: "priority", description: "High" },
       { type: "testType", description: "Edge Case" },
@@ -323,6 +322,9 @@ test(
     ],
   },
   async ({ page }) => {
+    // Backend 490fc9ee1 (2026-10-07) replaced the #713 behaviour: a CN used to take what was on hand and book the rest as a
+    // shortfall; now a CN returning more than is on hand AS OF ITS OWN DATE is refused (422 CREDIT_NOTE_INSUFFICIENT_STOCK).
+    // The case keeps its ID and now asserts the new rule: refused, nothing created, stock does not go negative.
     // Stock Out is checked against the balance on its own date: stock received later in the period (GRN P2 day 20) is not
     // drawable at day 15, so this case works on day 25, after every receipt of the scenario.
     const D713B = `${DATE.slice(0, 8)}25`;
@@ -335,37 +337,30 @@ test(
     );
     const afterIssue = drawable(P.P2.code);
     const lotsVisible = visibleLots(P.P2.code);
-    // รอบที่ถูกขัดจังหวะระหว่าง Submit ทิ้งใบร่างไว้ — สินค้าบนใบรับคืนได้ครั้งเดียว (ร่างก็นับ) ใบรับจึงหายจากช่องเลือก
-    // ใช้ใบเดิมต่อแทนการสร้างใหม่
-    if (!getDoc("cn713b")) {
-      const [left] = sql<{ id: string; cn_no: string; s: string }>(`select id, cn_no, doc_status::text s from ${SCHEMA}.tb_credit_note
-        where grn_id = '${grn.id}' and deleted_at is null and doc_status::text in ('draft', 'completed') order by created_at desc limit 1`);
-      if (left) {
-        if (left.s === "draft") await submitCreditNote(page, left.id);
-        putDoc("cn713b", { id: left.id, no: left.cn_no, status: "completed" });
-      }
+    const cnsBefore = Number(sql<{ n: string }>(`select count(*) n from ${SCHEMA}.tb_credit_note where grn_id = '${grn.id}' and deleted_at is null`)[0].n);
+    let refusal = "";
+    try {
+      await createCreditNote(page, { grnNo: grn.no, docDate: D713B, taxInvoiceNo: `E2E-713-${SCN.period}`, lines: [{ productName: P.P2.name, qty: 10 }], status: "completed" });
+    } catch (e) {
+      refusal = e instanceof Error ? e.message : String(e);
     }
-    const cn = await once("cn713b", () =>
-      createCreditNote(page, { grnNo: grn.no, docDate: D713B, taxInvoiceNo: `E2E-713-${SCN.period}`, lines: [{ productName: P.P2.name, qty: 10 }], status: "completed" }),
-    );
-    const img = await shot(page, "4.3", `CN-${cn.no}`);
-    const layers = docLayers(cn.id);
-    const taken = layers.reduce((s, l) => s + Number(l.out_qty), 0);
-    const shortfall = layers.find((l) => (l.note ?? "").startsWith("No stock available"))?.note ?? "(ไม่มี)";
+    const img = await shot(page, "4.3", `CN-refused-${grn.no}`);
+    const refused = /\b422\b/.test(refusal) && refusal.includes("CREDIT_NOTE_INSUFFICIENT_STOCK");
+    const cnsAfter = Number(sql<{ n: string }>(`select count(*) n from ${SCHEMA}.tb_credit_note where grn_id = '${grn.id}' and deleted_at is null`)[0].n);
     const afterCn = drawable(P.P2.code);
     record({
       id: "4.3",
       case: CASE,
       title: `CN คืน ${P.P2.name} 10 อ้าง ${grn.no} ขณะที่คลังเหลือจริง 2`,
-      steps: [`GRN committed ${P.P2.name} 10 @290 (${grn.no})`, `SO จ่าย ${before - 2} จนเหลือ 2 (${so.no})`, `CN คืน 10 → Submit (${cn.no})`],
-      expected:
-        "ตัดสต๊อกได้ 2 · อีก 8 ลง shortfall (ส่วนต่างราคา ไม่ตัดสต๊อก) · ยอดคลังเหลือ 0 ไม่ติดลบ (ก่อน #713 ตัดจากล็อตของ GRN ที่ดูยังเต็ม 10 → คลัง −8)",
-      actual: `ก่อน CN: ยอดจริง ${afterIssue} · ล็อตที่ตัวจัดสรรเห็น ${lotsVisible} · CN ${cn.status} ตัดไป ${taken} · shortfall: ${shortfall} · ยอดหลัง CN ${afterCn}`,
-      status: taken === afterIssue && afterCn === 0 && cn.status === "completed" ? "PASS" : "FAIL",
-      docs: [grn.no, so.no, cn.no],
+      steps: [`GRN committed ${P.P2.name} 10 @290 (${grn.no})`, `SO จ่าย ${before - 2} จนเหลือ 2 (${so.no})`, "CN คืน 10 → Create"],
+      expected: "หลังบ้านตอบ 422 CREDIT_NOTE_INSUFFICIENT_STOCK · ไม่มีใบลดหนี้ถูกสร้าง · ยอดคลังเท่าเดิม ไม่ติดลบ (กติกาใหม่ backend 490fc9ee1 แทนพฤติกรรม #713 เดิมที่ตัดเท่าที่มี)",
+      actual: `ก่อน CN: ยอดจริง ${afterIssue} · ล็อตที่ตัวจัดสรรเห็น ${lotsVisible} · ${refused ? "ถูกปฏิเสธ 422 CREDIT_NOTE_INSUFFICIENT_STOCK" : `ไม่ถูกปฏิเสธตามคาด: ${refusal || "(สร้างได้)"}`} · ใบลดหนี้ของ GRN ${cnsBefore} → ${cnsAfter} · ยอดหลัง CN ${afterCn}`,
+      status: refused && cnsAfter === cnsBefore && afterCn === afterIssue && afterCn >= 0 ? "PASS" : "FAIL",
+      docs: [grn.no, so.no],
       images: [img],
     });
-    expect(afterCn).toBeGreaterThanOrEqual(0);
-    expect({ taken, afterCn, status: cn.status }).toEqual({ taken: afterIssue, afterCn: 0, status: "completed" });
+    expect(refused, `CN ที่คืนเกินยอดต้องถูกปฏิเสธ 422 CREDIT_NOTE_INSUFFICIENT_STOCK: ${refusal || "(สร้างได้)"}`).toBe(true);
+    expect(cnsAfter, "ต้องไม่มีใบลดหนี้ถูกสร้าง").toBe(cnsBefore);
+    expect({ afterCn, nonNegative: afterCn >= 0 }).toEqual({ afterCn: afterIssue, nonNegative: true });
   },
 );
