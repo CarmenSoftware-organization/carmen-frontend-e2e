@@ -336,7 +336,7 @@ for (const bu of TEST_BUS) {
         const doc = await createGrn(page, { bu: bu.code, vendor: VENDOR, location: LOC, date: TODAY, invoiceNo: `${INVOICE}-${bu.method}`, lines, status: "saved" });
         const g = await grnById(doc!.id, bu.code);
         expect(g.status).toBe("saved");
-        expect(g.no).not.toMatch(/^draft/);
+        expect(g.no).not.toMatch(/^draft/i);
         expect(fmt(g.lines)).toBe(fmt(lines));
         const tx = await txOfDoc(bu.code, doc!.id, g.no);
         const afterSave = await stockAt(PRODUCT_ID, LOCATION_ID, TODAY, bu.code);

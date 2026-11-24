@@ -263,7 +263,7 @@ test(
     expect(q.res.status(), JSON.stringify(q.body).slice(0, 300)).toBeLessThan(300);
     await expect.poll(async () => (await srById(id)).status, { timeout: 30_000 }).toBe("in_progress");
     const sr = await srById(id);
-    expect(sr.no).not.toMatch(/^draft/);
+    expect(sr.no).not.toMatch(/^draft/i);
     expect(sr.stage).toBe("Store Approval");
     await observed(
       `${sr.no} · ${sr.status} · stage ${sr.stage} · date question: ${askedInDialog ? "asked in the dialog" : q.asked ? `asked (${q.code})` : "not asked"} · ${fmt(sr.lines)} · dialog: "${dialogText.slice(0, 160)}"`,

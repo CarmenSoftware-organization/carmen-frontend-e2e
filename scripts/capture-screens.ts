@@ -300,7 +300,7 @@ async function collectLinks(page: Page): Promise<string[]> {
  * Open the first row's record on a list page and capture it.
  *
  * List rows carry no `<a href>` at all — a record opens from a link-styled
- * `<button>` whose text is the record's code ("CAD", "P055", "draft-1425"), so
+ * `<button>` whose text is the record's code ("CAD", "P055", "DRAFT-00001425"), so
  * no amount of link-following reaches a detail screen. The button is targeted
  * precisely rather than clicking the row: a row also holds a checkbox and, in
  * some modules, row actions, and this crawler must stay read-only.

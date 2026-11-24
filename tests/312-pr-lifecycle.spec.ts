@@ -250,7 +250,7 @@ test(
     expect(s.status(), (await s.text()).slice(0, 300)).toBeLessThan(300);
     await expect.poll(async () => (await prById(id)).status, { timeout: 30_000 }).toBe("in_progress");
     const pr = await prById(id);
-    expect(pr.no).not.toMatch(/^draft/);
+    expect(pr.no).not.toMatch(/^draft/i);
     expect(pr.stage).toBe("HOD Approval");
     await observed(`${pr.no} · ${pr.status} · stage ${pr.stage} · ${fmt(pr.lines)} · toast: ${(await toasts(page)).join(" / ") || "-"}`);
   },
