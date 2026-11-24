@@ -555,6 +555,10 @@ test(
     test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     const P = periods();
     const grnDate = P.active.e.slice(0, 8) + "20T03:00:00.000Z"; // วันที่ 20 ของงวด active
+    // FIFO refuses a receipt dated before the latest receipt, so this GRN (day 20) becomes the newest one of the product:
+    // price it at the product's scenario last cost so 922/923 still read that price as the last cost (AVG keeps the original 10).
+    const lastCostCase = SCN.method === "fifo" ? SCN.costCases.find((c) => c.p.code === stock().prod && c.side !== "out") : undefined;
+    const a7Price = typeof lastCostCase?.want === "number" ? lastCostCase.want : 10;
     const setup: string[] = [];
     // ตั้งต้น: write-off รับเฉพาะบรรทัดของใบรับที่ committed และมีวันหมดอายุ — ใบรับจากหน้าจอใส่วันหมดอายุไม่ได้ จึงยิง API
     const A7_DESC = `E2E A7 expiring ${P.active.period}`;
@@ -580,11 +584,11 @@ test(
               received_qty: 3,
               received_unit_id: unit,
               received_base_qty: 3,
-              order_price: 10,
-              received_price: 10,
+              order_price: a7Price,
+              received_price: a7Price,
               foc_qty: 0,
-              net_amount: 30,
-              base_net_amount: 30,
+              net_amount: 3 * a7Price,
+              base_net_amount: 3 * a7Price,
               expired_at: P.active.e.slice(0, 8) + "28T00:00:00.000Z",
             },
           ],

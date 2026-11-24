@@ -5,6 +5,8 @@ import { L, SCN } from "./scenarios";
  * ตัวคาดราคาที่ CostProbe (ช่องราคาบนฟอร์ม SI/SO) ควรเติม — คิดเองจาก SQL ไม่เรียกโค้ด backend
  * กติกา = ราคาที่การโพสต์ใบจ่ายจะคิด (PR #708):
  *  - FIFO: ล็อตจาก cost layer ที่ยังไม่ถูกลบ ที่คลังนั้น รับเข้าในงวดปัจจุบันหรือก่อนหน้า หักที่ถูกตัดไปแล้ว ตัดเก่าก่อน
+ *    เก่า = ตามลำดับที่ล็อตเกิด (lot_seq_no) — lot_at_date ของ Stock In คือวันที่โพสต์ ไม่ใช่วันที่เอกสาร และ backend
+ *    ห้ามรับเข้าย้อนหลังก่อนใบรับล่าสุดของ FIFO (…_BEFORE_LATEST_RECEIPT) ลำดับสร้างจึงตรงกับลำดับวันที่เสมอ
  *  - AVG: ค่าเฉลี่ยสุทธิของ layer ที่ยังไม่ถูกลบ (average = ทั้ง BU, average_per_location = คลังนั้น)
  *    ตรวจของพอด้วย รับเข้า (งวดที่หยิบได้) − จ่ายออก (ทุกงวด) ที่คลังนั้น
  * งวดปัจจุบัน = งวดเปิด/ล็อกที่เก่าที่สุด (แบบเดียวกับการโพสต์ที่ไม่ส่งวันที่เอกสาร)
@@ -40,7 +42,7 @@ export function expectedIssueCost(productCode: string, qty: number, period: stri
       select r.lot_no, r.tin, r.tcost,
         coalesce((select sum(o.out_qty) from ${SCHEMA}.tb_inventory_transaction_cost_layer o
                   where o.parent_lot_no = r.lot_no and o.out_qty > 0 and o.deleted_at is null), 0) consumed
-      from recv r order by r.at, r.seq`);
+      from recv r order by r.seq`);
     const avail = lots
       .map((l) => ({ lot: l.lot_no, left: Number(l.tin) - Number(l.consumed), cost: r2(Number(l.tcost) / Number(l.tin)) }))
       .filter((l) => l.left > 0);

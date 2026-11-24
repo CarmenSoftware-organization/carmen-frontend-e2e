@@ -1,7 +1,7 @@
 import { test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, record, shot, gatePhase, apiGet } from "./helpers/period-close/context";
 import { createAdjustment } from "./helpers/period-close/docs";
 import { currentPeriod, expectedIssueCost, voidedLotCosts } from "./helpers/period-close/estimate";
-import { L, P, PERIOD } from "./helpers/period-close/scenarios";
+import { L, P, PERIOD, SCN } from "./helpers/period-close/scenarios";
 
 /**
  * Period close · Case 3 · screens that read the ledger (AVG 2601–2603 findings → PR #708) — section 53 of PE.
@@ -31,6 +31,8 @@ import { L, P, PERIOD } from "./helpers/period-close/scenarios";
  */
 const CASE = "Case 3 · หน้าจอที่อ่านจากบัญชี (PR #708)";
 const PRODUCTS = [P.P1, P.P2, P.P3, P.P4];
+/** The Stock Out form shows its Total Cost as a negative amount with a typographic minus ("−360.00") — compare the magnitude. */
+const soTotal = (v: string): number => Math.abs(Number(v.replace(/[\u2212\u2013]/g, "-")));
 const PROBE_QTY = 3;
 
 test.beforeAll(() => requireScenario());
@@ -88,9 +90,13 @@ test(
       const traps = voidedLotCosts(p.code);
       const noisy = [si, so].some((v) => /\.\d{3,}/.test(v));
       // SI อ่านราคาต่อหน่วยจากช่องราคา · SO ฟอร์มมีแต่ Total Cost จึงเทียบยอดรวม
+      // FIFO: the SI form prefills by si.cost-from (last cost — the scenario's costCases price), while the SO form
+      // shows what the post will charge (FIFO lots). AVG: both come from the same average.
+      const lastCost = SCN.method === "fifo" ? SCN.costCases.find((c) => c.p.code === p.code && c.side !== "out")?.want : undefined;
+      const siWant = want.ok ? (typeof lastCost === "number" ? lastCost : want.avg) : 0;
       const pass = want.ok
-        ? Number(si) === want.avg && Number(so) === want.total && !noisy
-        : [si, so].every((v) => v === "" || Number(v) === 0);
+        ? Number(si) === siWant && soTotal(so) === want.total && !noisy
+        : [si, so].every((v) => v === "" || soTotal(v) === 0);
       record({
         id: `3.1-P${i + 1}`, case: CASE,
         title: `CostProbe ${p.name} (${p.code}) ${PROBE_QTY} หน่วยที่ ${L.code} — งวด ${cur.period}`,
@@ -99,14 +105,14 @@ test(
           `เพิ่ม ${p.code} จำนวน ${PROBE_QTY} → อ่านราคาที่ฟอร์มเติมให้`,
         ],
         expected: want.ok
-          ? `SI ราคาต่อหน่วย ${want.avg} · SO Total Cost ${want.total} (= ${want.how}) · ทศนิยมไม่เกิน 2 ตำแหน่ง · ไม่ใช่ราคาล็อตของ GRN ที่ void${traps.length ? ` (${traps.join(", ")})` : ""}`
+          ? `SI ราคาต่อหน่วย ${siWant} · SO Total Cost ${want.total} (= ${want.how}) · ทศนิยมไม่เกิน 2 ตำแหน่ง · ไม่ใช่ราคาล็อตของ GRN ที่ void${traps.length ? ` (${traps.join(", ")})` : ""}`
           : `ไม่เติมราคา — ของไม่พอ (${want.how})`,
         actual: `SI ราคาต่อหน่วย ${si || "(ว่าง)"} · SO Total Cost ${so || "(ว่าง)"}${noisy ? " · ทศนิยมเพี้ยน" : ""}`,
         status: pass ? "PASS" : "FAIL",
         images: [images["stock-in"], images["stock-out"]],
       });
       if (!pass) {
-        failed.push(`3.1-P${i + 1} ${p.code}: SI ${si || "(ว่าง)"} / SO ${so || "(ว่าง)"} คาด ${want.ok ? `${want.avg} / ${want.total}` : "ว่าง (ของไม่พอ)"}`);
+        failed.push(`3.1-P${i + 1} ${p.code}: SI ${si || "(ว่าง)"} / SO ${so || "(ว่าง)"} คาด ${want.ok ? `${siWant} / ${want.total}` : "ว่าง (ของไม่พอ)"}`);
       }
     }
     // verdict ที่บันทึกไว้ (ต้นฉบับไม่มี expect)
