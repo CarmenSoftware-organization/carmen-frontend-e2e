@@ -206,4 +206,4 @@ Admin login บน TEST BU; วัน 3 ของ E2E-140 ผูก O1 -> locati
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git 33f065b</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

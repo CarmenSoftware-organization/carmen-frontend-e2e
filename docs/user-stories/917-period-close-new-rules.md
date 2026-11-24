@@ -122,4 +122,4 @@ E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = 
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 3f6f1b0</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

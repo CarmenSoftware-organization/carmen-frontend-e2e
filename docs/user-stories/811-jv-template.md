@@ -174,4 +174,4 @@ Admin login; allocation template ของเทสต์เอง allocate_amou
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 2567d6c</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

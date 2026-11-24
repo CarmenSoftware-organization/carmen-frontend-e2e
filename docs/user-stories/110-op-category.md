@@ -311,4 +311,4 @@ Login เป็น carmensoftware.dev+admin@gmail.com; active BU = BLAVG
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 4c477d5</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

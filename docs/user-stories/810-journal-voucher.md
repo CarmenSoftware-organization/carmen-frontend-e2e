@@ -366,4 +366,4 @@ Void และ Reverse ได้ 409 รหัส GL_JV_IMMUTABLE ทั้ง�
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git 01e02cd</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

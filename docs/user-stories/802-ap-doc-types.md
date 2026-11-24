@@ -254,4 +254,4 @@ Admin login; data:reset --yes แล้ว (E2E-AP-CN ยอด 120.00 ไม่
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git d90b98d</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

@@ -735,4 +735,4 @@ Login เป็น Purchaser; PR ใหม่ถูก seed ที่ขั้�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 9d79c62</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

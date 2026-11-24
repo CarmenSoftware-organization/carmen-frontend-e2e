@@ -282,7 +282,7 @@ Login เป็น Admin; BU TEST; อ่านวิธีคิดต้นท
 
 AVG: ใบ completed และ on-hand ที่วันนั้นและวันนี้ไม่เปลี่ยน (รอ bring-forward); FIFO: commit ลง movement จริง
 
-> _Note: TEST BU ใช้วิธี average (อ่านสด) · เส้นทาง API เท่านั้น (ฟอร์มไม่ให้ลงวันอนาคต) · งวดที่สองต้องสร้างเตรียมไว้เอง — เคสนี้ไม่ปิดงวดและไม่สร้างงวด_
+> _Note: TEST BU ใช้วิธี average (อ่านสด) · เส้นทาง API เท่านั้น (ฟอร์มไม่ให้ลงวันอนาคต) · งวดถัดไปถูกสร้างโดย data:reset ขั้น period — เคสนี้ไม่ปิดงวดและไม่สร้างงวด_
 
 ---
 
@@ -517,4 +517,4 @@ GET ตอบ 200 และ doc_status = voided; รายการ voided ท�
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git 40f23c6</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

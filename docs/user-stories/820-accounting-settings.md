@@ -106,4 +106,4 @@ Admin login บน TEST BU; license accounting.gl
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git bd8bd47</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

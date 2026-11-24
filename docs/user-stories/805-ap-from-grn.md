@@ -111,4 +111,4 @@ ap_auto_from_grn เป็น false (ค่า default ของ data:reset); ap
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git d90b98d</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

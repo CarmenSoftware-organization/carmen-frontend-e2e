@@ -748,4 +748,4 @@ TC-VEN-040050 ผ่านแล้ว → vendor ที่ ADMIN_CODE มีอ
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a4a6565</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

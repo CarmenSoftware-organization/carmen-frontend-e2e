@@ -769,4 +769,4 @@ list กลับมาแสดง template ทั้งหมด (มี 'STD 
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 3ed771c</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

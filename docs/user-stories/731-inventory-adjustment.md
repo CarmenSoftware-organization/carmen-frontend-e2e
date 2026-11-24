@@ -62,7 +62,7 @@ Login เป็น Admin; BU TEST; คลังที่ E2E-IA-A / E2E-IA-B ผ
 **Steps**
 
 1. เปิดหน้าสร้าง Stock In
-2. Date = วันนี้, Reason E2E-IA-IN, Location ของสินค้า E2E-IA
+2. Date = วันนี้, Reason E2E IA stock in, Location ของสินค้า E2E-IA
 3. Add Item: E2E-IA-A × 3 ต้นทุน 100, E2E-IA-B × 5 ต้นทุน 200
 4. ใส่คำอธิบาย E2E-IA 731 SI <uid> (หลังเพิ่มรายการ)
 5. กด Save
@@ -209,7 +209,7 @@ Login เป็น Admin; BU TEST; คลังที่ E2E-IA-A / E2E-IA-B ผ
 **Steps**
 
 1. เปิดหน้าสร้าง Stock Out
-2. Date = วันนี้, Reason E2E-IA-OUT, Location ของสินค้า E2E-IA
+2. Date = วันนี้, Reason E2E IA stock out, Location ของสินค้า E2E-IA
 3. Add Item: E2E-IA-A × 1, E2E-IA-B × 1
 4. ใส่คำอธิบาย E2E-IA 731 SO <uid>
 5. กด Save
@@ -241,7 +241,7 @@ TC-IADJ-710002 ผ่านแล้วในรอบเดียวกัน (
 
 หน้าแสดงคำอธิบาย E2E-IA 731 SO <uid>; แถว E2E-IA-A และ E2E-IA-B มีจำนวน 1 และต้นทุนประเมินไม่เป็น 0.00
 
-> _Note: บั๊กที่รู้อยู่ FE-5 (test.fail): ใบ SO draft ไม่เก็บต้นทุน (คิดตอน commit) — ตอนสร้างฟอร์มประเมินให้ แต่เปิดใบกลับมาขึ้น 0.00 ทุกแถว · เดิม SO.2_
+> _Note: บั๊กที่รู้อยู่ FE-5 (test.fail): ใบ SO draft ไม่เก็บต้นทุน (คิดตอน commit) — ตอนสร้างฟอร์มประเมินให้ แต่เปิดใบกลับมา Cost/Unit ขึ้น 0.00 ทุกแถว (Total Cost แสดงค่าประเมินแล้ว — R9) · เดิม SO.2_
 
 ---
 
@@ -321,4 +321,4 @@ TC-IADJ-700006 commit Stock In ไปแล้ว (คลังมี E2E-IA-A �
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git 40f23c6</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

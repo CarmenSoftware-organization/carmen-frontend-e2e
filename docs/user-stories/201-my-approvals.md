@@ -53,7 +53,7 @@ Login เป็นผู้ใช้ที่มีสิทธิ์ approver �
 
 **Expected**
 
-ผู้ใช้เห็นคิวอนุมัติรวม: การ์ด Total Pending แสดงจำนวนมากกว่า 0 และเท่ากับจำนวนรวมใน footer ของตาราง (Showing 1–N of <จำนวน>)
+ผู้ใช้เห็นคิวอนุมัติรวม: การ์ด Total Pending แสดงจำนวนมากกว่า 0 และเท่ากับยอดรอนุมัติรวมทุก BU ที่ผู้ใช้สังกัด ส่วน footer ของตาราง (Showing 1–N of <จำนวน>) เท่ากับยอดของ BU ที่เลือกอยู่
 
 ---
 
@@ -561,4 +561,4 @@ default business unit มี code === 'BLAVG'; trigger ของ BU switcher ใ
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 1107d0c</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

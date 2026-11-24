@@ -307,4 +307,4 @@ chip Incomplete อยู่ในสถานะกด (aria-pressed=true) แ�
 ---
 
 
-<sub>Last regenerated: 2026-10-15 · git ebea90a</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

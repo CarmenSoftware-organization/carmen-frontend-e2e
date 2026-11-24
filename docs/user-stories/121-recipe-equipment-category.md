@@ -385,4 +385,4 @@ Empty-state placeholder ปรากฏภายใน 10s (ไม่มีแ�
 ---
 
 
-<sub>Last regenerated: 2026-09-20 · git e45b917</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

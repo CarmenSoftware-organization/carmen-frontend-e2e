@@ -120,4 +120,4 @@ bu_config si.cost-from ของ BU ของ scenario = ค่าที่ scen
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git ed69a2f</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

@@ -713,4 +713,4 @@ lifecycle ครบ (Create → Draft → Submit → FC → GM → Approved) แ
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 1107d0c</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

@@ -589,4 +589,4 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และอยู่�
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 4c477d5</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

@@ -286,4 +286,4 @@ Login เป็น Requestor; PR ใหม่ถูก seed และ HOD ส่
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 941704b</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>
