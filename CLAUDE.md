@@ -95,7 +95,7 @@ Legacy scripts (CARMEN-AVG / CARMEN-FIFO with the `@carmen.com` accounts of `tes
 - **`E2E_MOVEMENT_STRICT=1`**: environment gates (no `E2E_DB_URL`, period does not contain today, count round not started — `gatePhase` in `helpers/period-close/context.ts`, the period-contains-today gate of the Inventory Adjustment specs) normally *skip* with a reason; with this set they *fail*, for a run that must not silently lose cases.
 - **Known bugs are pinned with `test.fail(true, "known bug …")`**: green in Playwright, `Fail` in the results sheet, and red ("unexpectedly passed") once fixed — then drop the marker.
 - **Secrets**: the DB URL is `E2E_DB_URL` in `.env.local` only (`scripts/db-query.ts` runs the SQL under Bun; helpers accept SELECT/WITH only). The backend comes from `E2E_API_URL` + `E2E_X_APP_ID` or the running frontend's `/config.json`.
-- **Behaviour conflicts with the main suite** are flagged in the notes rather than resolved: (all observed on CARMEN-AVG, before the TEST BU move): an AVG GRN posts stock when *saved* (TC-GRN-700005 vs TC-GRN-140003), requestor may create POs on CARMEN-AVG (TC-PO-700001 vs TC-PO-010002), and the period card after Close (period-close vs gap TC-PE-040104). Settle them with the backend team before changing either side.
+- **Behaviour conflicts with the main suite** are flagged in the notes rather than resolved: (each observed before the TEST BU move): an AVG GRN posts stock when *saved* (on an AVG BU; TC-GRN-700005 vs TC-GRN-140003), requestor may create POs (on CARMEN-AVG; TC-PO-700001 vs TC-PO-010002), and the period card after Close (period-close vs gap TC-PE-040104, which comes from BU BLAVG). Settle them with the backend team before changing either side.
 
 ## User-story docs (`docs/user-stories/`)
 
