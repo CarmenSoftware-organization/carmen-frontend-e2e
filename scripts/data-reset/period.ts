@@ -30,13 +30,23 @@ export function planNextPeriod(now: Date): { fiscal_year: number; fiscal_month: 
   return month === 12 ? { fiscal_year: year + 1, fiscal_month: 1 } : { fiscal_year: year, fiscal_month: month + 1 };
 }
 
+/** The Bangkok month before `now` (January rolls back to December of the year before); start_at is its first day. */
+export function planHistoryPeriod(now: Date): { fiscal_year: number; fiscal_month: number; start_at: string } {
+  const { year, month } = localDate(now);
+  const [fiscal_year, fiscal_month] = month === 1 ? [year - 1, 12] : [year, month - 1];
+  return { fiscal_year, fiscal_month, start_at: `${fiscal_year}-${String(fiscal_month).padStart(2, "0")}-01` };
+}
+
 function coversToday(period: { status?: string; start_at?: string; end_at?: string } | undefined, today: string): boolean {
   if (!period || period.status !== "open" || !period.start_at || !period.end_at) return false;
   const day = (iso: string) => localDate(new Date(iso)).day;
   return day(period.start_at) <= today && today <= day(period.end_at);
 }
 
-export async function seedPeriod(sessions: Sessions, cfg: ResetConfig, now: Date = new Date()): Promise<StepResult> {
+export async function seedPeriod(
+  sessions: Sessions, cfg: ResetConfig, now: Date = new Date(), opts: { withHistory?: boolean } = {},
+): Promise<StepResult> {
+  if (opts.withHistory) return seedPeriodWithHistory(sessions, cfg, now);
   const admin = await sessions.client(cfg.adminEmail);
   const base = `/api/${cfg.buCode}/inventory-periods`;
   const result: StepResult = { step: "period", created: 0, skipped: 0, failed: [] };
@@ -87,4 +97,69 @@ async function seedNextPeriod(admin: Admin, base: string, now: Date, result: Ste
   const after = await listPeriods(admin, base);
   if (after.ok && has(after.rows)) result.created += 1;
   else result.failed.push(`next period ${next.fiscal_year}-${String(next.fiscal_month).padStart(2, "0")} not found after POST ${base}/next`);
+}
+
+const ym = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`;
+
+/**
+ * --with-history: last month becomes the FIRST (active) period — the BU is empty right after the reset, the only
+ * time POST create is allowed — then generate adds this month and next month. The BE's current period is the oldest
+ * open one, so `current` = last month while an open period still covers today.
+ * เปิดงวดเดือนก่อนเป็นงวดแรก (BU ว่างหลัง reset) แล้ว generate เดือนนี้ + เดือนหน้า — งวดปัจจุบันของ BE = งวดเปิดที่เก่าสุด
+ */
+async function seedPeriodWithHistory(sessions: Sessions, cfg: ResetConfig, now: Date): Promise<StepResult> {
+  const admin = await sessions.client(cfg.adminEmail);
+  const base = `/api/${cfg.buCode}/inventory-periods`;
+  const result: StepResult = { step: "period", created: 0, skipped: 0, failed: [] };
+  const history = planHistoryPeriod(now);
+  const next = planNextPeriod(now);
+  const today = localDate(now).day;
+  const hasMonth = (rows: any[], y: number, m: number) => rows.some((p) => p.fiscal_year === y && p.fiscal_month === m);
+
+  const first = await listPeriods(admin, base);
+  if (!first.ok) {
+    result.failed.push(`GET ${base} → ${first.status}`);
+    return result;
+  }
+  if (hasMonth(first.rows, history.fiscal_year, history.fiscal_month)) {
+    result.skipped += 1;
+  } else {
+    const res = await admin.post(base, history);
+    if (!res.ok) {
+      result.failed.push(`POST ${base} → ${res.status} ${JSON.stringify(res.body?.message ?? "")}`);
+      return result;
+    }
+    result.created += 1;
+  }
+
+  const read = async () => {
+    const r = await listPeriods(admin, base);
+    if (!r.ok) result.failed.push(`GET ${base} → ${r.status}`);
+    return r;
+  };
+  let listed = await read();
+  if (!listed.ok) return result;
+  let rows = listed.rows;
+  for (let call = 0; call < 3; call++) {
+    if (rows.some((p) => coversToday(p, today)) && hasMonth(rows, next.fiscal_year, next.fiscal_month)) break;
+    const open = rows.filter((p) => p.status === "open" || p.status === "locked").length;
+    const res = await admin.post(`${base}/next`, { count: open + 1, start_day: 1 });
+    if (!res.ok) {
+      result.failed.push(`POST ${base}/next → ${res.status} ${JSON.stringify(res.body?.message ?? "")}`);
+      return result;
+    }
+    result.created += 1;
+    listed = await read();
+    if (!listed.ok) return result;
+    rows = listed.rows;
+  }
+  if (!rows.some((p) => coversToday(p, today))) result.failed.push(`no open period covers ${today} after generate (3 calls)`);
+  if (!hasMonth(rows, next.fiscal_year, next.fiscal_month)) result.failed.push(`next period ${ym(next.fiscal_year, next.fiscal_month)} missing after generate (3 calls)`);
+
+  const current = await admin.get(`${base}/current`);
+  const cur = current.body?.data;
+  if (!current.ok || cur?.fiscal_year !== history.fiscal_year || cur?.fiscal_month !== history.fiscal_month) {
+    result.failed.push(`GET ${base}/current → expected ${ym(history.fiscal_year, history.fiscal_month)}, got ${current.ok ? ym(cur?.fiscal_year, cur?.fiscal_month) : current.status}`);
+  }
+  return result;
 }

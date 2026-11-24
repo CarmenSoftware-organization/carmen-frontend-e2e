@@ -16,7 +16,7 @@ import { seedAccountingBase } from "./accounting";
 import { seedMappings } from "./mappings";
 import { countRolesToCopy } from "./roles";
 import { seedAccess, seedAccountingRoles } from "./access";
-import { seedPeriod, planPeriod, planNextPeriod } from "./period";
+import { seedPeriod, planPeriod, planNextPeriod, planHistoryPeriod } from "./period";
 import { callReset } from "./reset";
 import { createSessions } from "./sessions";
 import type { StepResult } from "./step-result";
@@ -24,6 +24,8 @@ import { verifyEnvironment } from "./verify-env";
 import { loadWorkflowFixture, validateFixture } from "./workflow-template";
 import { seedWorkflows } from "./workflows";
 import { seedAllDocuments } from "./docs/seed-all";
+import { seedCostFrom, seedPeriodClose } from "./docs/period-close";
+import { verifyHistoryDataset } from "./verify-dataset";
 import type { TestUserInfo } from "./verify-env";
 import type { Sessions } from "./sessions";
 
@@ -118,7 +120,15 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log("access: would POST each account's missing role (requestor, hod, purchase, fc/gm/owner/storemanager → Approval, budget → Accounting) and set THB as the BU's default currency if none is set");
     log("accounting-roles: would create \"Accounting Approver\" (budget: AP void, JV void / post / reverse) and \"Accounting Viewer\" (requestor: view only) from the BU's permission catalog, unless they exist");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
-    log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today, then ensure ${JSON.stringify(planNextPeriod(now))} exists via POST /next`);
+    if (!args.withHistory) {
+      log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today, then ensure ${JSON.stringify(planNextPeriod(now))} exists via POST /next`);
+    }
+    if (args.withHistory) log(`period: --with-history would instead POST ${JSON.stringify(planHistoryPeriod(now))} first, then generate until today + next month are covered`);
+    if (args.withHistory) {
+      log("period-close: --with-history would create E2E-PC-1..4 and E2E-PC-X (copied from a master product, linked to the first inventory location only, no stock), clear runs/period-close/" + cfg.buCode + "/, then verify them and the periods");
+      log("documents: SKIPPED with --with-history (no stock-ins, doc-flow products, PRs, POs, GRNs, CNs, SRs, price lists, campaigns or accounting documents) — run a normal reset after the period-close run");
+      return 0;
+    }
     log("documents: would create 5 stock-ins, 4 doc-flow products, 1 PR template, 41 PRs, 7 POs, 4 GRNs, 2 CNs, 7 SRs, 3 price lists, 3 campaigns, the accounting read set (8 AP documents incl. payments, 1 JV, 1 JV template), then verify the counts");
     return 0;
   }
@@ -171,9 +181,16 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
   }
   if (mappings.firstDepartment) {
     results.push(await seedWorkflows(sessions, cfg, fixture, env.users, mappings.firstDepartment));
-    results.push(await seedPeriod(sessions, cfg, now));
+    results.push(await seedPeriod(sessions, cfg, now, { withHistory: args.withHistory }));
   }
-  if (results.every((r) => r.failed.length === 0) && mappings.firstDepartment) {
+  if (args.withHistory && results.every((r) => r.failed.length === 0) && mappings.firstDepartment) {
+    // No documents of the normal dataset: they could not be dated last month, and open ones would block Start / Close.
+    results.push(await seedPeriodClose(sessions, cfg));
+    results.push(await seedCostFrom(sessions, cfg));
+    const verified = await verifyHistoryDataset(sessions, cfg, now);
+    log(verified.table);
+    results.push({ step: "verify", created: 0, skipped: 0, failed: verified.short });
+  } else if (!args.withHistory && results.every((r) => r.failed.length === 0) && mappings.firstDepartment) {
     const seedDocuments = deps.seedDocuments ?? ((s, c, u, n, l) => seedAllDocuments(s, c, u, n, {}, l));
     results.push(...(await seedDocuments(sessions, cfg, env.users, now, log)));
   }

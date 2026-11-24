@@ -25,7 +25,7 @@ _Generated from `tests/924-period-close-close.spec.ts` annotations. Edit annotat
 
 **Preconditions**
 
-Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO, E2E_DB_URL และ E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ตั้งไว้; TC-PE-520004 ผ่านแล้ว (can_close = true, ปุ่ม Close Period กดได้) — หรือปิดงวดไปแล้วจากรอบก่อนและมี bf-before-close.json ในโฟลเดอร์หลักฐาน
+Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU, E2E_DB_URL ตั้งไว้ และงวด active ของ TEST BU = งวดของ scenario; TC-PE-520004 ผ่านแล้ว (can_close = true, ปุ่ม Close Period กดได้) — หรือปิดงวดไปแล้วจากรอบก่อนและมี bf-before-close.json ในโฟลเดอร์หลักฐาน
 
 **Steps**
 
@@ -38,7 +38,7 @@ Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCE
 
 2.10: POST /period-ends ตอบสำเร็จ และ /period-ends/current = งวดถัดไป · 2.11: มีรายการที่คาดอย่างน้อยหนึ่งรายการ ทุกคลัง/สินค้าจำนวนและมูลค่าตรงกัน (AVG ต้นทุนต่อหน่วย = ค่าเฉลี่ยงวดด้วย) และไม่มีรายการ open_period เกินมา
 
-> _Note: [IRREVERSIBLE] ปิดงวดจริง ย้อนไม่ได้ — skip ถ้าไม่ได้ตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> · รันซ้ำหลังปิดแล้วไม่กดซ้ำ ตรวจอย่างเดียว · เดิม 2.10 + 2.11 (_movement_play specs/50-close) · snapshot bf-before-close.json อยู่ใต้ EVIDENCE_DIR เหมือนต้นฉบับ · ต้นฉบับ 2.11 บันทึก FAIL แต่ assert แค่ว่ามีรายการ — port assert ไม่มีรายการไม่ตรงและไม่มีรายการเกินมา · 2.11 เคย FAIL ใน period09 (2026-10-01, TEST-MOVE/T-03-F) — รอบ p10-r3 / p11-r4 / avg2607-r4 (2026-10-02) PASS จึงไม่ใช่บั๊กที่รู้อยู่ · ซ้อนกับ TC-PE-040001 ใน 900-period-end ซึ่งเป็น skip ว่าง · ขัดกับ gap TC-PE-040104 (docs/test-cases/gaps/900-period-end-gap.md) ที่คาดว่าหลังปิดการ์ดงวดแสดงป้าย Closed และปุ่มถูก disable — ต้นฉบับ assert ว่า /period-ends/current เลื่อนเป็นงวดถัดไป (หลักฐานทุกรอบ: งวดปัจจุบันเลื่อน หน้า Period End แสดงงวดใหม่) port คงตามต้นฉบับ ต้องตกลงว่าแบบไหนถูกแล้วแก้ฝั่งใดฝั่งหนึ่ง_
+> _Note: [IRREVERSIBLE] ปิดงวดจริง ย้อนไม่ได้ — skip ถ้างวด active ของ BU ไม่ใช่งวดของ scenario · รันซ้ำหลังปิดแล้วไม่กดซ้ำ ตรวจอย่างเดียว · เดิม 2.10 + 2.11 (_movement_play specs/50-close) · snapshot bf-before-close.json อยู่ใต้ EVIDENCE_DIR เหมือนต้นฉบับ · ต้นฉบับ 2.11 บันทึก FAIL แต่ assert แค่ว่ามีรายการ — port assert ไม่มีรายการไม่ตรงและไม่มีรายการเกินมา · 2.11 เคย FAIL ใน period09 (2026-10-01, BU เดิม) — รอบ p10-r3 / p11-r4 / avg2607-r4 (2026-10-02) PASS จึงไม่ใช่บั๊กที่รู้อยู่ · ซ้อนกับ TC-PE-040001 ใน 900-period-end ซึ่งเป็น skip ว่าง · ขัดกับ gap TC-PE-040104 (docs/test-cases/gaps/900-period-end-gap.md) ที่คาดว่าหลังปิดการ์ดงวดแสดงป้าย Closed และปุ่มถูก disable — ต้นฉบับ assert ว่า /period-ends/current เลื่อนเป็นงวดถัดไป (หลักฐานทุกรอบ: งวดปัจจุบันเลื่อน หน้า Period End แสดงงวดใหม่) port คงตามต้นฉบับ ต้องตกลงว่าแบบไหนถูกแล้วแก้ฝั่งใดฝั่งหนึ่ง_
 
 ---
 
@@ -66,4 +66,4 @@ scenario ต้นทุนเฉลี่ย (AVG) เท่านั้น; �
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

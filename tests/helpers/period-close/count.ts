@@ -58,7 +58,7 @@ export async function countLocation(page: Page, id: string, code: string, counts
     await search.fill(prod);
     await page.waitForTimeout(600); // debounce ของช่องค้นหา 200ms + virtualizer
     // รอให้ผลค้นหากรองเสร็จ — AVG 2609 คลัง 1FO02: 600ms ยังไม่พอ เลขไปลงช่องของสินค้าตัวอื่น
-    // ค้นด้วยรหัสอาจเจอหลายใบ (T-01-A ไปเจอ WST-01-A ด้วย) → เลือกการ์ดที่ชื่อสินค้าตรงเป๊ะ
+    // ค้นด้วยรหัสอาจเจอหลายใบ (รหัสสั้นอาจไปตรงกับรหัสอื่นที่มีรหัสนี้เป็นส่วนหนึ่ง) → เลือกการ์ดที่ชื่อสินค้าตรงเป๊ะ
     const visible = page.locator("input[type=number]:visible");
     const card = page
       .locator("div")

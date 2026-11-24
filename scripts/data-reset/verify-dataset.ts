@@ -6,9 +6,10 @@ import type { ApiClient } from "../seed-master/api-client";
 import type { ResetConfig } from "./config";
 import { READ_SET, listAll } from "./docs/accounting";
 import { DF_PRODUCTS } from "./docs/doc-flow";
+import { verifyPeriodClose } from "./docs/period-close";
 import { refId } from "./docs/refs";
 import type { RowLedger } from "./docs/row-ledger";
-import { localDate, planNextPeriod } from "./period";
+import { localDate, planHistoryPeriod, planNextPeriod } from "./period";
 import type { Sessions } from "./sessions";
 
 export interface ExpectedRow {
@@ -237,6 +238,32 @@ async function verifyNextPeriod(admin: ApiClient, cfg: ResetConfig, now: Date): 
     lines: [`${"period.next".padEnd(22)}${String(1).padStart(5)}${String(found ? 1 : 0).padStart(7)}${found ? "" : "  ✗"}`],
     short: found ? [] : [`period.next: no open inventory period for ${next.fiscal_year}-${String(next.fiscal_month).padStart(2, "0")} (HTTP ${res.status})`],
   };
+}
+
+/** --with-history: the first period is last month and is still the BE's current one. */
+async function verifyHistoryPeriod(admin: ApiClient, cfg: ResetConfig, now: Date): Promise<{ lines: string[]; short: string[] }> {
+  const h = planHistoryPeriod(now);
+  const res = await admin.get(`/api/${cfg.buCode}/inventory-periods/current`);
+  const cur = res.body?.data;
+  const ok = res.ok && cur?.fiscal_year === h.fiscal_year && cur?.fiscal_month === h.fiscal_month;
+  return {
+    lines: [`${"period.current".padEnd(22)}${String(1).padStart(5)}${String(ok ? 1 : 0).padStart(7)}${ok ? "" : "  ✗"}`],
+    short: ok ? [] : [`period.current: expected ${h.fiscal_year}-${String(h.fiscal_month).padStart(2, "0")}, got ${res.ok ? `${cur?.fiscal_year}-${cur?.fiscal_month}` : `HTTP ${res.status}`}`],
+  };
+}
+
+/** --with-history: no documents are seeded, so check the BU base, the E2E-PC products and the periods only. */
+export async function verifyHistoryDataset(
+  sessions: Sessions, cfg: ResetConfig, now: Date = new Date(),
+): Promise<{ short: string[]; table: string }> {
+  const admin = await sessions.client(cfg.adminEmail);
+  const short: string[] = await verifyBuBase(admin, cfg);
+  const lines = ["row                     min  found"];
+  for (const part of [await verifyPeriodClose(sessions, cfg), await verifyHistoryPeriod(admin, cfg, now), await verifyNextPeriod(admin, cfg, now)]) {
+    lines.push(...part.lines);
+    short.push(...part.short);
+  }
+  return { short, table: lines.join("\n") };
 }
 
 export async function verifyDataset(

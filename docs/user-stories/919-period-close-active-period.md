@@ -33,7 +33,7 @@ _Generated from `tests/919-period-close-active-period.spec.ts` annotations. Edit
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG (งวด active ตามหลังวันนี้) หรือ CARMEN-FIFO (ตัวควบคุม: งวด active = เดือนนี้); AVG: LCX013 มี 11020001 ในงวด active · FIFO: TEST-MOVE มี T-01-F
+E2E_PERIOD_BU เป็น TEST BU (งวด active ตามหลังวันนี้ หรือเท่ากับเดือนนี้ = ตัวควบคุม); คลัง L มี E2E-PC-1 ในงวด active (GRN ฐานของ phase 910)
 
 **Steps**
 
@@ -59,13 +59,13 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG (งวด active
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่ในงวดที่สร้างล่วงหน้า (นอกงวด active) — FIFO ข้าม; workflow SR ที่ขั้น create>approve>issue>approve (srIssueWorkflowName — ชื่อเดิม 'SR Test Flow v2 (with Issue)' ถูกเปลี่ยนบน dev); คลัง TEST-MOVE / TEST-CONSUME ผูก T-01-A; บัญชี requestor@carmen.com และ hod@carmen.com
+E2E_PERIOD_BU เป็น TEST BU และวันนี้อยู่ในงวดเปิดที่ใหม่กว่างวด active (ไม่ใช่ = ข้าม); workflow SR ที่มีขั้น Issue (หาจาก stage ด้วย srIssueWorkflow ไม่อิงชื่อ); คลัง inventory ≥ 2 คลัง (L เป็นต้นทาง) สินค้า E2E-PC-X อยู่ที่ L; บัญชี Requestor และ HOD (gmail) อยู่ใน workflow
 
 **Steps**
 
-1. admin POST /store-requisitions (requestor = requestor@carmen.com): T-01-A 1 หน่วย TEST-MOVE → TEST-CONSUME
+1. admin POST /store-requisitions (requestor = Requestor gmail): E2E-PC-X 1 หน่วย จากคลัง L → คลัง inventory ถัดไป
 2. admin PATCH …/submit พร้อม sr_date_pattern = today
-3. hod@carmen.com PATCH …/approve ขั้น HOD
+3. HOD (gmail) PATCH …/approve ขั้น HOD
 4. admin PATCH …/approve stage_role = issue
 5. เก็บกวาด: reject ใบที่ค้าง
 
@@ -86,11 +86,11 @@ submit และ approve ได้ (HTTP < 300) ใบลงวันที่�
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่นอกงวด active — FIFO ข้าม; Login เป็น admin@carmen.com (movement-setup); มีใบรับ committed ของ C010 ที่มี 11020001 (ใบรับ "E2E A7 expiring …" ของ TC-PE-490007 จากรอบก่อน หรือ GRN260600001)
+E2E_PERIOD_BU เป็น TEST BU และวันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); Login เป็น Admin (gmail, project setup); มีใบรับ committed ที่มี E2E-PC-1 ที่คลัง L (ใบรับ "E2E A7 expiring …" ของ TC-PE-490007 จากรอบก่อน หรือ GRN260600001)
 
 **Steps**
 
-1. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับนั้น คืน 11020001 1 หน่วย
+1. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับนั้น คืน E2E-PC-1 1 หน่วย
 2. Doc Date และ Tax Invoice Date = วันนี้ (เวลาไทย)
 3. กด Create แล้ว Submit
 4. ถ้ามีใบ: อ่านสถานะ, cn_date และงวดที่ cost layer ลง
@@ -112,11 +112,11 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวั�
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG — FIFO ข้าม; Login เป็น admin@carmen.com (movement-setup); มีใบรับ committed ของ C010 ที่มี 11020001 และยังคืนได้
+E2E_PERIOD_BU เป็น TEST BU ที่วันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); Login เป็น Admin (gmail, project setup); มีใบรับ committed ที่มี E2E-PC-1 ที่คลัง L และยังคืนได้
 
 **Steps**
 
-1. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับเดียวกับ TC-PE-490003 คืน 11020001 1 หน่วย
+1. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับเดียวกับ TC-PE-490003 คืน E2E-PC-1 1 หน่วย
 2. Doc Date และ Tax Invoice Date = วันที่ 20 ของงวด active
 3. กด Create แล้ว Submit
 4. อ่านสถานะ, cn_date และงวดที่ cost layer ลง
@@ -138,12 +138,12 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG — FIFO ข้�
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG — FIFO ข้าม; Login เป็น admin@carmen.com (movement-setup); มีใบรับ saved/committed ที่มี Australian Sirloin (11110003) และยังไม่เคยถูกคืนสินค้านี้
+E2E_PERIOD_BU เป็น TEST BU ที่วันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); Login เป็น Admin (gmail, project setup); มีใบรับ saved/committed ที่มี E2E-PC-2 และยังไม่เคยถูกคืนสินค้านี้
 
 **Steps**
 
-1. หาใบรับล่าสุดที่มี 11110003 และยังไม่มีใบลดหนี้ของสินค้านี้
-2. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับนั้น คืน Australian Sirloin 1
+1. หาใบรับล่าสุดที่มี E2E-PC-2 และยังไม่มีใบลดหนี้ของสินค้านี้
+2. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับนั้น คืน E2E-PC-2 1
 3. Doc Date และ Tax Invoice Date = วันที่ 1 ของงวด active (เลือกจากปฏิทิน)
 4. กด Create แล้ว Submit
 5. อ่านสถานะและงวดที่ cost layer ลง
@@ -165,7 +165,7 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG — FIFO ข้�
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG ที่มีงวดเปิดล่วงหน้าครอบวันนี้ (ไม่ใช่งวด active) — FIFO ข้าม
+E2E_PERIOD_BU เป็น TEST BU ที่มีงวดเปิดล่วงหน้าครอบวันนี้ (ไม่ใช่งวด active) (ไม่ใช่ = ข้าม)
 
 **Steps**
 
@@ -189,11 +189,11 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG ที่มี�
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่นอกงวด active — FIFO ข้าม; ผู้ขาย C010, สกุลเงิน THB, ประเภทปรับปรุง "Test stock_out" และคลัง LCX013 มีอยู่
+E2E_PERIOD_BU เป็น TEST BU และวันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); ผู้ขาย (MOVEMENT_VENDOR), สกุลเงิน THB, ประเภทปรับปรุง stock_out ที่ใช้งานได้ และคลัง L มีอยู่
 
 **Steps**
 
-1. ตั้งต้น (ครั้งแรกของงวด active): POST /good-received-notes ลงวันที่ 20 ของงวด active ที่ LCX013: 11020001 3 หน่วย @10 มีวันหมดอายุ (หน้าจอใส่วันหมดอายุไม่ได้) → save → commit
+1. ตั้งต้น (ครั้งแรกของงวด active): POST /good-received-notes ลงวันที่ 20 ของงวด active ที่คลัง L: E2E-PC-1 3 หน่วย @10 มีวันหมดอายุ (หน้าจอใส่วันหมดอายุไม่ได้) → save → commit
 2. POST /wastage-reporting ตัด 1 หน่วยจากบรรทัดของใบรับนั้น โดยไม่ส่ง so_date — ไม่มีหน้าจอเรียก
 3. อ่าน Stock Out ที่เกิดขึ้น (so_date, สถานะ) และงวดที่ cost layer ลง
 
@@ -214,12 +214,12 @@ POST สำเร็จ (HTTP < 300) มี Stock Out เกิดขึ้น �
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่นอกงวด active — FIFO ข้าม; ประเภทปรับปรุง "Test stock_out" / "Test stock_in" และคลัง LCX013 มีอยู่
+E2E_PERIOD_BU เป็น TEST BU และวันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); ประเภทปรับปรุง stock_out / stock_in ที่ใช้งานได้ และคลัง L มีอยู่
 
 **Steps**
 
-1. POST /stock-outs ที่ LCX013: 11020001 1 หน่วย โดยไม่ส่ง so_date
-2. POST /stock-ins ที่ LCX013: 11020001 1 หน่วย @10 โดยไม่ส่ง si_date
+1. POST /stock-outs ที่คลัง L: E2E-PC-1 1 หน่วย โดยไม่ส่ง so_date
+2. POST /stock-ins ที่คลัง L: E2E-PC-1 1 หน่วย @10 โดยไม่ส่ง si_date
 3. อ่าน so_date / si_date ที่เก็บจาก DB
 4. ลบทั้งสองใบทิ้ง (เก็บกวาด)
 
@@ -239,7 +239,7 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวั�
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG หรือ CARMEN-FIFO (ตัวควบคุม); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active
+E2E_PERIOD_BU เป็น TEST BU (ตัวควบคุม รันได้ทุก BU); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active
 
 **Steps**
 
@@ -263,7 +263,7 @@ current-period = งวด active และ previous-period = งวดที่
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG หรือ CARMEN-FIFO (ตัวควบคุม); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active
+E2E_PERIOD_BU เป็น TEST BU (ตัวควบคุม รันได้ทุก BU); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active
 
 **Steps**
 
@@ -287,7 +287,7 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG หรือ CARM
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG หรือ CARMEN-FIFO (ตัวควบคุม); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active
+E2E_PERIOD_BU เป็น TEST BU (ตัวควบคุม รันได้ทุก BU); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active
 
 **Steps**
 
@@ -303,4 +303,4 @@ view คืนอย่างน้อย 1 แถว และทุกแถ�
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

@@ -30,11 +30,11 @@ _Generated from `tests/912-period-close-start-gate.spec.ts` annotations. Edit an
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (admin ผูกกับคลัง L)
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (admin ผูกกับคลัง L)
 
 **Steps**
 
-1. สร้าง GRN manual ลงวันที่ case1Date ของ scenario (Chicken frame qty 1 @10 ที่คลัง L) → Save Draft
+1. สร้าง GRN manual ลงวันที่ case1Date ของ scenario (E2E-PC-X qty 1 @10 ที่คลัง L) → Save Draft
 2. GET period-ends/review
 3. Period End → Start Period Close → ยืนยัน
 4. อ่าน dialog "Finish these documents first" → Close
@@ -58,11 +58,11 @@ start_blocking.grn = 1 ก่อนกด; Start ถูกปฏิเสธ 422
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว
 
 **Steps**
 
-1. สร้าง GRN manual ตาม voidTrap ของ scenario (Ground Beef qty 10 ราคากับดัก วันที่ในงวด ที่คลัง L) → Create (saved)
+1. สร้าง GRN manual ตาม voidTrap ของ scenario (E2E-PC-1 qty 10 ราคากับดัก วันที่ในงวด ที่คลัง L) → Create (saved)
 2. GET period-ends/review
 3. Period End → Start Period Close → ยืนยัน
 4. อ่าน dialog "Finish these documents first" → Close
@@ -86,11 +86,11 @@ start_blocking.grn = 1 ก่อนกด; Start ถูกปฏิเสธ 422
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว
 
 **Steps**
 
-1. Inventory Adjustment → Add Stock In · Date = case1Date ของ scenario · Reason Test stock_in · คลัง L · Chicken frame qty 1 @10 → Save (draft)
+1. Inventory Adjustment → Add Stock In · Date = case1Date ของ scenario · Reason E2E IA stock in · คลัง L · E2E-PC-X qty 1 @10 → Save (draft)
 2. GET period-ends/review
 3. Period End → Start Period Close → ยืนยัน
 4. อ่าน dialog → Close
@@ -114,11 +114,11 @@ start_blocking.stock_in = 1 ก่อนกด; Start ถูกปฏิเส�
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (มีสต๊อก Shredded pork skin ที่คลัง L)
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (มีสต๊อก Shredded pork skin ที่คลัง L)
 
 **Steps**
 
-1. Inventory Adjustment → Add Stock Out · Date = case1Date ของ scenario · Reason Test stock_out · คลัง L · Shredded pork skin qty 1 → Save (draft)
+1. Inventory Adjustment → Add Stock Out · Date = case1Date ของ scenario · Reason E2E IA stock out · คลัง L · Shredded pork skin qty 1 → Save (draft)
 2. GET period-ends/review
 3. Period End → Start Period Close → ยืนยัน
 4. อ่าน dialog → Close
@@ -142,11 +142,11 @@ start_blocking.stock_out = 1 ก่อนกด; Start ถูกปฏิเส�
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว
 
 **Steps**
 
-1. สร้างผ่าน UI ลงวันที่ในงวด: GRN ร่าง (Save Draft), GRN saved (Chicken frame qty 10 @20), Stock In ร่าง, Stock Out ร่าง
+1. สร้างผ่าน UI ลงวันที่ในงวด: GRN ร่าง (Save Draft), GRN saved (E2E-PC-X qty 10 @20), Stock In ร่าง, Stock Out ร่าง
 2. GET period-ends/review
 3. Period End → Start Period Close → ยืนยัน
 4. อ่าน dialog → Close
@@ -170,20 +170,18 @@ start_blocking ก่อนกด = grn 2 / stock_in 1 / stock_out 1; Start ถ�
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; E2E_DB_URL ตั้งไว้
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; E2E_DB_URL ตั้งไว้
 
 **Steps**
 
-1. (scenario ที่ไม่มี preBlockers) ดัก request ที่ไม่ใช่ GET ทิ้ง แล้วเปิด Store Requisition → New ดูอย่างเดียว
-2. ตรวจว่าฟอร์มเปิดขึ้นและไม่มีช่อง Request Date ที่แก้ได้ → บันทึก 1.N1 = N/A
-3. DB: นับ SI / SO / CN ที่ doc_status = in_progress → บันทึก 1.N2 = N/A
-4. GET period-ends/review: ดูชนิดเอกสารใน start_blocking → บันทึก 1.N3 = INFO
+1. DB: นับ SI / SO / CN ที่ doc_status = in_progress → บันทึก 1.N2 = N/A
+2. GET period-ends/review: ดูชนิดเอกสารใน start_blocking → บันทึก 1.N3 = INFO
 
 **Expected**
 
-ฟอร์ม SR ใหม่เปิดได้แต่ไม่มีช่องเลือกวันที่ของใบ (หรือช่องถูกล็อก); ไม่มี SI/SO/CN ที่สถานะ in_progress ใน BU; start_blocking ไม่มีชนิด cn / pr / po
+ไม่มี SI/SO/CN ที่สถานะ in_progress ใน BU; start_blocking ไม่มีชนิด cn / pr / po
 
-> _Note: เดิม 1.N1 / 1.N2 / 1.N3 (_movement_play specs/10-case1-start ชื่อ "1.N เคสที่ทำให้เกิดบน BU ไม่ได้") · ต้นฉบับบันทึก N/A / INFO อย่างเดียวไม่ assert — พอร์ตเพิ่มการตรวจข้อเท็จจริงที่ทำให้เป็น N/A/INFO · scenario ที่มี SR ค้างจริง (preBlockers) ทดสอบ 1.N1 ของจริงใน TC-PE-410001 จึงไม่เขียน N/A ทับ · 1.N3 ยืนยันด้วยการใช้งานจริงใน TC-PE-440006/440007_
+> _Note: เดิม 1.N1 / 1.N2 / 1.N3 (_movement_play specs/10-case1-start ชื่อ "1.N เคสที่ทำให้เกิดบน BU ไม่ได้") · ต้นฉบับบันทึก N/A / INFO อย่างเดียวไม่ assert — พอร์ตเพิ่มการตรวจข้อเท็จจริงที่ทำให้เป็น N/A/INFO · 1.N1 ทดสอบของจริงใน TC-PE-410001 (911 สร้างใบค้างเองผ่าน API) จึงไม่มีแถว N/A ของ 1.N1 อีกแล้ว · 1.N3 ยืนยันด้วยการใช้งานจริงใน TC-PE-440006/440007_
 
 ---
 
@@ -212,4 +210,4 @@ TC-PE-420003 / 420004 / 420005 รันแล้วในงวดเดีย�
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

@@ -5,6 +5,8 @@ import { L, SCN } from "./scenarios";
  * ตัวคาดราคาที่ CostProbe (ช่องราคาบนฟอร์ม SI/SO) ควรเติม — คิดเองจาก SQL ไม่เรียกโค้ด backend
  * กติกา = ราคาที่การโพสต์ใบจ่ายจะคิด (PR #708):
  *  - FIFO: ล็อตจาก cost layer ที่ยังไม่ถูกลบ ที่คลังนั้น รับเข้าในงวดปัจจุบันหรือก่อนหน้า หักที่ถูกตัดไปแล้ว ตัดเก่าก่อน
+ *    เก่า = ตามลำดับที่ล็อตเกิด (lot_seq_no) — lot_at_date ของ Stock In คือวันที่โพสต์ ไม่ใช่วันที่เอกสาร และ backend
+ *    ห้ามรับเข้าย้อนหลังก่อนใบรับล่าสุดของ FIFO (…_BEFORE_LATEST_RECEIPT) ลำดับสร้างจึงตรงกับลำดับวันที่เสมอ
  *  - AVG: ค่าเฉลี่ยสุทธิของ layer ที่ยังไม่ถูกลบ (average = ทั้ง BU, average_per_location = คลังนั้น)
  *    ตรวจของพอด้วย รับเข้า (งวดที่หยิบได้) − จ่ายออก (ทุกงวด) ที่คลังนั้น
  * งวดปัจจุบัน = งวดเปิด/ล็อกที่เก่าที่สุด (แบบเดียวกับการโพสต์ที่ไม่ส่งวันที่เอกสาร)
@@ -40,7 +42,7 @@ export function expectedIssueCost(productCode: string, qty: number, period: stri
       select r.lot_no, r.tin, r.tcost,
         coalesce((select sum(o.out_qty) from ${SCHEMA}.tb_inventory_transaction_cost_layer o
                   where o.parent_lot_no = r.lot_no and o.out_qty > 0 and o.deleted_at is null), 0) consumed
-      from recv r order by r.at, r.seq`);
+      from recv r order by r.seq`);
     const avail = lots
       .map((l) => ({ lot: l.lot_no, left: Number(l.tin) - Number(l.consumed), cost: r2(Number(l.tcost) / Number(l.tin)) }))
       .filter((l) => l.left > 0);
@@ -73,6 +75,24 @@ export function expectedIssueCost(productCode: string, qty: number, period: stri
   const v = r2(Number(net.v));
   const avg = q > 0 ? r2(v / q) : 0;
   return { ok: true, avg, total: r2(qty * avg), how: `ค่าเฉลี่ยสุทธิ${scope ? "ของคลัง" : "ทั้ง BU"} ${v} ÷ ${q}` };
+}
+
+/**
+ * Starting price the Stock In form prefills on an `average` BU (si.cost-from = average): the period receipt average the close
+ * books, BU-wide — Σ total_cost ÷ Σ in_qty of the period's receipts (no close_period / transfer_in rows), dated up to the
+ * document's day (the probe dates the form at the end of the period, so everything counts). null = nothing received in the
+ * period yet (the backend then falls back to the net moving average). average_per_location and FIFO do not use this.
+ * (micro-business getPeriodReceiptAverageAsOf)
+ */
+export function periodReceiptAverage(productCode: string, period: string): number | null {
+  const [r] = sql<{ q: string | null; v: string | null }>(`
+    select sum(cl.in_qty) q, sum(cl.total_cost) v
+    from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
+    where cl.deleted_at is null and cl.in_qty > 0 and cl.at_period = '${period}'
+      and cl.transaction_type::text not in ('close_period', 'transfer_in')
+      and cl.product_id = (select id from ${SCHEMA}.tb_product where code = '${productCode}')`);
+  const q = Number(r?.q ?? 0);
+  return q > 0 ? r2(Number(r.v) / q) : null;
 }
 
 /** ราคาของล็อตจาก GRN ที่ void แล้วที่คลังนั้น — ตัวหลอกที่โค้ดก่อน #708 เคยเสนอ */

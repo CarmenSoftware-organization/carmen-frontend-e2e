@@ -7,6 +7,12 @@ bun run data:reset --dry-run   # อ่านอย่างเดียว: ต
 bun run data:reset --yes       # ของจริง (backend ไม่ใช่ localhost ต้องมี --yes)
 bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล้ว — ปฏิเสธถ้ายังมี PR อยู่
 bun run data:reset --yes --bu BU-96EAT3GX   # BU เดียวจาก TEST_BUS (AVG BU-GR2VYNKQ · FIFO BU-96EAT3GX · AVG-LOCATION BU-0706T34Y)
+bun run data:reset --yes --bu BU-96EAT3GX --with-history   # เปิดงวดเดือนก่อนเป็นงวดแรก (+ เดือนนี้ + เดือนหน้า) สำหรับชุดปิดงวด — ต้องระบุ --bu <code> ทีละ BU (ไม่ระบุ --bu หรือใช้กับ all = ปฏิเสธ)
+#   --with-history ไม่ seed เอกสารของชุดปกติ (ไม่มี stock/PR/PO/GRN/CN/SR ฯลฯ) — seed แค่สินค้า E2E-PC-1..4 + E2E-PC-X (ผูก location แรกแห่งเดียว ไม่มีสต๊อก) และล้าง runs/period-close/<BU>/ · รัน reset ปกติ (ไม่ใส่ --with-history) หลังจบชุดปิดงวด ก่อนรันชุดหลัก
+#   งวดแรก (active) = เดือนก่อน · ลำดับรันชุดปิดงวด (ต้องมี E2E_DB_URL ใน .env.local):
+#     bun run data:reset --yes --bu BU-96EAT3GX --with-history
+#     E2E_PERIOD_BU=BU-96EAT3GX bun run test:period-close -- tests/910-period-close-prestep.spec.ts   # แล้ว 911 … 924 ทีละไฟล์ หรือ ./tests/scripts/run-period-close.sh BU-96EAT3GX ทั้งรอบ
+#     bun run data:reset --yes --bu BU-96EAT3GX   # reset ปกติก่อนรันชุดหลัก (chromium)
 bun run data:reset --yes --bu all          # ทั้งสาม BU ตามลำดับ — สั่งก่อนรันเทส doc-flow ครั้งแรก
 ```
 

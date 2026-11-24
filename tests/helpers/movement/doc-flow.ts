@@ -13,7 +13,7 @@ import { apiGet } from "./api";
  *  - admin is avoided: it sits in no workflow's "Create Request" stage and skips
  *    permission checks, so it would hide exactly the bugs these specs look for
  *
- * Prerequisite once per environment: `bun run movement:setup-workflows` (adds
+ * Legacy (CARMEN-AVG/FIFO; this file is only used by the legacy setup script). Prerequisite once per environment: `bun run movement:setup-workflows` (adds
  * products to the workflows the role accounts create with — see that script).
  */
 export const DOC_FLOW_BU = "CARMEN-AVG";

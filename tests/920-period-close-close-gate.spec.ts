@@ -20,7 +20,7 @@ import { SCN, PERIOD, type CloseGateDoc } from "./helpers/period-close/scenarios
  *
  * Prerequisites: the count round was started (Start Period Close phase); the period
  * under test is still the current one.
- * Run: E2E_PERIOD_SCENARIO=<scenario> bun run test:period-close -- tests/920-period-close-close-gate.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/920-period-close-close-gate.spec.ts
  * Origin: _movement_play/eop_bf/e2e/specs/30-case1-close.spec.ts
  */
 // Case 1 · ด่าน Close — ระหว่างช่วงนับ (รอบนับ = counting) สร้างเอกสารในงวดตาม SCN.closeGate แล้วดูว่าอะไรขวางการปิด
@@ -51,7 +51,7 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com (movement-setup) บน BU ของ scenario; E2E_PERIOD_SCENARIO และ E2E_DB_URL ตั้งไว้; งวดที่ทดสอบยังเป็นงวดปัจจุบัน และรอบนับอยู่สถานะ counting (กด Start Period Close แล้ว); ยังนับไม่ครบทุกคลัง",
+          "Login เป็น Admin (gmail, project setup) บน BU ของ scenario; E2E_PERIOD_BU และ E2E_DB_URL ตั้งไว้; งวดที่ทดสอบยังเป็นงวดปัจจุบัน และรอบนับอยู่สถานะ counting (กด Start Period Close แล้ว); ยังนับไม่ครบทุกคลัง",
       },
       {
         type: "steps",
@@ -78,7 +78,7 @@ test(
       const lines = [{ product: c.product.code, qty: c.kind === "si-draft" ? 1 : 10, price: c.price }];
       if (c.kind === "si-draft") {
         const d = await once(c.key, (onCreated) => createAdjustment(page, {
-          type: "stock-in", date: c.date, reason: "Test stock_in", status: "draft", onCreated, lines,
+          type: "stock-in", date: c.date, reason: "E2E IA stock in", status: "draft", onCreated, lines,
         }), (id) => adjustmentById("stock-in", id));
         made.push({ c, d, url: adjustmentUrl("stock-in", d.id) });
       } else {

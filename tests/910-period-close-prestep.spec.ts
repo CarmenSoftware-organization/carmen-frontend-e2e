@@ -1,3 +1,4 @@
+import type { Page } from "@playwright/test";
 import {
   test,
   expect,
@@ -14,13 +15,13 @@ import {
   getDoc,
   putDoc,
   layers,
-  sql, gatePhase
+  sql, gatePhase,
+  PC_USERS,
+  apiGet,
 } from "./helpers/period-close/context";
-import { apiGet } from "./helpers/movement/api";
 import { pickSelect, pickLookup, lastToast, btn, toasts } from "./helpers/movement/ui";
 import { createGrn, commitGrn, grnById, deleteGrnDraft, createAdjustment, adjustmentUrl } from "./helpers/period-close/docs";
 import { L, SCN, PERIOD } from "./helpers/period-close/scenarios";
-import { MOVEMENT_USERS } from "./movement-users";
 
 /**
  * Period close · phase 910 — Case 0 pre-step (section 40).
@@ -31,14 +32,17 @@ import { MOVEMENT_USERS } from "./movement-users";
  * ทุกขั้นเช็คสถานะก่อนทำ (idempotent) รันซ้ำแล้วไม่สร้างเอกสารซ้ำ — เอกสารที่สร้างจำไว้ใน state.json ของ scenario
  *
  * Irreversible? ไม่แตะสถานะงวด แต่สร้าง/commit เอกสารจริงลง BU ของ scenario (ลบคืนอัตโนมัติไม่ได้)
- * Prerequisites: งวดปัจจุบันของ BU = งวดของ scenario · E2E_DB_URL (อ่าน cost layer) · movement-setup (storageState ของ admin)
- * Run:  E2E_PERIOD_SCENARIO=<s> bun run test:period-close -- tests/910-period-close-prestep.spec.ts
+ * Prerequisites: งวดปัจจุบันของ BU = งวดของ scenario · E2E_DB_URL (อ่าน cost layer) · project setup (storageState ของ Admin gmail)
+ * Run:  E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/910-period-close-prestep.spec.ts
  *
  * Serial: เอกสารรับเข้า (TC-PE-400003) ลงคลัง L ได้ก็ต่อเมื่อ admin ผูกกับคลังนั้นแล้ว (TC-PE-400002)
  * Origin: _movement_play/eop_bf/e2e/specs/00-prestep.spec.ts (sub-case 0.0 / 0.1 / 0.2–0.3c / 0.4)
  */
 const CASE = "Case 0 · pre-step";
-const ADMIN = MOVEMENT_USERS.admin;
+const ADMIN = PC_USERS.admin;
+/** แถวของผู้ใช้ Admin (gmail) ในหน้า Users — ปุ่มชื่ออยู่ในแถวที่ช่องอีเมลมี title = อีเมล */
+const openAdminUser = (page: Page) =>
+  page.getByRole("row").filter({ has: page.getByTitle(ADMIN.email, { exact: true }) }).getByRole("button").first().click();
 
 test.describe.configure({ mode: "serial" });
 
@@ -61,7 +65,7 @@ test(
   "TC-PE-400001 เคลียร์ GRN saved/draft ที่ค้างจากงวดก่อนและขวางการเริ่มนับของงวดนี้",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com (movement-setup); BU และงวดของ scenario (E2E_PERIOD_SCENARIO) เป็นงวดปัจจุบัน; scenario มีรายการ preClean หรือเปิด preCleanAuto (ไม่งั้น skip); E2E_DB_URL ตั้งไว้" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail, project setup); BU และงวดของ scenario (E2E_PERIOD_BU) เป็นงวดปัจจุบัน; scenario มีรายการ preClean หรือเปิด preCleanAuto (TEST BU ว่างจากเอกสาร ทั้งสองค่าจึงปิดไว้ = เคสนี้ skip); E2E_DB_URL ตั้งไว้" },
       { type: "steps", description: "1. หา GRN ที่ต้องเคลียร์: รายการ preClean ของ scenario + (preCleanAuto) GRN saved/draft ที่ลงวันที่ในงวดของ scenario จาก DB\n2. GRN saved → เปิดใบ → Commit → ยืนยัน\n3. GRN draft → เปิดใบ → Edit → Delete → ยืนยัน\n4. DB: ค้นหา GRN saved/draft ที่ลงวันที่ในงวดนี้อีกครั้ง" },
       { type: "expected", description: "ใบที่สั่ง commit มีสถานะ committed; ใบร่างถูกลบ; ไม่เหลือ GRN saved/draft ที่ลงวันที่ในงวดของ scenario" },
       { type: "priority", description: "High" },
@@ -122,8 +126,8 @@ test(
   "TC-PE-400002 ผูก admin กับคลัง L ของ scenario ผ่านหน้า System Admin → Users",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com (movement-setup); BU ของ scenario; คลัง L ของ scenario (1AG01) มีอยู่ใน BU" },
-      { type: "steps", description: "1. เปิด /system-admin/user → กด Admin CARMEN\n2. ถ้ายังไม่ผูกคลัง L: Edit → ติ๊กแถวคลัง L → Save\n3. GET /user-locations ของ BU\n4. เปิดผู้ใช้อีกครั้ง ดูส่วน Locations (โหมด view)" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail, project setup); BU ของ scenario; คลัง L (คลัง inventory แรกของ BU ที่ data:reset ผูก E2E-PC-* ไว้) มีอยู่ใน BU" },
+      { type: "steps", description: "1. เปิด /system-admin/user → กดชื่อ Admin (gmail)\n2. ถ้ายังไม่ผูกคลัง L: Edit → ติ๊กแถวคลัง L → Save\n3. GET /user-locations ของ BU\n4. เปิดผู้ใช้อีกครั้ง ดูส่วน Locations (โหมด view)" },
       { type: "expected", description: "GET /api/<BU>/user-locations มีรหัสคลัง L และหน้า view ของผู้ใช้แสดงแถวคลัง L" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
@@ -133,7 +137,7 @@ test(
   async ({ page }) => {
     const before = await userLocations(BU);
     await gotoInBu(page, "/system-admin/user");
-    await btn(page, "Admin CARMEN").click();
+    await openAdminUser(page);
     await page.waitForURL(/\/system-admin\/user\/.+/);
 
     const images: string[] = [];
@@ -148,7 +152,7 @@ test(
     await expect.poll(() => userLocations(BU)).toContain(L.code);
     // หลัง Save หน้าเด้งกลับไปที่ list — เปิดผู้ใช้ใหม่แล้วถ่ายเฉพาะส่วน Locations ให้เห็นแถวที่ติ๊กแล้ว
     if (!/\/system-admin\/user\/.+/.test(page.url())) {
-      await btn(page, "Admin CARMEN").click();
+      await openAdminUser(page);
       await page.waitForURL(/\/system-admin\/user\/.+/);
     }
     // โหมด view แสดงเฉพาะคลังที่ผูกไว้ ไม่มี checkbox
@@ -159,7 +163,7 @@ test(
 
     record({
       id: "0.1", case: CASE, title: `ผูก ${ADMIN.email} กับคลัง ${L.code}`,
-      steps: ["System Admin → Users → Admin CARMEN", "Edit → ติ๊ก " + L.code, "Save"],
+      steps: ["System Admin → Users → Admin (gmail)", "Edit → ติ๊ก " + L.code, "Save"],
       expected: `GET /user-locations มี ${L.code}`,
       actual: before.includes(L.code) ? (prevRecord("0.1")?.actual ?? "ผูกไว้แล้วจากรอบก่อน") : `ผูกแล้ว (ก่อนหน้า: ${before.length} คลัง)`,
       status: "PASS", images,
@@ -172,7 +176,7 @@ test(
   {
     annotation: [
       { type: "preconditions", description: "TC-PE-400002 ผ่านแล้ว (admin ผูกกับคลัง L ของ scenario); งวดปัจจุบันของ BU = งวดของ scenario; E2E_DB_URL ตั้งไว้" },
-      { type: "steps", description: "1. วนเอกสารรับเข้าทุกใบของ scenario (SCN.receipts: 0.2, 0.2b, 0.3, 0.3a, 0.3b, 0.3c ตามที่ scenario มี) — แต่ละใบเป็น test.step ของตัวเอง\n2. GRN: Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ตาม scenario · คลัง L · สินค้า/จำนวน/ราคาตาม scenario → Create → Commit\n3. Stock In: Inventory Adjustment → Add Stock In · Date ตาม scenario · Reason Test stock_in · คลัง L → Commit\n4. เปิดใบ ตรวจว่าแสดงเลขเอกสาร\n5. DB: อ่าน cost layer ของสินค้าแต่ละบรรทัดที่คลัง L" },
+      { type: "steps", description: "1. วนเอกสารรับเข้าทุกใบของ scenario (SCN.receipts: 0.2, 0.2b, 0.3, 0.3a, 0.3b, 0.3c ตามที่ scenario มี) — แต่ละใบเป็น test.step ของตัวเอง\n2. GRN: Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ตาม scenario · คลัง L · สินค้า/จำนวน/ราคาตาม scenario → Create → Commit\n3. Stock In: Inventory Adjustment → Add Stock In · Date ตาม scenario · Reason E2E IA stock in · คลัง L → Commit\n4. เปิดใบ ตรวจว่าแสดงเลขเอกสาร\n5. DB: อ่าน cost layer ของสินค้าแต่ละบรรทัดที่คลัง L" },
       { type: "expected", description: "GRN มีสถานะ committed / Stock In มีสถานะ completed และทุกบรรทัดมี cost layer at_period = งวดของ scenario ที่ in_qty และ cost_per_unit ตรงกับที่กรอก" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
@@ -202,7 +206,7 @@ test(
         } else {
           if (!doc) {
             const created = await createAdjustment(page, {
-              type: "stock-in", date: r.date, reason: "Test stock_in", status: "completed", lines: r.lines,
+              type: "stock-in", date: r.date, reason: "E2E IA stock in", status: "completed", lines: r.lines,
               onCreated: (d) => putDoc(r.key, { ...d }),
             });
             doc = { ...created! };
@@ -221,7 +225,7 @@ test(
         record({
           id: r.id, case: CASE, title: `${r.title} (ลงวันที่ ${r.date})`,
           steps: [
-            r.kind === "grn" ? `Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ${r.date}` : `Inventory Adjustment → Add Stock In · Date ${r.date} · Reason Test stock_in`,
+            r.kind === "grn" ? `Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ${r.date}` : `Inventory Adjustment → Add Stock In · Date ${r.date} · Reason E2E IA stock in`,
             `ที่ ${L.code}: ${r.lines.map((l) => `${l.product} qty ${l.qty} @${l.price}`).join(" · ")}`,
             r.kind === "grn" ? "Create → Commit" : "Commit",
           ],
@@ -243,12 +247,12 @@ test(
   "TC-PE-400004 ตั้ง Default price for added items (si.cost-from) ของ BU ตามที่ scenario กำหนด",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com (movement-setup); ถ้าต้องเปลี่ยนค่า BU ตั้งต้นของบัญชี admin ต้องเป็น BU ของ scenario (PATCH api/business-units ไม่มี bu_code — เขียนลง BU ตั้งต้นของบัญชี)" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail, project setup); ถ้าต้องเปลี่ยนค่า BU ตั้งต้นของบัญชี admin ต้องเป็น BU ของ scenario (PATCH api/business-units ไม่มี bu_code — เขียนลง BU ตั้งต้นของบัญชี)" },
       { type: "steps", description: "1. อ่าน si.cost-from ของ BU จาก /api/user/profile\n2. ถ้ายังไม่ตรง: เปิด /system-admin/default-setting → Edit → Default price for added items = ค่าของ scenario (Last receiving / Last cost / Average) → Save\n3. รอจน profile ของ BU คืนค่าใหม่\n4. (ถ้า BU ตั้งต้นของบัญชีคือ BU ของ scenario) reload หน้า ดูค่าที่แสดงในโหมด view" },
       { type: "expected", description: "bu_config si.cost-from ของ BU ของ scenario = ค่าที่ scenario กำหนด (เช่น last_cost); request บันทึกตอบ 2xx; หน้า view แสดง label ของค่านั้น" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
-      { type: "note", description: "เดิม 0.4 (_movement_play specs/00-prestep) · เคยเขียนผิด BU (period04 ข้อ 0.4-F: PATCH 200 แต่ค่าไปลง CARMEN-AVG) จึงมีด่านเช็ค BU ตั้งต้นก่อนกด Save · พอร์ตเพิ่ม assert ว่า request บันทึกตอบ ok และอ่าน toast แบบไม่รอ (เดิม lastToast().catch)" },
+      { type: "note", description: "เดิม 0.4 (_movement_play specs/00-prestep) · เคยเขียนผิด BU (period04 ข้อ 0.4-F: PATCH 200 แต่ค่าไปลง BU ตั้งต้นของบัญชีแทน) จึงมีด่านเช็ค BU ตั้งต้นก่อนกด Save · พอร์ตเพิ่ม assert ว่า request บันทึกตอบ ok และอ่าน toast แบบไม่รอ (เดิม lastToast().catch)" },
     ],
   },
   async ({ page }) => {
@@ -264,7 +268,7 @@ test(
     let toast = "";
     let saveOk: boolean | undefined;
     if (before !== want.value) {
-      // PATCH api/business-units ไม่มี bu_code — หลังบ้านเขียนลง BU ตั้งต้นของบัญชี ไม่ใช่ BU ที่จอโชว์ (เคยเขียนผิดไป CARMEN-AVG 2026-09-30)
+      // PATCH api/business-units ไม่มี bu_code — หลังบ้านเขียนลง BU ตั้งต้นของบัญชี ไม่ใช่ BU ที่จอโชว์ (เคยเขียนผิดไป BU ตั้งต้นของบัญชี 2026-09-30)
       // ข้อมูล/สภาพแวดล้อม: หน้านี้เขียนลง BU ตั้งต้นของบัญชี — ถ้าไม่ใช่ BU ของ scenario ต้องไม่กด Save (จะเขียนผิด BU) และไม่สลับ BU ตั้งต้นของบัญชี admin ที่ใช้ร่วมกัน
       test.skip(def?.code !== BU, `si.cost-from ของ ${BU} คือ ${before} ไม่ใช่ ${want.value} และ BU ตั้งต้นของ ${ADMIN.email} คือ ${def?.code} — Default Setting เขียนลง BU ตั้งต้น จึงตั้งค่าให้ ${BU} ไม่ได้โดยไม่สลับ BU ตั้งต้นของบัญชี (ตั้งเองก่อนรัน)`);
       await btn(page, "Edit").click();

@@ -1,6 +1,4 @@
-import { srIssueWorkflowName } from "./helpers/movement/doc-flow";
-import { test, expect, BU, requireScenario, sql, SCHEMA, record, getDoc, putDoc, currentPeriod, gatePhase } from "./helpers/period-close/context";
-import { apiSend } from "./helpers/movement/api";
+import { test, expect, BU, requireScenario, sql, SCHEMA, record, getDoc, putDoc, currentPeriod, gatePhase, apiSend, srIssueWorkflow, inventoryLocations, pcUserId, adjustmentTypeId } from "./helpers/period-close/context";
 import { L, PX, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
 
 /**
@@ -20,18 +18,18 @@ import { L, PX, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
  * the period closes) and creates an SR that is rejected afterwards (470004). Does
  * not touch the period status.
  *
- * Run: E2E_PERIOD_SCENARIO=<s> bun run test:period-close -- tests/917-period-close-new-rules.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/917-period-close-new-rules.spec.ts
  *
  * Origin: _movement_play/eop_bf/e2e/specs/24-new-rules.spec.ts
  */
 
 /**
  * Case 5 · กติกาใหม่หลังรีเซ็ต (PR #715 · #718 · #719) — รันหลัง phase 20 (ต้องมีใบรับงวดหน้าจากข้อ 2.1) ก่อนกด Start
- * ยิง API เฉพาะสิ่งที่หน้าจอทำไม่ได้ — ดู helpers/api-write.ts (ที่นี่: tests/helpers/movement/api.ts apiSend)
+ * ยิง API เฉพาะสิ่งที่หน้าจอทำไม่ได้ — apiSend ของ helpers/period-close/context.ts (ล็อกอินเป็นบัญชี gmail บน TEST BU)
  */
 const CASE = "Case 5 · กติกาใหม่ (PR #715 · #718 · #719)";
-const isAvg = SCN.method === "average";
-const SR_PRODUCT = isAvg ? "T-01-A" : "T-01-F";
+// AVG-LOCATION posts stock at save like AVG, and with one location its per-location average = the average (eb02388 live finding)
+const isAvg = SCN.method !== "fifo";
 
 /** layer ที่ยังไม่ถูกลบของเอกสาร (ผ่านหัวรายการเคลื่อนไหวที่ inventory_doc_no = id ของเอกสาร) */
 function docLayerCount(docId: string): number {
@@ -58,7 +56,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); งวดปัจจุบันของ BU = งวดของ scenario; phase 914 (เดิม 20-case2) TC-PE-440001 (ข้อ 2.1) สร้างใบรับงวดหน้า (saved) ไว้ใน state.json แล้ว",
+          "E2E_PERIOD_BU เป็น TEST BU แบบ average; งวดปัจจุบันของ BU = งวดของ scenario; phase 914 (เดิม 20-case2) TC-PE-440001 (ข้อ 2.1) สร้างใบรับงวดหน้า (saved) ไว้ใน state.json แล้ว",
       },
       {
         type: "steps",
@@ -106,12 +104,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); งวดปัจจุบันของ BU = งวดของ scenario; มีงวดหน้าเปิดไว้แล้ว; ประเภทปรับปรุง \"Test stock_in\" และคลัง 1AG01 มีอยู่",
+          "E2E_PERIOD_BU เป็น TEST BU แบบ average; งวดปัจจุบันของ BU = งวดของ scenario; มีงวดหน้าเปิดไว้แล้ว; BU มีประเภทปรับปรุง stock_in ที่ใช้งานได้ (E2E-IA-IN จาก data:reset) และคลังแรก L มีสินค้า E2E-PC-X",
       },
       {
         type: "steps",
         description:
-          "1. ถ้ายังไม่มี siNextHeld ใน state: POST /stock-ins ลงวันที่วันที่ 11 ของงวดหน้า ที่ 1AG01: Chicken frame 2 หน่วย @20 (หน้าจอเลือกวันนอกงวดปัจจุบันไม่ได้)\n2. GET ใบเพื่ออ่าน doc_version แล้ว PATCH /stock-ins/:id/commit\n3. อ่าน doc_status ของใบจาก tb_stock_in\n4. นับ cost layer ที่ยังไม่ถูกลบของใบนี้",
+          "1. ถ้ายังไม่มี siNextHeld ใน state: POST /stock-ins ลงวันที่วันที่ 11 ของงวดหน้า ที่คลัง L: E2E-PC-X 2 หน่วย @20 (หน้าจอเลือกวันนอกงวดปัจจุบันไม่ได้)\n2. GET ใบเพื่ออ่าน doc_version แล้ว PATCH /stock-ins/:id/commit\n3. อ่าน doc_status ของใบจาก tb_stock_in\n4. นับ cost layer ที่ยังไม่ถูกลบของใบนี้",
       },
       {
         type: "expected",
@@ -139,7 +137,7 @@ test(
       const created = await apiSend("POST", `/api/${BU}/stock-ins`, {
         si_date: siDate,
         description: `E2E ${PERIOD} 5.2 Stock In งวดหน้า`,
-        adjustment_type_id: idOf("tb_adjustment_type", `name = 'Test stock_in' and deleted_at is null`),
+        adjustment_type_id: await adjustmentTypeId("stock_in"),
         location_id: idOf("tb_location", `code = '${L.code}'`),
         stock_in_detail: { add: [{ product_id: idOf("tb_product", `code = '${PX.code}'`), qty: 2, cost_per_unit: 20, total_cost: 40 }] },
       });
@@ -169,13 +167,13 @@ test(
 );
 
 test(
-  "TC-PE-470003 ใบรับที่บันทึกแล้วแก้ได้แค่หัวใบ (#715)",
+  "TC-PE-470003 ใบรับที่บันทึกแล้วแก้บรรทัดได้ แต่เปลี่ยนวันที่/สถานะไม่ได้ (#715 → GRN_SAVED_IDENTITY_LOCKED)",
   {
     annotation: [
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO=<scenario> (AVG หรือ FIFO); งวดปัจจุบันของ BU = งวดของ scenario; phase 914 (เดิม 20-case2) TC-PE-440001 (ข้อ 2.1) สร้างใบรับงวดหน้า (saved) ไว้ใน state.json แล้ว",
+          "E2E_PERIOD_BU=<BU> (TEST BU ใดก็ได้); งวดปัจจุบันของ BU = งวดของ scenario; phase 914 (เดิม 20-case2) TC-PE-440001 (ข้อ 2.1) สร้างใบรับงวดหน้า (saved) ไว้ใน state.json แล้ว",
       },
       {
         type: "steps",
@@ -185,7 +183,7 @@ test(
       {
         type: "expected",
         description:
-          "แก้บรรทัดและแก้วันที่ → 400 GRN_SAVED_HEADER_ONLY; เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED; แก้ note/invoice_no → สำเร็จ (HTTP < 300) ค่าใหม่ถูกเก็บ และใบยังเป็น saved",
+          "แก้บรรทัด → สำเร็จ (backend ปัจจุบัน: ใบ saved แก้ได้เหมือนร่าง ยกเว้นผู้ขาย/วันที่รับ — GRN_SAVED_HEADER_ONLY เลิกส่งแล้ว); แก้วันที่ → 400 GRN_SAVED_IDENTITY_LOCKED; เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED; แก้ note/invoice_no → สำเร็จ (HTTP < 300) ค่าใหม่ถูกเก็บ และใบยังเป็น saved",
       },
       { type: "priority", description: "High" },
       { type: "testType", description: "Validation" },
@@ -197,6 +195,8 @@ test(
     ],
   },
   async () => {
+    // The backend now deliberately allows line edits on a saved GRN and locks only vendor and date
+    // (GRN_SAVED_IDENTITY_LOCKED); the old assertion here was GRN_SAVED_HEADER_ONLY (user-approved change).
     const grn = getDoc(SCN.keys.nextGrn)!;
     const [detail] = sql<{ id: string; doc_version: string }>(`select id, doc_version from ${SCHEMA}.tb_good_received_note_detail
       where good_received_note_id = '${grn.id}' and deleted_at is null limit 1`);
@@ -220,8 +220,8 @@ test(
       `select note, invoice_no, doc_status::text doc_status from ${SCHEMA}.tb_good_received_note where id = '${grn.id}'`,
     );
     const ok =
-      lines.status === 400 && lines.appCode === "GRN_SAVED_HEADER_ONLY" &&
-      date.status === 400 && date.appCode === "GRN_SAVED_HEADER_ONLY" &&
+      lines.status < 300 &&
+      date.status === 400 && date.appCode === "GRN_SAVED_IDENTITY_LOCKED" &&
       status.status === 400 && status.appCode === "GRN_STATUS_CHANGE_NOT_ALLOWED" &&
       header.status < 300 && after.note === note && after.invoice_no === `E2E-INV-${PERIOD}` && after.doc_status === "saved";
     record({
@@ -230,7 +230,7 @@ test(
       title: `แก้ใบรับ ${grn.no} ที่บันทึกแล้วผ่าน API`,
       steps: ["แก้จำนวนในบรรทัด", "แก้วันที่ใบรับ (ตัวกำหนดงวด)", "เปลี่ยนสถานะกลับเป็นร่าง", "แก้หมายเหตุกับเลขใบแจ้งหนี้"],
       expected:
-        "แก้บรรทัด / วันที่ → 400 GRN_SAVED_HEADER_ONLY · เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED · แก้หมายเหตุ/เลขใบแจ้งหนี้ → สำเร็จ และใบยังเป็นบันทึกแล้ว",
+        "แก้บรรทัด → สำเร็จ · แก้วันที่ → 400 GRN_SAVED_IDENTITY_LOCKED · เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED · แก้หมายเหตุ/เลขใบแจ้งหนี้ → สำเร็จ และใบยังเป็นบันทึกแล้ว",
       actual: `แก้บรรทัด → ${lines.status} ${lines.appCode} · แก้วันที่ → ${date.status} ${date.appCode} · เปลี่ยนสถานะ → ${status.status} ${status.appCode} · แก้หัวใบ → ${header.status} (note="${after.note}", invoice_no="${after.invoice_no}", สถานะ ${after.doc_status})`,
       status: ok ? "PASS" : "FAIL",
       docs: [grn.no],
@@ -249,12 +249,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = งวดของ scenario และวันนี้อยู่ในงวด open/locked อื่นที่ใหม่กว่า (ไม่งั้นข้าม); workflow SR ที่ขั้น create>approve>issue>approve (หาจาก stage ด้วย srIssueWorkflowName — เดิมชื่อ 'SR Test Flow v2 (with Issue)' แต่ถูกเปลี่ยนชื่อบน dev); คลัง TEST-MOVE / TEST-CONSUME ผูกสินค้า T-01-A (AVG) หรือ T-01-F (FIFO); บัญชี requestor@carmen.com และ hod@carmen.com มีอยู่",
+          "E2E_PERIOD_BU=<BU>; งวดปัจจุบันของ BU = งวดของ scenario และวันนี้อยู่ในงวด open/locked อื่นที่ใหม่กว่า (ไม่งั้นข้าม); workflow SR ที่มีขั้น Issue (หาจาก stage ด้วย srIssueWorkflow ของ context.ts ไม่อิงชื่อ); คลัง inventory 2 คลังแรกของ BU (L เป็นต้นทาง คลังที่สองเป็นปลายทาง) สินค้า E2E-PC-X อยู่ที่ L; บัญชี Requestor และ HOD (gmail) มีอยู่และอยู่ใน workflow",
       },
       {
         type: "steps",
         description:
-          "1. admin POST /store-requisitions (requestor = requestor@carmen.com): T-01-A/T-01-F 1 หน่วย จาก TEST-MOVE ไป TEST-CONSUME\n2. admin PATCH …/submit พร้อม sr_date_pattern = today (ผู้ใช้เลือกลงวันที่วันนี้)\n3. hod@carmen.com PATCH …/approve ขั้น HOD (approved_qty 1)\n4. admin PATCH …/approve stage_role = issue (issued_qty 1)\n5. อ่านใบและนับ cost layer ของใบ\n6. เก็บกวาด: reject ใบที่ค้างขั้น Issue",
+          "1. admin POST /store-requisitions (requestor = Requestor gmail): E2E-PC-X 1 หน่วย จากคลัง L ไปคลังที่สองของ BU\n2. admin PATCH …/submit พร้อม sr_date_pattern = today (ผู้ใช้เลือกลงวันที่วันนี้)\n3. HOD (gmail) PATCH …/approve ขั้น HOD (approved_qty 1)\n4. admin PATCH …/approve stage_role = issue (issued_qty 1)\n5. อ่านใบและนับ cost layer ของใบ\n6. เก็บกวาด: reject ใบที่ค้างขั้น Issue",
       },
       {
         type: "expected",
@@ -278,7 +278,11 @@ test(
     test.skip(!todays || todays.period === PERIOD, "วันนี้อยู่ในงวดปัจจุบัน — ไม่มีเคสให้ปฏิเสธ");
     const get = async (id: string) => (await apiSend("GET", `/api/${BU}/store-requisitions/${id}`)).body.data;
     const lineOf = (d: any) => (d.store_requisition_detail ?? d.tb_store_requisition_detail ?? [])[0]?.id;
-    const requestor = sql<{ id: string }>(`select id from "CARMEN_SYSTEM".tb_user where email = 'requestor@carmen.com'`)[0].id;
+    const requestor = pcUserId("requestor");
+    const locs = await inventoryLocations();
+    const from = locs.find((l) => l.code === L.code);
+    const to = locs.find((l) => l.code !== L.code);
+    expect(from && to, `${BU}: ต้องมีคลัง inventory อย่างน้อย 2 คลัง (เจอ ${locs.map((l) => l.code).join(", ") || "-"})`).toBeTruthy();
 
     let sr = getDoc("sr718");
     const trail: string[] = [];
@@ -290,11 +294,11 @@ test(
           expected_date: now,
           description: `E2E ${PERIOD} 5.4 #718`,
           requestor_id: requestor,
-          workflow_id: idOf("tb_workflow", `name = '${await srIssueWorkflowName(BU)}' and deleted_at is null`),
-          // คู่คลัง/สินค้าที่ผูกกันไว้แล้ว (ชุดเดียวกับสคริปต์ใบเบิกเดิม) — 1AG01 ไม่มีสินค้าร่วมกับคลังอื่นบน FIFO
-          from_location_id: idOf("tb_location", `code = 'TEST-MOVE'`),
-          to_location_id: idOf("tb_location", `code = 'TEST-CONSUME'`),
-          store_requisition_detail: { add: [{ product_id: idOf("tb_product", `code = '${SR_PRODUCT}'`), requested_qty: 1 }] },
+          workflow_id: (await srIssueWorkflow()).id,
+          // ต้นทาง = คลังแรกของ BU (L — ที่ data:reset ผูก E2E-PC-X ไว้) · ปลายทาง = คลัง inventory ถัดไป
+          from_location_id: from!.id,
+          to_location_id: to!.id,
+          store_requisition_detail: { add: [{ product_id: idOf("tb_product", `code = '${PX.code}'`), requested_qty: 1 }] },
         },
       });
       expect(created.status, `create SR ${JSON.stringify(created.body)}`).toBeLessThan(300);
@@ -316,7 +320,8 @@ test(
       expect(r.status, `submit ${JSON.stringify(r.body)}`).toBeLessThan(300);
       d = await get(sr.id);
     }
-    if (d.workflow_current_stage === "HOD") {
+    // TEST BU: workflow SR ขั้นอนุมัติชื่อ "Store Approval" และมอบให้บัญชี Purchase (fixtures/workflows.json)
+    if (d.workflow_current_stage === "Store Approval") {
       const r = await apiSend(
         "PATCH",
         `/api/${BU}/store-requisitions/${sr.id}/approve`,
@@ -325,7 +330,7 @@ test(
           stage_role: "approve",
           details: [{ id: lineOf(d), stage_status: "approve", stage_message: "", approved_qty: 1 }],
         },
-        "hod",
+        "purchase",
       );
       trail.push(`HOD อนุมัติ → ${r.status}${r.appCode ? " " + r.appCode : ""}`);
       expect(r.status, `HOD approve ${JSON.stringify(r.body)}`).toBeLessThan(300);
@@ -349,8 +354,8 @@ test(
       case: CASE,
       title: `ใบเบิก ${d.sr_no}: วันนี้อยู่งวด ${todays.period} แต่งวดปัจจุบันคือ ${PERIOD}`,
       steps: [
-        `admin สร้างใบเบิก (${SR_PRODUCT} 1 จาก TEST-MOVE ไป TEST-CONSUME) แล้วส่ง โดยเลือกลงวันที่วันนี้ (sr_date_pattern = today)`,
-        "hod@carmen.com อนุมัติขั้น HOD",
+        `admin สร้างใบเบิก (requestor = Requestor gmail; ${PX.code} 1 จาก ${from!.code} ไป ${to!.code}) แล้วส่ง โดยเลือกลงวันที่วันนี้ (sr_date_pattern = today)`,
+        "HOD (gmail) อนุมัติขั้น HOD",
         "admin กดจ่ายของ (issue)",
       ],
       expected: `ใบลงวันที่วันนี้ (งวด ${todays.period}) ส่งและอนุมัติได้ ใบไปรอที่ขั้น Issue · การจ่ายถูกปฏิเสธ 422 SR_ISSUE_PERIOD_NOT_CURRENT (งวด ${todays.period} / ปัจจุบัน ${PERIOD}) · ใบยังอยู่ขั้น Issue ไม่มีรายการเคลื่อนไหว`,

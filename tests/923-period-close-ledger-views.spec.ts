@@ -1,8 +1,7 @@
-import { test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, record, shot, gatePhase } from "./helpers/period-close/context";
-import { apiGet } from "./helpers/movement/api";
+import { test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, record, shot, gatePhase, apiGet } from "./helpers/period-close/context";
 import { createAdjustment } from "./helpers/period-close/docs";
-import { currentPeriod, expectedIssueCost, voidedLotCosts } from "./helpers/period-close/estimate";
-import { L, P, PERIOD } from "./helpers/period-close/scenarios";
+import { currentPeriod, expectedIssueCost, periodReceiptAverage, voidedLotCosts } from "./helpers/period-close/estimate";
+import { L, P, PERIOD, SCN } from "./helpers/period-close/scenarios";
 
 /**
  * Period close · Case 3 · screens that read the ledger (AVG 2601–2603 findings → PR #708) — section 53 of PE.
@@ -19,7 +18,7 @@ import { L, P, PERIOD } from "./helpers/period-close/scenarios";
  * Prerequisites: the scenario's pre-step documents exist (3.1 / 3.3 read location L's
  * lots); 3.2 needs at least one closed period to have open/close rows to check — on the
  * first period after a reset it records N/A and checks the list is empty.
- * Run: E2E_PERIOD_SCENARIO=<scenario> bun run test:period-close -- tests/923-period-close-ledger-views.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/923-period-close-ledger-views.spec.ts
  * Origin: _movement_play/eop_bf/e2e/specs/47-ledger-views.spec.ts
  */
 /**
@@ -32,6 +31,8 @@ import { L, P, PERIOD } from "./helpers/period-close/scenarios";
  */
 const CASE = "Case 3 · หน้าจอที่อ่านจากบัญชี (PR #708)";
 const PRODUCTS = [P.P1, P.P2, P.P3, P.P4];
+/** The Stock Out form shows its Total Cost as a negative amount with a typographic minus ("−360.00") — compare the magnitude. */
+const soTotal = (v: string): number => Math.abs(Number(v.replace(/[\u2212\u2013]/g, "-")));
 const PROBE_QTY = 3;
 
 test.beforeAll(() => requireScenario());
@@ -45,12 +46,12 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO และ E2E_DB_URL ตั้งไว้; คลัง 1AG01 มีล็อตของ P1–P4 จาก pre-step (บางสินค้ามีล็อตของ GRN ที่ void เป็นตัวหลอก)",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU และ E2E_DB_URL ตั้งไว้; คลัง L มีล็อตของ P1–P4 จาก pre-step (บางสินค้ามีล็อตของ GRN ที่ void เป็นตัวหลอก)",
       },
       {
         type: "steps",
         description:
-          "1. เปิดฟอร์ม Stock In ใหม่ ลงวันที่สิ้นงวดปัจจุบัน คลัง 1AG01 เพิ่ม P1–P4 อย่างละ 3 หน่วย อ่านราคาต่อหน่วยที่ฟอร์มเติมให้ (ไม่บันทึก)\n2. ทำแบบเดียวกันกับฟอร์ม Stock Out อ่านช่อง Total Cost (ไม่บันทึก)\n3. คิดราคาที่คาดจาก cost layer: FIFO ตัดล็อตเก่าก่อนจากงวดที่หยิบได้ · AVG ค่าเฉลี่ยสุทธิ · ของไม่พอ = ไม่เติมราคา",
+          "1. เปิดฟอร์ม Stock In ใหม่ ลงวันที่สิ้นงวดปัจจุบัน คลัง L เพิ่ม P1–P4 อย่างละ 3 หน่วย อ่านราคาต่อหน่วยที่ฟอร์มเติมให้ (ไม่บันทึก)\n2. ทำแบบเดียวกันกับฟอร์ม Stock Out อ่านช่อง Total Cost (ไม่บันทึก)\n3. คิดราคาที่คาดจาก cost layer: FIFO ตัดล็อตเก่าก่อนจากงวดที่หยิบได้ · AVG ค่าเฉลี่ยสุทธิ · ของไม่พอ = ไม่เติมราคา",
       },
       {
         type: "expected",
@@ -72,7 +73,7 @@ test(
     const images: Record<string, string> = {};
     for (const type of ["stock-in", "stock-out"] as const) {
       await createAdjustment(page, {
-        type, date: cur.end_at, reason: type === "stock-in" ? "Test stock_in" : "Test stock_out", status: "draft", dryRun: true,
+        type, date: cur.end_at, reason: type === "stock-in" ? "E2E IA stock in" : "E2E IA stock out", status: "draft", dryRun: true,
         lines: PRODUCTS.map((p) => ({ product: p.code, qty: PROBE_QTY })),
         onAutoCost: (c) => (auto[type] = c),
       });
@@ -89,9 +90,15 @@ test(
       const traps = voidedLotCosts(p.code);
       const noisy = [si, so].some((v) => /\.\d{3,}/.test(v));
       // SI อ่านราคาต่อหน่วยจากช่องราคา · SO ฟอร์มมีแต่ Total Cost จึงเทียบยอดรวม
+      // FIFO: the SI form prefills by si.cost-from (last cost — the scenario's costCases price), while the SO form
+      // shows what the post will charge (FIFO lots). AVG: both come from the same average.
+      const lastCost = SCN.method === "fifo" ? SCN.costCases.find((c) => c.p.code === p.code && c.side !== "out")?.want : undefined;
+      // average BU: the SI form prefills the period receipt average (not the net average the SO posts at)
+      const periodAvg = SCN.method === "average" ? periodReceiptAverage(p.code, cur.period) : null;
+      const siWant = want.ok ? (typeof lastCost === "number" ? lastCost : periodAvg ?? want.avg) : 0;
       const pass = want.ok
-        ? Number(si) === want.avg && Number(so) === want.total && !noisy
-        : [si, so].every((v) => v === "" || Number(v) === 0);
+        ? Number(si) === siWant && soTotal(so) === want.total && !noisy
+        : [si, so].every((v) => v === "" || soTotal(v) === 0);
       record({
         id: `3.1-P${i + 1}`, case: CASE,
         title: `CostProbe ${p.name} (${p.code}) ${PROBE_QTY} หน่วยที่ ${L.code} — งวด ${cur.period}`,
@@ -100,14 +107,14 @@ test(
           `เพิ่ม ${p.code} จำนวน ${PROBE_QTY} → อ่านราคาที่ฟอร์มเติมให้`,
         ],
         expected: want.ok
-          ? `SI ราคาต่อหน่วย ${want.avg} · SO Total Cost ${want.total} (= ${want.how}) · ทศนิยมไม่เกิน 2 ตำแหน่ง · ไม่ใช่ราคาล็อตของ GRN ที่ void${traps.length ? ` (${traps.join(", ")})` : ""}`
+          ? `SI ราคาต่อหน่วย ${siWant} · SO Total Cost ${want.total} (= ${want.how}) · ทศนิยมไม่เกิน 2 ตำแหน่ง · ไม่ใช่ราคาล็อตของ GRN ที่ void${traps.length ? ` (${traps.join(", ")})` : ""}`
           : `ไม่เติมราคา — ของไม่พอ (${want.how})`,
         actual: `SI ราคาต่อหน่วย ${si || "(ว่าง)"} · SO Total Cost ${so || "(ว่าง)"}${noisy ? " · ทศนิยมเพี้ยน" : ""}`,
         status: pass ? "PASS" : "FAIL",
         images: [images["stock-in"], images["stock-out"]],
       });
       if (!pass) {
-        failed.push(`3.1-P${i + 1} ${p.code}: SI ${si || "(ว่าง)"} / SO ${so || "(ว่าง)"} คาด ${want.ok ? `${want.avg} / ${want.total}` : "ว่าง (ของไม่พอ)"}`);
+        failed.push(`3.1-P${i + 1} ${p.code}: SI ${si || "(ว่าง)"} / SO ${so || "(ว่าง)"} คาด ${want.ok ? `${siWant} / ${want.total}` : "ว่าง (ของไม่พอ)"}`);
       }
     }
     // verdict ที่บันทึกไว้ (ต้นฉบับไม่มี expect)
@@ -122,7 +129,7 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_DB_URL ตั้งไว้; มีงวดที่ปิดแล้วอย่างน้อยหนึ่งงวดจึงจะมีแถว open/close ให้ตรวจ (งวดแรกหลังรีเซ็ตบันทึก N/A)",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_DB_URL ตั้งไว้; มีงวดที่ปิดแล้วอย่างน้อยหนึ่งงวดจึงจะมีแถว open/close ให้ตรวจ (งวดแรกหลังรีเซ็ตบันทึก N/A)",
       },
       {
         type: "steps",
@@ -220,12 +227,12 @@ test(
       {
         type: "preconditions",
         description:
-          "BU ของ scenario; E2E_DB_URL ตั้งไว้; P1 (11110001) ที่คลัง 1AG01 มีรายการเคลื่อนไหวจาก pre-step (บางรอบมี GRN ที่ void ของ P1 เป็นตัวหลอก)",
+          "BU ของ scenario; E2E_DB_URL ตั้งไว้; P1 (11110001) ที่คลัง L มีรายการเคลื่อนไหวจาก pre-step (บางรอบมี GRN ที่ void ของ P1 เป็นตัวหลอก)",
       },
       {
         type: "steps",
         description:
-          "1. GET /api/<BU>/inventory-info/<P1>/<1AG01> ในนาม admin (ไม่มีหน้าจอ FE แสดงรายการนี้)\n2. อ่านล็อตของรายการที่ยังไม่ void และล็อตของใบที่ void ของ P1 ที่ 1AG01 จากฐานข้อมูล\n3. เทียบรายการที่ API คืนกับทั้งสองชุด",
+          "1. GET /api/<BU>/inventory-info/<P1>/<คลัง L> ในนาม admin (ไม่มีหน้าจอ FE แสดงรายการนี้)\n2. อ่านล็อตของรายการที่ยังไม่ void และล็อตของใบที่ void ของ P1 ที่คลัง L จากฐานข้อมูล\n3. เทียบรายการที่ API คืนกับทั้งสองชุด",
       },
       {
         type: "expected",

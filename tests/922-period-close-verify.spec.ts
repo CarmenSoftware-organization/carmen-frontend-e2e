@@ -26,7 +26,7 @@ import { L, SCN, PERIOD } from "./helpers/period-close/scenarios";
  * period-close project runs with fullyParallel: false and one worker.
  *
  * Prerequisites: TC-PE-510001 counted every location; the period under test is still current.
- * Run: E2E_PERIOD_SCENARIO=<scenario> bun run test:period-close -- tests/922-period-close-verify.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/922-period-close-verify.spec.ts
  * Origin: _movement_play/eop_bf/e2e/specs/45-verify.spec.ts
  */
 // ตรวจผลหลังนับครบ: 2.8 ใบชดเชย (เลข/ชนิด/วันที่) · 2.9 ราคา SI ชดเชย vs กติกาที่ผู้ใช้เคาะ · ข้อค้นพบ on-hand ของใบนับ
@@ -61,7 +61,7 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO และ E2E_DB_URL ตั้งไว้; TC-PE-510001 นับครบทุกคลังแล้ว (คลัง 1AG01 มีทั้งนับเกินและนับขาด); งวดที่ทดสอบยังเป็นงวดปัจจุบัน",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU และ E2E_DB_URL ตั้งไว้; TC-PE-510001 นับครบทุกคลังแล้ว (คลัง L มีทั้งนับเกินและนับขาด); งวดที่ทดสอบยังเป็นงวดปัจจุบัน",
       },
       {
         type: "steps",
@@ -131,7 +131,7 @@ test(
       {
         type: "preconditions",
         description:
-          "TC-PE-520001 รันแล้ว (ภาพใบชดเชย); ใบชดเชยของคลัง 1AG01 มีบรรทัดของสินค้าทุกตัวใน costCases ของ scenario; เอกสารรับเข้า/กับดักราคาของ pre-step และ TC-PE-500001 ยังอยู่; E2E_DB_URL ตั้งไว้",
+          "TC-PE-520001 รันแล้ว (ภาพใบชดเชย); ใบชดเชยของคลัง L มีบรรทัดของสินค้าทุกตัวใน costCases ของ scenario; เอกสารรับเข้า/กับดักราคาของ pre-step และ TC-PE-500001 ยังอยู่; E2E_DB_URL ตั้งไว้",
       },
       {
         type: "steps",
@@ -189,6 +189,24 @@ test(
     // ค่าเฉลี่ย ณ ปิดงวด (สูตร computePeriodAverages): มูลค่า/จำนวนรับเข้าทั้งงวดของสินค้า ทุกคลัง รวมยอดยกมา
     // ไม่รวม close_period และไม่รวมใบชดเชยของรอบนี้เอง (มันเกิดหลังตีราคา)
     const periodAverage = (code: string) => {
+      // average_per_location: the count's compensation Stock In starts at the location's net moving average (Σ (in − out) × cost
+      // ÷ Σ (in − out) at the location, micro-business getNetAverageCostAsOf), not the BU-wide period average — the close
+      // values each location at its own closing value ÷ closing qty. Compensation docs of this round are left out (they come after pricing).
+      if (SCN.method === "average_per_location") {
+        const [n] = sql(`
+          select round(sum((cl.in_qty - cl.out_qty) * cl.cost_per_unit) / nullif(sum(cl.in_qty - cl.out_qty), 0), 2) avg,
+                 sum(cl.in_qty - cl.out_qty) qty, sum((cl.in_qty - cl.out_qty) * cl.cost_per_unit) val
+          from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
+          join ${SCHEMA}.tb_inventory_transaction_detail itd on itd.id = cl.inventory_transaction_detail_id
+          join ${SCHEMA}.tb_inventory_transaction it on it.id = itd.inventory_transaction_id
+          where cl.product_id = (select id from ${SCHEMA}.tb_product where code = '${code}')
+            and cl.location_id = (select id from ${SCHEMA}.tb_location where code = '${L.code}')
+            and cl.deleted_at is null and cl.transaction_type::text <> 'close_period'
+            and it.inventory_doc_no not in (
+              select id from ${SCHEMA}.tb_stock_in where description = '${DESC}'
+              union all select id from ${SCHEMA}.tb_stock_out where description = '${DESC}')`);
+        return { avg: Number(n?.avg), qty: Number(n?.qty), val: Number(n?.val) };
+      }
       const [r] = sql(`
         select round(sum(cl.total_cost) / nullif(sum(cl.in_qty), 0), 2) avg, sum(cl.in_qty) qty, sum(cl.total_cost) val
         from ${SCHEMA}.tb_inventory_transaction_cost_layer cl

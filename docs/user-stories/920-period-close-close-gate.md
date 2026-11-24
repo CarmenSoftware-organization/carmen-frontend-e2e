@@ -23,7 +23,7 @@ _Generated from `tests/920-period-close-close-gate.spec.ts` annotations. Edit an
 
 **Preconditions**
 
-Login เป็น admin@carmen.com (movement-setup) บน BU ของ scenario; E2E_PERIOD_SCENARIO และ E2E_DB_URL ตั้งไว้; งวดที่ทดสอบยังเป็นงวดปัจจุบัน และรอบนับอยู่สถานะ counting (กด Start Period Close แล้ว); ยังนับไม่ครบทุกคลัง
+Login เป็น Admin (gmail, project setup) บน BU ของ scenario; E2E_PERIOD_BU และ E2E_DB_URL ตั้งไว้; งวดที่ทดสอบยังเป็นงวดปัจจุบัน และรอบนับอยู่สถานะ counting (กด Start Period Close แล้ว); ยังนับไม่ครบทุกคลัง
 
 **Steps**
 
@@ -41,4 +41,4 @@ Login เป็น admin@carmen.com (movement-setup) บน BU ของ scenari
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

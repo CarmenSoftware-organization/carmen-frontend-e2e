@@ -25,11 +25,11 @@ _Generated from `tests/923-period-close-ledger-views.spec.ts` annotations. Edit 
 
 **Preconditions**
 
-Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO และ E2E_DB_URL ตั้งไว้; คลัง 1AG01 มีล็อตของ P1–P4 จาก pre-step (บางสินค้ามีล็อตของ GRN ที่ void เป็นตัวหลอก)
+Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU และ E2E_DB_URL ตั้งไว้; คลัง L มีล็อตของ P1–P4 จาก pre-step (บางสินค้ามีล็อตของ GRN ที่ void เป็นตัวหลอก)
 
 **Steps**
 
-1. เปิดฟอร์ม Stock In ใหม่ ลงวันที่สิ้นงวดปัจจุบัน คลัง 1AG01 เพิ่ม P1–P4 อย่างละ 3 หน่วย อ่านราคาต่อหน่วยที่ฟอร์มเติมให้ (ไม่บันทึก)
+1. เปิดฟอร์ม Stock In ใหม่ ลงวันที่สิ้นงวดปัจจุบัน คลัง L เพิ่ม P1–P4 อย่างละ 3 หน่วย อ่านราคาต่อหน่วยที่ฟอร์มเติมให้ (ไม่บันทึก)
 2. ทำแบบเดียวกันกับฟอร์ม Stock Out อ่านช่อง Total Cost (ไม่บันทึก)
 3. คิดราคาที่คาดจาก cost layer: FIFO ตัดล็อตเก่าก่อนจากงวดที่หยิบได้ · AVG ค่าเฉลี่ยสุทธิ · ของไม่พอ = ไม่เติมราคา
 
@@ -49,7 +49,7 @@ Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCE
 
 **Preconditions**
 
-Login เป็น admin@carmen.com บน BU ของ scenario; E2E_DB_URL ตั้งไว้; มีงวดที่ปิดแล้วอย่างน้อยหนึ่งงวดจึงจะมีแถว open/close ให้ตรวจ (งวดแรกหลังรีเซ็ตบันทึก N/A)
+Login เป็น Admin (gmail) บน BU ของ scenario; E2E_DB_URL ตั้งไว้; มีงวดที่ปิดแล้วอย่างน้อยหนึ่งงวดจึงจะมีแถว open/close ให้ตรวจ (งวดแรกหลังรีเซ็ตบันทึก N/A)
 
 **Steps**
 
@@ -74,12 +74,12 @@ Login เป็น admin@carmen.com บน BU ของ scenario; E2E_DB_URL ต
 
 **Preconditions**
 
-BU ของ scenario; E2E_DB_URL ตั้งไว้; P1 (11110001) ที่คลัง 1AG01 มีรายการเคลื่อนไหวจาก pre-step (บางรอบมี GRN ที่ void ของ P1 เป็นตัวหลอก)
+BU ของ scenario; E2E_DB_URL ตั้งไว้; P1 (11110001) ที่คลัง L มีรายการเคลื่อนไหวจาก pre-step (บางรอบมี GRN ที่ void ของ P1 เป็นตัวหลอก)
 
 **Steps**
 
-1. GET /api/<BU>/inventory-info/<P1>/<1AG01> ในนาม admin (ไม่มีหน้าจอ FE แสดงรายการนี้)
-2. อ่านล็อตของรายการที่ยังไม่ void และล็อตของใบที่ void ของ P1 ที่ 1AG01 จากฐานข้อมูล
+1. GET /api/<BU>/inventory-info/<P1>/<คลัง L> ในนาม admin (ไม่มีหน้าจอ FE แสดงรายการนี้)
+2. อ่านล็อตของรายการที่ยังไม่ void และล็อตของใบที่ void ของ P1 ที่คลัง L จากฐานข้อมูล
 3. เทียบรายการที่ API คืนกับทั้งสองชุด
 
 **Expected**
@@ -91,4 +91,4 @@ HTTP 200 · ไม่มีแถวที่ lot_no ตรงกับล็อ
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

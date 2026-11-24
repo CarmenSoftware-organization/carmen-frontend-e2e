@@ -14,7 +14,7 @@ _Generated from `tests/916-period-close-fix-guards.spec.ts` annotations. Edit an
 | TC-PE-460001 | เลขใบลดหนี้ใหม่ต้องไม่ซ้ำกับใบร่างที่ลบไปแล้ว (#712) | Medium | Functional |
 | TC-PE-460002 | void GRN ที่ของถูกจ่ายออกไปแล้วต้องถูกปฏิเสธและคลังไม่ติดลบ (#713) | High | Negative |
 | TC-PE-460003 | toast เมื่อ void GRN ถูกปฏิเสธต้องบอกเหตุผลจริงว่าของถูกเบิกไปแล้ว | Medium | Negative |
-| TC-PE-460004 | ใบลดหนี้คืนของเกินยอดคลังจริงต้องตัดสต๊อกได้แค่ที่มี (#713) | High | Edge Case |
+| TC-PE-460004 | ใบลดหนี้คืนของเกินยอดคลังจริงต้องถูกปฏิเสธ 422 และคลังไม่ติดลบ (backend 490fc9ee1 แทน #713) | High | Edge Case |
 
 ---
 
@@ -26,11 +26,11 @@ _Generated from `tests/916-period-close-fix-guards.spec.ts` annotations. Edit an
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); phase 910 (เดิม 00-prestep) สร้าง grnA ไว้ใน state.json; ยังไม่กด Start Period Close
+E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); phase 910 (เดิม 00-prestep) สร้าง grnA ไว้ใน state.json; ยังไม่กด Start Period Close
 
 **Steps**
 
-1. สร้างใบลดหนี้ร่างอ้าง grnA คืน Shredded pork skin 1 (Tax Invoice E2E-712-A) → ได้เลขใบแรก
+1. สร้างใบลดหนี้ร่างอ้าง grnA คืน P1 1 (Tax Invoice E2E-712-A) → ได้เลขใบแรก
 2. เปิดใบ → Edit → Delete → ยืนยัน
 3. สร้างใบลดหนี้ร่างใบใหม่แบบเดียวกัน (Tax Invoice E2E-712-B) → ได้เลขใบที่สอง
 4. ลบใบที่สองทิ้ง (เก็บกวาด)
@@ -53,12 +53,12 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); คลัง 1AG01 มี Ground Beef จากงวดก่อน ๆ (ล็อตเก่าที่ปิดงวดแล้ว); ยังไม่กด Start Period Close; รันซ้ำต้องตั้ง E2E_PERIOD_K42 ชุดใหม่
+E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); คลัง L มี E2E-PC-1 จากงวดก่อน ๆ (ล็อตเก่าที่ปิดงวดแล้ว); ยังไม่กด Start Period Close; รันซ้ำต้องตั้ง E2E_PERIOD_K42 ชุดใหม่
 
 **Steps**
 
-1. สร้าง GRN แบบ saved ที่ 1AG01: Ground Beef 10 @150 (AVG ลงสต๊อกตอน save) → จดล็อตของใบ
-2. สร้าง Stock Out (completed) จ่าย Ground Beef จนยอดหยิบได้เหลือ 3 → จด parent_lot_no ที่ถูกผูก
+1. สร้าง GRN แบบ saved ที่คลัง L: E2E-PC-1 10 @150 (AVG ลงสต๊อกตอน save) → จดล็อตของใบ
+2. สร้าง Stock Out (completed) จ่าย E2E-PC-1 จนยอดหยิบได้เหลือ 3 → จด parent_lot_no ที่ถูกผูก
 3. เปิด GRN → Void → ใส่เหตุผล → ยืนยัน แล้วดักคำตอบของ POST …/void
 4. อ่านสถานะใบและยอดหยิบได้ของคลังหลังลอง void
 5. ถ้าใบยัง saved: Commit ทิ้งไว้ (ใบ saved ขวางการเริ่มนับ)
@@ -91,11 +91,11 @@ TC-PE-460002 ผ่านแล้วในรอบเดียวกัน (se
 
 toast บอกเหตุผลจริงว่าของที่รับเข้าใบนี้ถูกเบิกออกไปแล้วจึงยกเลิกไม่ได้ — ไม่ใช่ "Someone else changed this document. Refresh the page and try again." / "มีคนแก้ใบนี้"
 
-> _Note: เดิม 4.2-msg (_movement_play specs/23-fix-guards) · บั๊กที่รู้อยู่ (test.fail): ผลล่าสุด avg2605-r2 2026-10-02T06:47Z FAIL — FE ไม่มีข้อความของรหัส GRN_RECEIPT_ALREADY_CONSUMED จึงตกไปข้อความกลางของ 409 · FE PR #216 (merge 2026-10-02 ราว 10:05Z หลังหลักฐานล่าสุด) เพิ่มข้อความแล้ว — ถ้าเคสนี้ขึ้น "unexpectedly passed" ให้เอา test.fail ออก · แถว results.json ยังบันทึกใน TC-PE-460002 ตามเดิม_
+> _Note: เดิม 4.2-msg (_movement_play specs/23-fix-guards) · บั๊กที่รู้อยู่ (เคยเป็น test.fail — ถอดแล้ว 2026-11-24 เพราะผ่านจริงบน BU-GR2VYNKQ หลัง FE #216): ผลล่าสุดเดิม avg2605-r2 2026-10-02T06:47Z FAIL — FE ไม่มีข้อความของรหัส GRN_RECEIPT_ALREADY_CONSUMED จึงตกไปข้อความกลางของ 409 · FE PR #216 (merge 2026-10-02 ราว 10:05Z หลังหลักฐานล่าสุด) เพิ่มข้อความแล้ว — แถว results.json ยังบันทึกใน TC-PE-460002 ตามเดิม_
 
 ---
 
-## TC-PE-460004 — ใบลดหนี้คืนของเกินยอดคลังจริงต้องตัดสต๊อกได้แค่ที่มี (#713)
+## TC-PE-460004 — ใบลดหนี้คืนของเกินยอดคลังจริงต้องถูกปฏิเสธ 422 และคลังไม่ติดลบ (backend 490fc9ee1 แทน #713)
 
 > **As a** any authenticated user, **I want** this Period Close Fix Guards behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -104,22 +104,22 @@ toast บอกเหตุผลจริงว่าของที่รั�
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); คลัง 1AG01 มี Australian Sirloin จากงวดก่อน ๆ; ยังไม่กด Start Period Close; ใช้ evidence folder ใหม่ (รันซ้ำจะใช้ใบเดิมจาก state.json)
+E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); คลัง L มี E2E-PC-2 จากงวดก่อน ๆ; ยังไม่กด Start Period Close; ใช้ evidence folder ใหม่ (รันซ้ำจะใช้ใบเดิมจาก state.json)
 
 **Steps**
 
-1. สร้าง GRN committed ที่ 1AG01: Australian Sirloin 10 @290
-2. สร้าง Stock Out (completed) จ่าย Australian Sirloin จนยอดหยิบได้เหลือ 2
-3. สร้างใบลดหนี้อ้าง GRN นั้น คืน Australian Sirloin 10 → Create → Submit (ถ้ามีใบร่างค้างจากรอบที่ถูกขัดจังหวะ ใช้ใบนั้น Submit ต่อ)
+1. สร้าง GRN committed ที่คลัง L: E2E-PC-2 10 @290
+2. สร้าง Stock Out (completed) จ่าย E2E-PC-2 จนยอดหยิบได้เหลือ 2
+3. สร้างใบลดหนี้อ้าง GRN นั้น คืน E2E-PC-2 10 → Create (ถูกปฏิเสธ)
 4. อ่าน cost layer ของใบลดหนี้ (ตัดไปเท่าไร, note shortfall) และยอดหยิบได้หลัง CN
 
 **Expected**
 
-ใบลดหนี้เป็น completed, ตัดสต๊อกได้เท่ายอดที่เหลือจริง (2), อีก 8 ลงเป็น shortfall "No stock available …" (ส่วนต่างราคา ไม่ตัดสต๊อก) และยอดหยิบได้หลัง CN = 0 ไม่ติดลบ (ก่อน #713 ตัดจากล็อตของ GRN ที่ดูยังเต็ม 10 → คลัง −8)
+สร้างใบลดหนี้คืน 10 ขณะที่เหลือจริง 2 แล้วหลังบ้านตอบ 422 CREDIT_NOTE_INSUFFICIENT_STOCK (on_hand 2, requested 10) ไม่มีใบลดหนี้ถูกสร้าง และยอดหยิบได้ของคลังยังเท่าเดิม ไม่ติดลบ
 
-> _Note: เดิม 4.3 (_movement_play specs/23-fix-guards) · พิสูจน์ backend PR #713 · ผลล่าสุด avg2605-r2 2026-10-02 PASS · เดิมยืนยันแค่ยอดไม่ติดลบ — เพิ่มการยืนยันว่าตัดได้เท่ายอดที่มี, ยอดเหลือ 0 และใบเป็น completed ให้ตรงกับ verdict · รันซ้ำในโฟลเดอร์เดิมคำนวณยอดก่อน CN ใหม่ไม่ได้ ทั้ง results.json และเคสจะเป็น FAIL_
+> _Note: เดิม 4.3 (_movement_play specs/23-fix-guards) พิสูจน์ PR #713 ที่ให้ CN ตัดเท่าที่มี — backend 490fc9ee1 (2026-10-07) มาแทน #713 แล้ว เคสนี้จึงยืนยันกติกาใหม่: CN คืนเกินยอดคลังถูกปฏิเสธ 422 CREDIT_NOTE_INSUFFICIENT_STOCK · ไม่มีใบลดหนี้ถูกสร้าง · ยอดคลังเท่าเดิมและไม่ติดลบ · รันซ้ำในโฟลเดอร์เดิมคำนวณยอดก่อน CN ใหม่ไม่ได้ ทั้ง results.json และเคสจะเป็น FAIL_
 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

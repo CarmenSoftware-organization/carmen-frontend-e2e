@@ -39,7 +39,7 @@ import { P, PX, SCN, PERIOD } from "./helpers/period-close/scenarios";
  * Irreversible? ไม่ — Start ถูกปฏิเสธ 422 ไม่เปลี่ยนสถานะงวด (แต่สร้างแล้ว void/ลบเอกสารจริงในงวด)
  * Prerequisites: 910 ผ่านแล้ว (admin ผูกกับคลัง L) · งวดปัจจุบันของ BU = งวดของ scenario · รอบนับยังไม่เริ่ม
  *   · ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0 — แต่ละ sub-case ตรวจเอง)
- * Run:  E2E_PERIOD_SCENARIO=<s> bun run test:period-close -- tests/912-period-close-start-gate.spec.ts
+ * Run:  E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/912-period-close-start-gate.spec.ts
  *
  * ไม่ตั้ง serial โดยตั้งใจ: แต่ละ sub-case สร้างและเคลียร์เอกสารของตัวเอง แล้วตรวจเองว่าเริ่มจากสถานะสะอาด
  * — ข้อหนึ่งล้มด้วยผลตรวจ ข้อถัดไปยังทดสอบชนิดเอกสารอื่นได้ตามเดิม (เหมือนต้นฉบับ)
@@ -79,7 +79,7 @@ const siDraft = (key: string): Omit<Blocker, "clear" | "clearLabel"> => ({
   key, module: "stock_in", label: "SI draft", docUrl: (d) => adjustmentUrl("stock-in", d.id),
   create: (page, onCreated) =>
     createAdjustment(page, {
-      type: "stock-in", date: SCN.case1Date, reason: "Test stock_in", status: "draft", onCreated,
+      type: "stock-in", date: SCN.case1Date, reason: "E2E IA stock in", status: "draft", onCreated,
       lines: [{ product: PX.code, qty: 1, price: 10 }],
     }),
 });
@@ -87,7 +87,7 @@ const soDraft = (key: string): Omit<Blocker, "clear" | "clearLabel"> => ({
   key, module: "stock_out", label: "SO draft", docUrl: (d) => adjustmentUrl("stock-out", d.id),
   create: (page, onCreated) =>
     createAdjustment(page, {
-      type: "stock-out", date: SCN.case1Date, reason: "Test stock_out", status: "draft", onCreated,
+      type: "stock-out", date: SCN.case1Date, reason: "E2E IA stock out", status: "draft", onCreated,
       lines: [{ product: P.P4.code, qty: 1 }],
     }),
 });
@@ -177,8 +177,8 @@ test(
   "TC-PE-420001 GRN ร่าง (เลข draft-…) ลงวันที่ในงวดขวาง Start Period Close แล้ว Void ได้",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (admin ผูกกับคลัง L)" },
-      { type: "steps", description: "1. สร้าง GRN manual ลงวันที่ case1Date ของ scenario (Chicken frame qty 1 @10 ที่คลัง L) → Save Draft\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog \"Finish these documents first\" → Close\n5. เปิด GRN → Void (กรอกเหตุผล)\n6. GET period-ends/review" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (admin ผูกกับคลัง L)" },
+      { type: "steps", description: "1. สร้าง GRN manual ลงวันที่ case1Date ของ scenario (E2E-PC-X qty 1 @10 ที่คลัง L) → Save Draft\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog \"Finish these documents first\" → Close\n5. เปิด GRN → Void (กรอกเหตุผล)\n6. GET period-ends/review" },
       { type: "expected", description: "start_blocking.grn = 1 ก่อนกด; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลข draft-… ของใบนั้น; หลัง Void start_blocking.total = 0" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Negative" },
@@ -197,8 +197,8 @@ test(
   "TC-PE-420002 GRN บันทึกแล้ว (saved) ของสินค้า P1 ลงวันที่ในงวดขวาง Start Period Close แล้ว Void ได้",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว" },
-      { type: "steps", description: "1. สร้าง GRN manual ตาม voidTrap ของ scenario (Ground Beef qty 10 ราคากับดัก วันที่ในงวด ที่คลัง L) → Create (saved)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog \"Finish these documents first\" → Close\n5. เปิด GRN → Void\n6. GET period-ends/review" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว" },
+      { type: "steps", description: "1. สร้าง GRN manual ตาม voidTrap ของ scenario (E2E-PC-1 qty 10 ราคากับดัก วันที่ในงวด ที่คลัง L) → Create (saved)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog \"Finish these documents first\" → Close\n5. เปิด GRN → Void\n6. GET period-ends/review" },
       { type: "expected", description: "start_blocking.grn = 1 ก่อนกด; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลข GRN ของใบนั้น; หลัง Void สถานะใบ = voided และ start_blocking.total = 0" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Negative" },
@@ -221,8 +221,8 @@ test(
   "TC-PE-420003 Stock In ร่างลงวันที่ในงวดขวาง Start Period Close แล้ว Void ได้",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว" },
-      { type: "steps", description: "1. Inventory Adjustment → Add Stock In · Date = case1Date ของ scenario · Reason Test stock_in · คลัง L · Chicken frame qty 1 @10 → Save (draft)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. เปิดใบ → Edit → Void (กรอก Void Reason)\n6. GET period-ends/review" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว" },
+      { type: "steps", description: "1. Inventory Adjustment → Add Stock In · Date = case1Date ของ scenario · Reason E2E IA stock in · คลัง L · E2E-PC-X qty 1 @10 → Save (draft)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. เปิดใบ → Edit → Void (กรอก Void Reason)\n6. GET period-ends/review" },
       { type: "expected", description: "start_blocking.stock_in = 1 ก่อนกด; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลข SI ของใบนั้น; หลัง Void start_blocking.total = 0; payload void ที่ FE ส่งถูกเก็บไว้ใช้ในข้อ 1.F2" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Negative" },
@@ -241,8 +241,8 @@ test(
   "TC-PE-420004 Stock Out ร่างลงวันที่ในงวดขวาง Start Period Close แล้ว Void ได้",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (มีสต๊อก Shredded pork skin ที่คลัง L)" },
-      { type: "steps", description: "1. Inventory Adjustment → Add Stock Out · Date = case1Date ของ scenario · Reason Test stock_out · คลัง L · Shredded pork skin qty 1 → Save (draft)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. เปิดใบ → Edit → Void (กรอก Void Reason)\n6. GET period-ends/review" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (มีสต๊อก Shredded pork skin ที่คลัง L)" },
+      { type: "steps", description: "1. Inventory Adjustment → Add Stock Out · Date = case1Date ของ scenario · Reason E2E IA stock out · คลัง L · Shredded pork skin qty 1 → Save (draft)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. เปิดใบ → Edit → Void (กรอก Void Reason)\n6. GET period-ends/review" },
       { type: "expected", description: "start_blocking.stock_out = 1 ก่อนกด; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลข SO ของใบนั้น; หลัง Void start_blocking.total = 0" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Negative" },
@@ -261,8 +261,8 @@ test(
   "TC-PE-420005 GRN ร่าง + GRN saved + Stock In ร่าง + Stock Out ร่าง ค้างพร้อมกัน dialog ต้องลิสต์ครบแล้วเคลียร์ด้วย Delete/Void",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว" },
-      { type: "steps", description: "1. สร้างผ่าน UI ลงวันที่ในงวด: GRN ร่าง (Save Draft), GRN saved (Chicken frame qty 10 @20), Stock In ร่าง, Stock Out ร่าง\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. Delete GRN ร่าง · Void GRN saved (ใบ saved ลบไม่ได้) · Delete SI ร่าง · Delete SO ร่าง\n6. GET period-ends/review" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว" },
+      { type: "steps", description: "1. สร้างผ่าน UI ลงวันที่ในงวด: GRN ร่าง (Save Draft), GRN saved (E2E-PC-X qty 10 @20), Stock In ร่าง, Stock Out ร่าง\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. Delete GRN ร่าง · Void GRN saved (ใบ saved ลบไม่ได้) · Delete SI ร่าง · Delete SO ร่าง\n6. GET period-ends/review" },
       { type: "expected", description: "start_blocking ก่อนกด = grn 2 / stock_in 1 / stock_out 1; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลขทั้งสี่ใบ; หลังเคลียร์ start_blocking.total = 0" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Edge Case" },
@@ -283,45 +283,19 @@ test(
   },
 );
 
-/** FIFO: SR ค้างในงวดเก่าสร้างผ่าน UI ไม่ได้ — เก็บภาพฟอร์ม SR (ดูอย่างเดียว ดัก non-GET ทิ้ง) แล้วบันทึก N/A */
-async function recordSrNotApplicable(page: Page) {
-  await page.route(/\/api\//, (r, q) => (q.method() !== "GET" && !q.url().includes("/api/auth/") ? r.abort() : r.fallback()));
-  await gotoInBu(page, "/store-operation/store-requisition/new");
-  await page.waitForTimeout(1500);
-  const srImg = await shot(page, "1.N1", "SR-Request-Date-ล็อกเป็นวันนี้");
-  record({
-    id: "1.N1", case: CASE, title: `SR ค้างในงวด ${PERIOD}`,
-    steps: ["Store Requisition → New (ดูอย่างเดียว ไม่บันทึก)"],
-    expected: `สร้าง SR ที่ค้างอยู่ในงวด ${PERIOD} เพื่อทดสอบว่าขวาง Start`,
-    actual:
-      "ทำไม่ได้: Request Date ล็อกเป็นวันนี้ และตอน submit ระบบเขียน sr_date เป็นวันที่กด submit เสมอ " +
-      `ใบจึงได้เลขและตกงวดของวันนี้ ไม่มีทางค้างใน ${PERIOD} (sr-date.helper.ts / period-end.validate.ts NUMBERED_DOC) — ทดสอบด้วยใบที่ค้างอยู่จริงแล้วใน CARMEN-AVG 2609 (ข้อ 1.N1 ของ avg09: PASS)`,
-    status: "N/A", images: [srImg],
-  });
-  // ข้อเท็จจริงที่ทำให้เป็น N/A: ฟอร์มเปิดขึ้นจริง แต่ไม่มีช่องให้เลือกวันที่ของใบ (sr_date โชว์บนหัวใบเป็นวันนี้)
-  // — ถ้าวันหนึ่งมีช่อง Request Date ที่แก้ได้ เหตุผล N/A ข้างบนไม่จริงแล้ว ต้องกลับมาเขียนเคสนี้ใหม่
-  await expect(field(page, "Workflow"), "ฟอร์ม SR ใหม่ต้องเปิดขึ้น (ไม่ใช่ Permission Denied)").toBeVisible();
-  const requestDate = field(page, "Request Date");
-  if (await requestDate.count()) {
-    await expect(requestDate.locator("button").first(), "ช่อง Request Date ของ SR ต้องถูกล็อก").toBeDisabled();
-  }
-}
-
 test(
   "TC-PE-420006 เคสด่าน Start ที่ทำให้เกิดบนงวดของ scenario ไม่ได้ บันทึกเป็น N/A พร้อมเหตุผลและตรวจข้อเท็จจริงที่รองรับ",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; E2E_DB_URL ตั้งไว้" },
-      { type: "steps", description: "1. (scenario ที่ไม่มี preBlockers) ดัก request ที่ไม่ใช่ GET ทิ้ง แล้วเปิด Store Requisition → New ดูอย่างเดียว\n2. ตรวจว่าฟอร์มเปิดขึ้นและไม่มีช่อง Request Date ที่แก้ได้ → บันทึก 1.N1 = N/A\n3. DB: นับ SI / SO / CN ที่ doc_status = in_progress → บันทึก 1.N2 = N/A\n4. GET period-ends/review: ดูชนิดเอกสารใน start_blocking → บันทึก 1.N3 = INFO" },
-      { type: "expected", description: "ฟอร์ม SR ใหม่เปิดได้แต่ไม่มีช่องเลือกวันที่ของใบ (หรือช่องถูกล็อก); ไม่มี SI/SO/CN ที่สถานะ in_progress ใน BU; start_blocking ไม่มีชนิด cn / pr / po" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; E2E_DB_URL ตั้งไว้" },
+      { type: "steps", description: "1. DB: นับ SI / SO / CN ที่ doc_status = in_progress → บันทึก 1.N2 = N/A\n2. GET period-ends/review: ดูชนิดเอกสารใน start_blocking → บันทึก 1.N3 = INFO" },
+      { type: "expected", description: "ไม่มี SI/SO/CN ที่สถานะ in_progress ใน BU; start_blocking ไม่มีชนิด cn / pr / po" },
       { type: "priority", description: "Low" },
       { type: "testType", description: "Edge Case" },
-      { type: "note", description: "เดิม 1.N1 / 1.N2 / 1.N3 (_movement_play specs/10-case1-start ชื่อ \"1.N เคสที่ทำให้เกิดบน BU ไม่ได้\") · ต้นฉบับบันทึก N/A / INFO อย่างเดียวไม่ assert — พอร์ตเพิ่มการตรวจข้อเท็จจริงที่ทำให้เป็น N/A/INFO · scenario ที่มี SR ค้างจริง (preBlockers) ทดสอบ 1.N1 ของจริงใน TC-PE-410001 จึงไม่เขียน N/A ทับ · 1.N3 ยืนยันด้วยการใช้งานจริงใน TC-PE-440006/440007" },
+      { type: "note", description: "เดิม 1.N1 / 1.N2 / 1.N3 (_movement_play specs/10-case1-start ชื่อ \"1.N เคสที่ทำให้เกิดบน BU ไม่ได้\") · ต้นฉบับบันทึก N/A / INFO อย่างเดียวไม่ assert — พอร์ตเพิ่มการตรวจข้อเท็จจริงที่ทำให้เป็น N/A/INFO · 1.N1 ทดสอบของจริงใน TC-PE-410001 (911 สร้างใบค้างเองผ่าน API) จึงไม่มีแถว N/A ของ 1.N1 อีกแล้ว · 1.N3 ยืนยันด้วยการใช้งานจริงใน TC-PE-440006/440007" },
     ],
   },
   async ({ page }) => {
-    // scenario ที่มี SR ค้างอยู่จริง (preBlockers) ทดสอบ 1.N1 ของจริงใน 911-period-close-blockers แล้ว — ไม่เขียน N/A ทับ
-    if (!SCN.preBlockers) await recordSrNotApplicable(page);
     // 1.N2: ไม่มีโค้ดตั้ง in_progress ให้ SI/SO/CN — ยืนยันจากข้อมูลจริงว่าไม่มีแถวสถานะนี้เลย
     const inProgress = sql<{ t: string; n: string }>(`
       select 'SI' t, count(*) n from ${SCHEMA}.tb_stock_in where doc_status::text = 'in_progress'

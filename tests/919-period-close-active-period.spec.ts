@@ -1,7 +1,7 @@
-import { srIssueWorkflowName } from "./helpers/movement/doc-flow";
-import { test, expect, BU, requireScenario, sql, SCHEMA, record, gatePhase } from "./helpers/period-close/context";
-import { apiSend } from "./helpers/movement/api";
+import { test, expect, BU, requireScenario, sql, SCHEMA, record, gatePhase, getDoc, apiSend, srIssueWorkflow, inventoryLocations, pcUserId, adjustmentTypeId } from "./helpers/period-close/context";
 import { createCreditNote } from "./helpers/period-close/docs";
+import { MOVEMENT_VENDOR } from "./helpers/movement/docs";
+import { L, P as PROD, PX, SCN } from "./helpers/period-close/scenarios";
 
 /**
  * Period close · phase 919 — Case A: "the active period only" (backend PR #724,
@@ -10,26 +10,27 @@ import { createCreditNote } from "./helpers/period-close/docs";
  * the period today falls in, not the newest open one. Every expected value is
  * computed from that rule (DB), never from the code under test.
  *
- * Built to run on a BU whose active period lags behind today with future periods
- * created in advance (CARMEN-AVG: active 2607, today in 2610). On CARMEN-FIFO
- * (active period = this month) only the controls run: A1 / A9 / A10.
+ * Built to run on a BU whose active period lags behind today with a later period
+ * already open (a TEST BU after `data:reset --bu <BU> --with-history`: active = last
+ * month, today in this month). If today falls inside the active period itself, only the
+ * controls run: A1 / A9 / A10 (the others skip on that runtime check).
  *
  * Not reversible: posts real documents into the active period (SR rejected
  * afterwards, CNs completed, a committed GRN with an expiry date, a wastage
  * Stock Out); the A6 / A8 probes delete what they created. Does not touch the
  * period status. Independent of the closing round — the original rounds kept their
  * own evidence folder (active-r4-avg / active-r4-fifo), so set E2E_EVIDENCE_DIR.
- * Setup first — AVG: LCX013 holds 11020001 (721-sr-issue-doc-flow, pre phase);
- * FIFO: TEST-MOVE holds T-01-F (721-sr-issue-doc-flow, E2E_SRI_BU=FIFO).
+ * Setup first: phase 910 ran (L holds E2E-PC-1 with stock in the active period — GRN "grnA").
  *
- * Several cases pin known bugs with `test.fail()` (latest evidence 2026-10-02 r4):
- *   TC-PE-490005  A5c  — CN dated the 1st of the active period (Thai time) refused
- *   TC-PE-490008  A8   — SO / SI created without a date get no date at all
+ * Three cases pin known bugs with `test.fail()` (evidence 2026-10-02 r4). Method-gated since the TEST BU runs of 2026-11-24:
+ * A5c is pinned on average and average_per_location (passed on FIFO); A8 (TC-PE-490008, SO / SI without a date) is no longer pinned (passed on all three);
+ * A10 (TC-PE-490011) is pinned on every method except average (passed on the average TEST BU, fails on FIFO and average_per_location):
+ *   TC-PE-490005  A5c  — CN dated the 1st of the active period (Thai time) refused (#724 boundary)
  *   TC-PE-490009  A9ab — reports lookups current/previous period follow the newest period
  *   TC-PE-490011  A10  — v_inventory_eop_checklist.period follows the newest period
  * Once one turns red ("unexpectedly passed"), drop its marker.
  *
- * Run: E2E_PERIOD_SCENARIO=<avg or fifo scenario> E2E_EVIDENCE_DIR=runs/period-close/active-<bu> bun run test:period-close -- tests/919-period-close-active-period.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> E2E_EVIDENCE_DIR=runs/period-close/active-<BU> bun run test:period-close -- tests/919-period-close-active-period.spec.ts
  *
  * Origin: _movement_play/eop_bf/e2e/specs/26-active-period.spec.ts
  */
@@ -40,14 +41,16 @@ import { createCreditNote } from "./helpers/period-close/docs";
  * กติกา (ผู้ใช้ยืนยัน 2026-10-02): งวด active = งวด open/locked ที่เก่าที่สุด — ทุกการตัดสินว่า "ตอนนี้ทำงานงวดไหน"
  * ใช้งวดนี้เท่านั้น ไม่ใช่งวดของวันนี้ ไม่ใช่งวด open ใหม่สุด · ทุก expected คำนวณจากกติกา (DB) ไม่ได้มาจากโค้ด
  *
- * scenario ใช้แค่เลือก BU (ทุก expected คำนวณจากงวด active ใน DB ไม่ใช่งวดของ scenario):
- *   E2E_PERIOD_SCENARIO=avg2607 (CARMEN-AVG — รอบ r4 ใช้ตอน active 2606 วันนี้อยู่ 2610 ที่สร้างล่วงหน้า) → ทุกข้อ
- *   E2E_PERIOD_SCENARIO=p11     (CARMEN-FIFO — active ตรงกับเดือนนี้)                               → เฉพาะข้อควบคุม A1 / A9 / A10
- * เตรียมก่อน (AVG): LCX013 มี 11020001 จาก GRN260600001 (fe/07 ช่วง pre) · FIFO: TEST-MOVE มี T-01-F (fe/07 SRF.0)
+ * E2E_PERIOD_BU ใช้แค่เลือก TEST BU (ทุก expected คำนวณจากงวด active ใน DB ไม่ใช่งวดของ scenario):
+ *   active ตามหลังวันนี้ (TEST BU หลัง data:reset --with-history: active = เดือนที่แล้ว) → ทุกข้อ
+ *   active ตรงกับเดือนนี้ → เฉพาะข้อควบคุม A1 / A9 / A10 (ข้ออื่น skip ด้วยเช็คตอนรัน)
+ * เตรียมก่อน: phase 910 ผ่านแล้ว — คลัง L มี E2E-PC-1 จาก GRN ฐาน (grnA) ในงวด active
  */
 const CASE = "Case A · งวด active เท่านั้น (#724 · #723 · micro-report#19)";
-const isAvg = BU === "CARMEN-AVG";
-const STOCK = isAvg ? { loc: "LCX013", prod: "11020001" } : { loc: "TEST-MOVE", prod: "T-01-F" };
+/** ป้ายต่อท้าย id ใน results.json: FIFO กับที่เหลือ (average / average_per_location = AVG) — อ่านตอนเรียก ไม่อ่านตอน load */
+const tag = () => (SCN.method === "fifo" ? "FIFO" : "AVG");
+/** สินค้า/คลังที่ใช้ — E2E-PC-1 ที่คลัง L (L ถูกเติมตอน requireScenario จึงต้องอ่านตอนรันเท่านั้น) */
+const stock = () => ({ loc: L.code, prod: PROD.P1.code });
 const idOf = (table: string, where: string) => sql<{ id: string }>(`select id from ${SCHEMA}.${table} where ${where} limit 1`)[0]?.id;
 
 /** งวด active ตามกติกา + งวดที่วันนี้ตกอยู่ (ใช้บอกว่าโค้ดเดิมหยิบอะไร) */
@@ -79,6 +82,11 @@ const layerPeriodsOf = (docId: string) =>
     join ${SCHEMA}.tb_inventory_transaction_detail td on td.id = cl.inventory_transaction_detail_id
     join ${SCHEMA}.tb_inventory_transaction t on t.id = td.inventory_transaction_id
     where t.inventory_doc_no = '${docId}' and cl.deleted_at is null`).map((r) => r.p);
+/** วันนี้อยู่นอกงวด active (มีงวดเปิดอื่นที่ใหม่กว่าครอบวันนี้) — แทนเช็ค BU ตายตัวของเดิม */
+const todayOutsideActive = () => {
+  const p = periods();
+  return Boolean(p.today) && p.today.period !== p.active.period;
+};
 const day = (iso: string | null | undefined) => (iso ? new Date(iso).toISOString().slice(0, 10) : "(ว่าง)");
 
 test.beforeAll(() => requireScenario());
@@ -91,7 +99,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG (งวด active ตามหลังวันนี้) หรือ CARMEN-FIFO (ตัวควบคุม: งวด active = เดือนนี้); AVG: LCX013 มี 11020001 ในงวด active · FIFO: TEST-MOVE มี T-01-F",
+          "E2E_PERIOD_BU เป็น TEST BU (งวด active ตามหลังวันนี้ หรือเท่ากับเดือนนี้ = ตัวควบคุม); คลัง L มี E2E-PC-1 ในงวด active (GRN ฐานของ phase 910)",
       },
       {
         type: "steps",
@@ -113,8 +121,8 @@ test(
   },
   async () => {
     const P = periods();
-    const pid = idOf("tb_product", `code = '${STOCK.prod}'`);
-    const lid = idOf("tb_location", `code = '${STOCK.loc}'`);
+    const pid = idOf("tb_product", `code = '${stock().prod}'`);
+    const lid = idOf("tb_location", `code = '${stock().loc}'`);
     const [db] = sql<{ q: string }>(`select coalesce(sum(in_qty - out_qty), 0) q from ${SCHEMA}.tb_inventory_transaction_cost_layer
       where deleted_at is null and product_id = '${pid}' and location_id = '${lid}' and at_period = '${P.active.period}'`);
     const expected = Number(db.q);
@@ -123,9 +131,9 @@ test(
     const got = { onHand: Number(onHand.body?.data?.total_on_hand), info: Number(info.body?.data?.on_hand_qty) };
     const ok = expected > 0 && got.onHand === expected && got.info === expected;
     record({
-      id: `A1-${isAvg ? "AVG" : "FIFO"}`,
+      id: `A1-${tag()}`,
       case: CASE,
-      title: `ยอดคงเหลือ ${STOCK.prod} ที่ ${STOCK.loc} — งวด active ${P.active.period} · วันนี้อยู่งวด ${P.today?.period ?? "-"}${isAvg ? "" : " (ตัวควบคุม: งวด active = วันนี้)"}`,
+      title: `ยอดคงเหลือ ${stock().prod} ที่ ${stock().loc} — งวด active ${P.active.period} · วันนี้อยู่งวด ${P.today?.period ?? "-"}${todayOutsideActive() ? "" : " (ตัวควบคุม: งวด active = วันนี้)"}`,
       steps: [`GET /products/:id/on-hand?location_id`, `GET /inventory-info/:product/:location`, `เทียบกับผลรวม cost layer ของงวด ${P.active.period} ใน DB`],
       expected: `ทั้งสอง endpoint = ${expected} (ยอดของงวด active ${P.active.period})`,
       actual: `on-hand ${got.onHand} · inventory-info ${got.info} · DB งวด ${P.active.period} = ${expected}`,
@@ -142,12 +150,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่ในงวดที่สร้างล่วงหน้า (นอกงวด active) — FIFO ข้าม; workflow SR ที่ขั้น create>approve>issue>approve (srIssueWorkflowName — ชื่อเดิม 'SR Test Flow v2 (with Issue)' ถูกเปลี่ยนบน dev); คลัง TEST-MOVE / TEST-CONSUME ผูก T-01-A; บัญชี requestor@carmen.com และ hod@carmen.com",
+          "E2E_PERIOD_BU เป็น TEST BU และวันนี้อยู่ในงวดเปิดที่ใหม่กว่างวด active (ไม่ใช่ = ข้าม); workflow SR ที่มีขั้น Issue (หาจาก stage ด้วย srIssueWorkflow ไม่อิงชื่อ); คลัง inventory ≥ 2 คลัง (L เป็นต้นทาง) สินค้า E2E-PC-X อยู่ที่ L; บัญชี Requestor และ HOD (gmail) อยู่ใน workflow",
       },
       {
         type: "steps",
         description:
-          "1. admin POST /store-requisitions (requestor = requestor@carmen.com): T-01-A 1 หน่วย TEST-MOVE → TEST-CONSUME\n2. admin PATCH …/submit พร้อม sr_date_pattern = today\n3. hod@carmen.com PATCH …/approve ขั้น HOD\n4. admin PATCH …/approve stage_role = issue\n5. เก็บกวาด: reject ใบที่ค้าง",
+          "1. admin POST /store-requisitions (requestor = Requestor gmail): E2E-PC-X 1 หน่วย จากคลัง L → คลัง inventory ถัดไป\n2. admin PATCH …/submit พร้อม sr_date_pattern = today\n3. HOD (gmail) PATCH …/approve ขั้น HOD\n4. admin PATCH …/approve stage_role = issue\n5. เก็บกวาด: reject ใบที่ค้าง",
       },
       {
         type: "expected",
@@ -164,11 +172,15 @@ test(
     ],
   },
   async () => {
-    test.skip(!isAvg, "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
+    test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     const P = periods();
     const get = async (id: string) => (await apiSend("GET", `/api/${BU}/store-requisitions/${id}`)).body.data;
     const lineOf = (d: any) => (d.store_requisition_detail ?? d.tb_store_requisition_detail ?? [])[0]?.id;
-    const requestor = sql<{ id: string }>(`select id from "CARMEN_SYSTEM".tb_user where email = 'requestor@carmen.com'`)[0].id;
+    const requestor = pcUserId("requestor");
+    const locs = await inventoryLocations();
+    const from = locs.find((l) => l.code === L.code);
+    const to = locs.find((l) => l.code !== L.code);
+    expect(from && to, `${BU}: ต้องมีคลัง inventory อย่างน้อย 2 คลัง (เจอ ${locs.map((l) => l.code).join(", ") || "-"})`).toBeTruthy();
     const now = new Date().toISOString();
     const created = await apiSend("POST", `/api/${BU}/store-requisitions`, {
       stage_role: "create",
@@ -177,10 +189,10 @@ test(
         expected_date: now,
         description: "E2E A4 today pattern",
         requestor_id: requestor,
-        workflow_id: idOf("tb_workflow", `name = '${await srIssueWorkflowName(BU)}' and deleted_at is null`),
-        from_location_id: idOf("tb_location", `code = 'TEST-MOVE'`),
-        to_location_id: idOf("tb_location", `code = 'TEST-CONSUME'`),
-        store_requisition_detail: { add: [{ product_id: idOf("tb_product", `code = 'T-01-A'`), requested_qty: 1 }] },
+        workflow_id: (await srIssueWorkflow()).id,
+        from_location_id: from!.id,
+        to_location_id: to!.id,
+        store_requisition_detail: { add: [{ product_id: idOf("tb_product", `code = '${PX.code}'`), requested_qty: 1 }] },
       },
     });
     expect(created.status, JSON.stringify(created.body)).toBeLessThan(300);
@@ -197,7 +209,7 @@ test(
       "PATCH",
       `/api/${BU}/store-requisitions/${id}/approve`,
       { doc_version: d.doc_version, stage_role: "approve", details: [{ id: lineOf(d), stage_status: "approve", stage_message: "", approved_qty: 1 }] },
-      "hod",
+      "purchase", // TEST BU: ขั้น Store Approval ของ workflow SR มอบให้บัญชี Purchase
     );
     d = await get(id);
     const issue = await apiSend("PATCH", `/api/${BU}/store-requisitions/${id}/approve`, {
@@ -214,7 +226,7 @@ test(
       id: "A4",
       case: CASE,
       title: `ใบเบิก ${d.sr_no} เลือก "today" ตอน submit (วันนี้อยู่ ${P.today?.period}) — ตัวควบคุม`,
-      steps: ["admin สร้างใบเบิก T-01-A TEST-MOVE → TEST-CONSUME", `submit พร้อม sr_date_pattern = today`, "hod อนุมัติ", "admin กดจ่าย"],
+      steps: [`admin สร้างใบเบิก ${PX.code} ${from!.code} → ${to!.code}`, `submit พร้อม sr_date_pattern = today`, "hod อนุมัติ", "admin กดจ่าย"],
       expected: `ลงวันที่วันนี้ (งวด ${P.today?.period}) · อนุมัติได้ · จ่ายถูกปฏิเสธ 422 SR_ISSUE_PERIOD_NOT_CURRENT เพราะงวดของใบไม่ใช่งวด active ${P.active.period}`,
       actual: `submit ${sub.status}${sub.appCode ? " " + sub.appCode : ""} · sr_date ${day(d.sr_date)} · approve ${app.status} · issue ${issue.status} ${issue.appCode} ${JSON.stringify(params)} · สถานะ ${d.doc_status} ขั้น ${d.workflow_current_stage}`,
       status: ok ? "PASS" : "FAIL",
@@ -229,7 +241,7 @@ test(
           stage_role: d.workflow_current_stage === "Issue" ? "issue" : "approve",
           details: [{ id: lineOf(d), stage_status: "reject", stage_message: "E2E A4 เก็บกวาด" }],
         },
-        d.workflow_current_stage === "Issue" ? undefined : "hod",
+        d.workflow_current_stage === "Issue" ? undefined : "purchase",
       );
       console.log(`A4 cleanup reject → ${r.status} ${r.appCode}`);
     }
@@ -237,10 +249,14 @@ test(
   },
 );
 
-/** ใบรับที่ใช้อ้างในใบลดหนี้ — ใบรับแรกที่ A7 ตั้งต้นไว้ (มี 11020001 ที่ LCX013 และยังไม่เคยถูกคืน) */
-const A5_GRN = () =>
-  sql<{ no: string }>(`select grn_no no from ${SCHEMA}.tb_good_received_note where description like 'E2E A7 expiring%'
-    and deleted_at is null order by created_at limit 1`)[0]?.no ?? "GRN260600001";
+/** ใบรับที่ใช้อ้างในใบลดหนี้ — ใบรับแรกที่ A7 ตั้งต้นไว้ (มี E2E-PC-1 ที่คลัง L) ถ้ายังไม่มีใช้ GRN ฐานของ 910 (grnA) */
+const A5_GRN = () => {
+  const no =
+    sql<{ no: string }>(`select grn_no no from ${SCHEMA}.tb_good_received_note where description like 'E2E A7 expiring%'
+      and deleted_at is null order by created_at limit 1`)[0]?.no ?? getDoc(SCN.receipts[0].key)?.no;
+  if (!no) throw new Error("ไม่มีใบรับให้ใบลดหนี้อ้าง — รัน phase 910 (GRN ฐาน) ก่อน หรือรัน TC-PE-490007");
+  return no;
+};
 
 test(
   "TC-PE-490003 ใบลดหนี้ลงวันที่วันนี้ (นอกงวด active) ต้องถูกปฏิเสธไม่ลงบัญชี",
@@ -249,12 +265,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่นอกงวด active — FIFO ข้าม; Login เป็น admin@carmen.com (movement-setup); มีใบรับ committed ของ C010 ที่มี 11020001 (ใบรับ \"E2E A7 expiring …\" ของ TC-PE-490007 จากรอบก่อน หรือ GRN260600001)",
+          "E2E_PERIOD_BU เป็น TEST BU และวันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); Login เป็น Admin (gmail, project setup); มีใบรับ committed ที่มี E2E-PC-1 ที่คลัง L (ใบรับ \"E2E A7 expiring …\" ของ TC-PE-490007 จากรอบก่อน หรือ GRN260600001)",
       },
       {
         type: "steps",
         description:
-          "1. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับนั้น คืน 11020001 1 หน่วย\n2. Doc Date และ Tax Invoice Date = วันนี้ (เวลาไทย)\n3. กด Create แล้ว Submit\n4. ถ้ามีใบ: อ่านสถานะ, cn_date และงวดที่ cost layer ลง",
+          "1. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับนั้น คืน E2E-PC-1 1 หน่วย\n2. Doc Date และ Tax Invoice Date = วันนี้ (เวลาไทย)\n3. กด Create แล้ว Submit\n4. ถ้ามีใบ: อ่านสถานะ, cn_date และงวดที่ cost layer ลง",
       },
       {
         type: "expected",
@@ -271,11 +287,11 @@ test(
     ],
   },
   async ({ page }) => {
-    test.skip(!isAvg, "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
+    test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     test.setTimeout(5 * 60_000);
     const P = periods();
     const today = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
-    const [prod] = sql<{ name: string }>(`select name from ${SCHEMA}.tb_product where code = '${STOCK.prod}'`);
+    const [prod] = sql<{ name: string }>(`select name from ${SCHEMA}.tb_product where code = '${stock().prod}'`);
     let created: { id: string; no: string } | null = null;
     let error = "";
     try {
@@ -323,12 +339,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG — FIFO ข้าม; Login เป็น admin@carmen.com (movement-setup); มีใบรับ committed ของ C010 ที่มี 11020001 และยังคืนได้",
+          "E2E_PERIOD_BU เป็น TEST BU ที่วันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); Login เป็น Admin (gmail, project setup); มีใบรับ committed ที่มี E2E-PC-1 ที่คลัง L และยังคืนได้",
       },
       {
         type: "steps",
         description:
-          "1. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับเดียวกับ TC-PE-490003 คืน 11020001 1 หน่วย\n2. Doc Date และ Tax Invoice Date = วันที่ 20 ของงวด active\n3. กด Create แล้ว Submit\n4. อ่านสถานะ, cn_date และงวดที่ cost layer ลง",
+          "1. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับเดียวกับ TC-PE-490003 คืน E2E-PC-1 1 หน่วย\n2. Doc Date และ Tax Invoice Date = วันที่ 20 ของงวด active\n3. กด Create แล้ว Submit\n4. อ่านสถานะ, cn_date และงวดที่ cost layer ลง",
       },
       {
         type: "expected",
@@ -344,11 +360,11 @@ test(
     ],
   },
   async ({ page }) => {
-    test.skip(!isAvg, "ใช้ใบรับของ AVG");
+    test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     test.setTimeout(5 * 60_000);
     const P = periods();
     const docDate = P.active.e.slice(0, 8) + "20";
-    const [prod] = sql<{ name: string }>(`select name from ${SCHEMA}.tb_product where code = '${STOCK.prod}'`);
+    const [prod] = sql<{ name: string }>(`select name from ${SCHEMA}.tb_product where code = '${stock().prod}'`);
     let created: { id: string; no: string } | null = null;
     let error = "";
     try {
@@ -394,12 +410,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG — FIFO ข้าม; Login เป็น admin@carmen.com (movement-setup); มีใบรับ saved/committed ที่มี Australian Sirloin (11110003) และยังไม่เคยถูกคืนสินค้านี้",
+          "E2E_PERIOD_BU เป็น TEST BU ที่วันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); Login เป็น Admin (gmail, project setup); มีใบรับ saved/committed ที่มี E2E-PC-2 และยังไม่เคยถูกคืนสินค้านี้",
       },
       {
         type: "steps",
         description:
-          "1. หาใบรับล่าสุดที่มี 11110003 และยังไม่มีใบลดหนี้ของสินค้านี้\n2. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับนั้น คืน Australian Sirloin 1\n3. Doc Date และ Tax Invoice Date = วันที่ 1 ของงวด active (เลือกจากปฏิทิน)\n4. กด Create แล้ว Submit\n5. อ่านสถานะและงวดที่ cost layer ลง",
+          "1. หาใบรับล่าสุดที่มี E2E-PC-2 และยังไม่มีใบลดหนี้ของสินค้านี้\n2. เปิด Credit Note → New ผ่านหน้าจอ อ้างใบรับนั้น คืน E2E-PC-2 1\n3. Doc Date และ Tax Invoice Date = วันที่ 1 ของงวด active (เลือกจากปฏิทิน)\n4. กด Create แล้ว Submit\n5. อ่านสถานะและงวดที่ cost layer ลง",
       },
       {
         type: "expected",
@@ -416,15 +432,16 @@ test(
     ],
   },
   async ({ page }) => {
-    test.fail(true, "known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD");
-    test.skip(!isAvg, "ใช้ใบรับของ AVG");
+    // known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD — pinned on average and average_per_location, not on FIFO (passed there 2026-11-24)
+    test.fail(SCN.method !== "fifo", "known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD");
+    test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     test.setTimeout(5 * 60_000);
     const P = periods();
     const docDate = P.active.e.slice(0, 8) + "01";
-    const [prod] = sql<{ name: string }>(`select name from ${SCHEMA}.tb_product where code = '11110003'`);
+    const [prod] = sql<{ name: string }>(`select name from ${SCHEMA}.tb_product where code = '${PROD.P2.code}'`);
     const grn = sql<{ no: string }>(`select g.grn_no no from ${SCHEMA}.tb_good_received_note g
       join ${SCHEMA}.tb_good_received_note_detail d on d.good_received_note_id = g.id
-      where g.deleted_at is null and g.doc_status in ('saved','committed') and d.product_code = '11110003'
+      where g.deleted_at is null and g.doc_status in ('saved','committed') and d.product_code = '${PROD.P2.code}'
       and not exists (select 1 from ${SCHEMA}.tb_credit_note_detail cd join ${SCHEMA}.tb_credit_note c on c.id = cd.credit_note_id
         where c.grn_id = g.id and cd.product_id = d.product_id and c.deleted_at is null and c.doc_status::text not in ('cancelled','voided'))
       order by g.grn_date desc limit 1`)[0]?.no;
@@ -471,7 +488,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG ที่มีงวดเปิดล่วงหน้าครอบวันนี้ (ไม่ใช่งวด active) — FIFO ข้าม",
+          "E2E_PERIOD_BU เป็น TEST BU ที่มีงวดเปิดล่วงหน้าครอบวันนี้ (ไม่ใช่งวด active) (ไม่ใช่ = ข้าม)",
       },
       {
         type: "steps",
@@ -492,7 +509,7 @@ test(
     ],
   },
   async () => {
-    test.skip(!isAvg, "ต้องการ BU ที่มีงวดเปิดล่วงหน้าที่ไม่ใช่งวด active");
+    test.skip(!todayOutsideActive(), "ต้องการ BU ที่มีงวดเปิดล่วงหน้าที่ไม่ใช่งวด active");
     const P = periods();
     const r = await apiSend("POST", `/api/${BU}/physical-count-periods`, { period_id: P.today!.id });
     const id = r.body?.data?.id as string | undefined;
@@ -517,12 +534,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่นอกงวด active — FIFO ข้าม; ผู้ขาย C010, สกุลเงิน THB, ประเภทปรับปรุง \"Test stock_out\" และคลัง LCX013 มีอยู่",
+          "E2E_PERIOD_BU เป็น TEST BU และวันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); ผู้ขาย (MOVEMENT_VENDOR), สกุลเงิน THB, ประเภทปรับปรุง stock_out ที่ใช้งานได้ และคลัง L มีอยู่",
       },
       {
         type: "steps",
         description:
-          "1. ตั้งต้น (ครั้งแรกของงวด active): POST /good-received-notes ลงวันที่ 20 ของงวด active ที่ LCX013: 11020001 3 หน่วย @10 มีวันหมดอายุ (หน้าจอใส่วันหมดอายุไม่ได้) → save → commit\n2. POST /wastage-reporting ตัด 1 หน่วยจากบรรทัดของใบรับนั้น โดยไม่ส่ง so_date — ไม่มีหน้าจอเรียก\n3. อ่าน Stock Out ที่เกิดขึ้น (so_date, สถานะ) และงวดที่ cost layer ลง",
+          "1. ตั้งต้น (ครั้งแรกของงวด active): POST /good-received-notes ลงวันที่ 20 ของงวด active ที่คลัง L: E2E-PC-1 3 หน่วย @10 มีวันหมดอายุ (หน้าจอใส่วันหมดอายุไม่ได้) → save → commit\n2. POST /wastage-reporting ตัด 1 หน่วยจากบรรทัดของใบรับนั้น โดยไม่ส่ง so_date — ไม่มีหน้าจอเรียก\n3. อ่าน Stock Out ที่เกิดขึ้น (so_date, สถานะ) และงวดที่ cost layer ลง",
       },
       {
         type: "expected",
@@ -539,15 +556,19 @@ test(
     ],
   },
   async () => {
-    test.skip(!isAvg, "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
+    test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     const P = periods();
     const grnDate = P.active.e.slice(0, 8) + "20T03:00:00.000Z"; // วันที่ 20 ของงวด active
+    // FIFO refuses a receipt dated before the latest receipt, so this GRN (day 20) becomes the newest one of the product:
+    // price it at the product's scenario last cost so 922/923 still read that price as the last cost (AVG keeps the original 10).
+    const lastCostCase = SCN.method === "fifo" ? SCN.costCases.find((c) => c.p.code === stock().prod && c.side !== "out") : undefined;
+    const a7Price = typeof lastCostCase?.want === "number" ? lastCostCase.want : 10;
     const setup: string[] = [];
     // ตั้งต้น: write-off รับเฉพาะบรรทัดของใบรับที่ committed และมีวันหมดอายุ — ใบรับจากหน้าจอใส่วันหมดอายุไม่ได้ จึงยิง API
     const A7_DESC = `E2E A7 expiring ${P.active.period}`;
     let grnId = sql<{ id: string }>(`select id from ${SCHEMA}.tb_good_received_note where description = '${A7_DESC}' and deleted_at is null limit 1`)[0]?.id;
     if (!grnId) {
-      const pid = idOf("tb_product", `code = '${STOCK.prod}'`);
+      const pid = idOf("tb_product", `code = '${stock().prod}'`);
       const unit = sql<{ u: string }>(`select inventory_unit_id u from ${SCHEMA}.tb_product where id = '${pid}'`)[0].u;
       const g = await apiSend("POST", `/api/${BU}/good-received-notes`, {
         doc_type: "manual",
@@ -555,23 +576,23 @@ test(
         invoice_no: `INV-A7-${Date.now()}`,
         invoice_date: grnDate,
         description: A7_DESC,
-        received_by_id: sql<{ id: string }>(`select id from "CARMEN_SYSTEM".tb_user where email = 'admin@carmen.com'`)[0].id,
-        vendor_id: idOf("tb_vendor", "code = 'C010'"),
+        received_by_id: pcUserId("admin"),
+        vendor_id: idOf("tb_vendor", `code = '${MOVEMENT_VENDOR}'`),
         currency_id: idOf("tb_currency", "code = 'THB' and deleted_at is null"),
         exchange_rate: 1,
         good_received_note_detail: {
           add: [
             {
               product_id: pid,
-              location_id: idOf("tb_location", `code = '${STOCK.loc}'`),
+              location_id: idOf("tb_location", `code = '${stock().loc}'`),
               received_qty: 3,
               received_unit_id: unit,
               received_base_qty: 3,
-              order_price: 10,
-              received_price: 10,
+              order_price: a7Price,
+              received_price: a7Price,
               foc_qty: 0,
-              net_amount: 30,
-              base_net_amount: 30,
+              net_amount: 3 * a7Price,
+              base_net_amount: 3 * a7Price,
               expired_at: P.active.e.slice(0, 8) + "28T00:00:00.000Z",
             },
           ],
@@ -590,7 +611,7 @@ test(
       join ${SCHEMA}.tb_good_received_note_detail d on d.good_received_note_id = g.id
       join ${SCHEMA}.tb_good_received_note_detail_item i on i.good_received_note_detail_id = d.id where g.id = '${grnId}'`);
     const r = await apiSend("POST", `/api/${BU}/wastage-reporting`, {
-      adjustment_type_id: idOf("tb_adjustment_type", `name = 'Test stock_out' and deleted_at is null`),
+      adjustment_type_id: await adjustmentTypeId("stock_out"),
       description: "E2E A7 write-off no date",
       items: [{ grn_detail_item_id: g.item, qty: 1 }],
     });
@@ -603,7 +624,7 @@ test(
       case: CASE,
       title: `write-off ไม่ส่ง so_date — งวด active ${P.active.period} · วันนี้อยู่ ${P.today?.period}`,
       steps: [
-        `ตั้งต้น (API): ใบรับ ${g.no} ลงวันที่ ${grnDate.slice(0, 10)} ${STOCK.prod} 3 หน่วย มีวันหมดอายุ → save → commit${setup.length ? ` (${setup.join(", ")})` : ""}`,
+        `ตั้งต้น (API): ใบรับ ${g.no} ลงวันที่ ${grnDate.slice(0, 10)} ${stock().prod} 3 หน่วย มีวันหมดอายุ → save → commit${setup.length ? ` (${setup.join(", ")})` : ""}`,
         `POST /wastage-reporting (ไม่มีหน้าจอเรียก) ตัด 1 หน่วยจาก ${g.no} ไม่ส่ง so_date`,
       ],
       expected: `ใบจ่ายออกลงวันที่ในงวด active ${P.active.period} และลงบัญชีงวด ${P.active.period} (วันที่บนเอกสารกับงวดบัญชีตรงกัน)`,
@@ -622,12 +643,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG และวันนี้อยู่นอกงวด active — FIFO ข้าม; ประเภทปรับปรุง \"Test stock_out\" / \"Test stock_in\" และคลัง LCX013 มีอยู่",
+          "E2E_PERIOD_BU เป็น TEST BU และวันนี้อยู่นอกงวด active (ไม่ใช่ = ข้าม); ประเภทปรับปรุง stock_out / stock_in ที่ใช้งานได้ และคลัง L มีอยู่",
       },
       {
         type: "steps",
         description:
-          "1. POST /stock-outs ที่ LCX013: 11020001 1 หน่วย โดยไม่ส่ง so_date\n2. POST /stock-ins ที่ LCX013: 11020001 1 หน่วย @10 โดยไม่ส่ง si_date\n3. อ่าน so_date / si_date ที่เก็บจาก DB\n4. ลบทั้งสองใบทิ้ง (เก็บกวาด)",
+          "1. POST /stock-outs ที่คลัง L: E2E-PC-1 1 หน่วย โดยไม่ส่ง so_date\n2. POST /stock-ins ที่คลัง L: E2E-PC-1 1 หน่วย @10 โดยไม่ส่ง si_date\n3. อ่าน so_date / si_date ที่เก็บจาก DB\n4. ลบทั้งสองใบทิ้ง (เก็บกวาด)",
       },
       {
         type: "expected",
@@ -643,20 +664,20 @@ test(
     ],
   },
   async () => {
-    test.fail(true, "known bug A8 (#724 follow-up): a Stock Out / Stock In created via API without a date is stored with no date instead of one inside the active period");
-    test.skip(!isAvg, "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
+    // A8 (#724 follow-up) no longer pinned: passed on all three TEST BUs on 2026-11-24 (FIFO, average, average_per_location)
+    test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     const P = periods();
-    const lid = idOf("tb_location", `code = '${STOCK.loc}'`);
-    const pid = idOf("tb_product", `code = '${STOCK.prod}'`);
+    const lid = idOf("tb_location", `code = '${stock().loc}'`);
+    const pid = idOf("tb_product", `code = '${stock().prod}'`);
     const so = await apiSend("POST", `/api/${BU}/stock-outs`, {
       description: "E2E A8 SO no date",
-      adjustment_type_id: idOf("tb_adjustment_type", `name = 'Test stock_out' and deleted_at is null`),
+      adjustment_type_id: await adjustmentTypeId("stock_out"),
       location_id: lid,
       stock_out_detail: { add: [{ product_id: pid, qty: 1 }] },
     });
     const si = await apiSend("POST", `/api/${BU}/stock-ins`, {
       description: "E2E A8 SI no date",
-      adjustment_type_id: idOf("tb_adjustment_type", `name = 'Test stock_in' and deleted_at is null`),
+      adjustment_type_id: await adjustmentTypeId("stock_in"),
       location_id: lid,
       stock_in_detail: { add: [{ product_id: pid, qty: 1, cost_per_unit: 10, total_cost: 10 }] },
     });
@@ -697,7 +718,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG หรือ CARMEN-FIFO (ตัวควบคุม); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active",
+          "E2E_PERIOD_BU เป็น TEST BU (ตัวควบคุม รันได้ทุก BU); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active",
       },
       {
         type: "steps",
@@ -724,10 +745,10 @@ test(
     const d = r.body?.data ?? {};
     const cur = d["current-period"]?.period ?? null;
     const prev = d["previous-period"]?.period ?? null;
-    const tag = isAvg ? "AVG" : "FIFO";
+    const tg = tag();
     for (const [id, label, ok, want, got] of [
-      [`A9a-${tag}`, "current-period", cur === P.active.period, P.active.period, cur],
-      [`A9b-${tag}`, "previous-period", prev === P.prev, P.prev ?? "ไม่มี", prev ?? "ไม่มี"],
+      [`A9a-${tg}`, "current-period", cur === P.active.period, P.active.period, cur],
+      [`A9b-${tg}`, "previous-period", prev === P.prev, P.prev ?? "ไม่มี", prev ?? "ไม่มี"],
     ] as const) {
       record({
         id,
@@ -750,7 +771,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG หรือ CARMEN-FIFO (ตัวควบคุม); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active",
+          "E2E_PERIOD_BU เป็น TEST BU (ตัวควบคุม รันได้ทุก BU); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active",
       },
       {
         type: "steps",
@@ -777,9 +798,9 @@ test(
     const list: string[] = (d.period ?? []).map((x: any) => x.code);
     const closed = sql<{ p: string }>(`select period p from ${SCHEMA}.tb_inventory_period where status = 'closed' and deleted_at is null`).map((x) => x.p);
     const wantList = [...new Set([...closed, P.active.period])].sort().reverse();
-    const tag = isAvg ? "AVG" : "FIFO";
+    const tg = tag();
     record({
-      id: `A9c-${tag}`,
+      id: `A9c-${tg}`,
       case: CASE,
       title: `รายงาน lookup ตัวเลือกงวด (period) — ${BU} งวด active ${P.active.period}`,
       steps: ["GET /reports/lookups?types=current-period,previous-period,period (ตัวที่หน้า dialog รายงานเรียก)"],
@@ -798,7 +819,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ CARMEN-AVG หรือ CARMEN-FIFO (ตัวควบคุม); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active",
+          "E2E_PERIOD_BU เป็น TEST BU (ตัวควบคุม รันได้ทุก BU); มีงวดที่สร้างล่วงหน้าใหม่กว่างวด active",
       },
       {
         type: "steps",
@@ -819,12 +840,13 @@ test(
     ],
   },
   async () => {
-    test.fail(true, "known bug #723: v_inventory_eop_checklist.period follows the newest open period, not the active one");
+    // passes on the average TEST BU (2026-11-24, BU-GR2VYNKQ), still fails on FIFO and is not yet proven elsewhere
+    test.fail(SCN.method !== "average", "known bug #723: v_inventory_eop_checklist.period follows the newest open period, not the active one");
     const P = periods();
     const rows = sql<{ p: string | null }>(`select distinct period p from ${SCHEMA}.v_inventory_eop_checklist`).map((x) => x.p);
     const ok = rows.length > 0 && rows.every((p) => p === P.active.period);
     record({
-      id: `A10-${isAvg ? "AVG" : "FIFO"}`,
+      id: `A10-${tag()}`,
       case: CASE,
       title: `v_inventory_eop_checklist.period — ${BU} งวด active ${P.active.period}`,
       steps: ["SELECT DISTINCT period FROM v_inventory_eop_checklist (view ที่รายงาน EOP Checklist อ่าน)"],

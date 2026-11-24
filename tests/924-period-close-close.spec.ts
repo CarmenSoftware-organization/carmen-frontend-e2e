@@ -20,7 +20,7 @@ import { L, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
  *          its stock when this period closes, after the brought-forward rows
  *
  * IRREVERSIBLE: closing a period cannot be undone. 2.10/2.11 are skipped unless
- * E2E_ALLOW_IRREVERSIBLE=<BU>:<period> names this scenario's BU and period; a rerun after
+ * the BU is a TEST BU whose active period is the scenario's (irreversibleAllowed); a rerun after
  * the close does not press it again (it only re-checks). 5.5 is read-only and skips
  * itself until the period is closed.
  *
@@ -28,11 +28,11 @@ import { L, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
  * mismatch must not hide the 5.5 result.
  *
  * Prerequisites: TC-PE-520004 passed (can_close = true, the Close Period button enabled).
- * Run: E2E_PERIOD_SCENARIO=<scenario> E2E_ALLOW_IRREVERSIBLE=<BU>:<period> bun run test:period-close -- tests/924-period-close-close.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/924-period-close-close.spec.ts
  * Origin: _movement_play/eop_bf/e2e/specs/50-close.spec.ts
  */
-// ⚠️ ย้อนกลับไม่ได้ — กด Close Period ของ CARMEN-FIFO งวดปัจจุบันจริง แล้วตรวจยอดยกไป (BF) ของงวดถัดไป
-// ผู้ใช้อนุมัติ: 2603 ("เอาเลย" 2026-09-30) · 2604 (อนุมัติแผน last_cost) · 2605 (ยืนยัน PR #702) · รันได้เฉพาะเมื่อ ALLOW_IRREVERSIBLE=CARMEN-FIFO:<งวด>
+// ⚠️ ย้อนกลับไม่ได้ — กด Close Period ของ TEST BU (E2E_PERIOD_BU) งวดปัจจุบันจริง แล้วตรวจยอดยกไป (BF) ของงวดถัดไป
+// รันได้เฉพาะเมื่อ BU เป็น TEST BU และงวด active ตรงกับ scenario (irreversibleAllowed) — รีเซ็ตกลับได้ด้วย data:reset --bu <BU> --with-history
 // ก่อนกด: เก็บยอดคงเหลือต่อล็อต ณ สิ้น 2603 · หลังกด: เทียบกับ layer open_period ของ 2604 ทีละคลัง/สินค้า (จำนวน + มูลค่า)
 
 const SNAP = join(EVIDENCE_DIR, "bf-before-close.json");
@@ -52,13 +52,19 @@ function balancesUpTo(period: string): Bal[] {
     from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
     join ${SCHEMA}.tb_location l on l.id = cl.location_id join ${SCHEMA}.tb_product p on p.id = cl.product_id
     where cl.deleted_at is null and cl.at_period <= '${period}'
-    group by 1,2 having sum(cl.in_qty - cl.out_qty) <> 0 order by 1,2`).map((r) => ({ loc: r.loc, prod: r.prod, qty: Number(r.qty), value: Number(r.value) }));
+    group by 1,2 having sum(cl.in_qty - cl.out_qty) <> 0 order by 1,2`).map((r) => {
+    const qty = Number(r.qty);
+    const value = Number(r.value);
+    // average_per_location: ต้นทุน/หน่วยที่คาดคือค่าเฉลี่ยของคลังนั้นเอง = มูลค่า ÷ จำนวนของแถว (FIFO ไม่เทียบต้นทุน)
+    return { loc: r.loc, prod: r.prod, qty, value, ...(SCN.method === "average_per_location" ? { cost: qty ? value / qty : 0 } : {}) };
+  });
 }
 
 /**
  * AVG (calculation_method = average): ยอดที่ processAverageClose จะยกไป คิดจาก layer ของงวดที่ปิดเท่านั้น (ไม่รวม close_period)
  * final_avg ต่อสินค้า = round2(มูลค่ารับเข้าทุกคลัง / จำนวนรับเข้าทุกคลัง) · ต่อคลัง: closing_qty = รับเข้า (หัก adjustment_out) − จ่ายออก
- * มูลค่า = มูลค่ารับเข้า (หัก adjustment_out) − round2(จ่ายออก × final_avg) — ใบ open ของงวดถัดไปลง in=closing_qty @final_avg total=มูลค่านี้
+ * มูลค่าที่ยก = closing_qty × final_avg (backend 72eb733be: ปิดงวด AVG ยกมาด้วย ค่าเฉลี่ย × จำนวน ส่วนต่างอยู่ที่แถวยกยอดไปที่เดียว —
+ * เดิมสูตรนี้ใช้ มูลค่ารับเข้า − round2(จ่ายออก × final_avg) ซึ่งไม่เท่ากันเมื่อรับเข้าหลายราคา) — ใบ open ของงวดถัดไปลง in=closing_qty @final_avg total=มูลค่านี้
  */
 function avgExpected(period: string): Bal[] {
   return sql<{ loc: string; prod: string; qty: string; value: string; cost: string }>(`
@@ -79,7 +85,7 @@ function avgExpected(period: string): Bal[] {
         coalesce(sum(oq) filter (where oq > 0 and tt <> 'adjustment_out'), 0) iss_q
       from l group by 1,2)
     select loc.code loc, p.code prod, round(b.tin_q - b.iss_q, 2) qty, pa.final_avg cost,
-      round(b.tin_v - round(b.iss_q * pa.final_avg, 2), 2) value
+      round(round(b.tin_q - b.iss_q, 2) * pa.final_avg, 2) value
     from b join pa on pa.product_id = b.product_id
     join ${SCHEMA}.tb_location loc on loc.id = b.location_id join ${SCHEMA}.tb_product p on p.id = b.product_id
     where round(b.tin_q - b.iss_q, 2) > 0 order by 1,2`).map((r) => ({
@@ -87,9 +93,9 @@ function avgExpected(period: string): Bal[] {
   }));
 }
 
-/** ยอดที่ถูกยกเข้างวดถัดไป = layer open_period ของงวดนั้น (AVG: มูลค่าอ่านจาก total_cost เพราะไม่เท่า qty × final_avg เสมอไป) */
+/** ยอดที่ถูกยกเข้างวดถัดไป = layer open_period ของงวดนั้น (AVG / AVG-LOCATION: มูลค่าอ่านจาก total_cost เพราะไม่เท่า qty × final_avg เสมอไป — AVG-LOCATION โพสต์ตอน save เหมือน AVG) */
 function openedIn(period: string): Bal[] {
-  const value = SCN.method === "average" ? "sum(cl.total_cost)" : "sum(cl.in_qty * cl.cost_per_unit)";
+  const value = SCN.method !== "fifo" ? "sum(cl.total_cost)" : "sum(cl.in_qty * cl.cost_per_unit)";
   return sql<{ loc: string; prod: string; qty: string; value: string; cost: string }>(`
     select l.code loc, p.code prod, sum(cl.in_qty) qty, ${value} value, max(cl.cost_per_unit) cost
     from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
@@ -105,7 +111,7 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO, E2E_DB_URL และ E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ตั้งไว้; TC-PE-520004 ผ่านแล้ว (can_close = true, ปุ่ม Close Period กดได้) — หรือปิดงวดไปแล้วจากรอบก่อนและมี bf-before-close.json ในโฟลเดอร์หลักฐาน",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU, E2E_DB_URL ตั้งไว้ และงวด active ของ TEST BU = งวดของ scenario; TC-PE-520004 ผ่านแล้ว (can_close = true, ปุ่ม Close Period กดได้) — หรือปิดงวดไปแล้วจากรอบก่อนและมี bf-before-close.json ในโฟลเดอร์หลักฐาน",
       },
       {
         type: "steps",
@@ -122,12 +128,12 @@ test(
       {
         type: "note",
         description:
-          "[IRREVERSIBLE] ปิดงวดจริง ย้อนไม่ได้ — skip ถ้าไม่ได้ตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> · รันซ้ำหลังปิดแล้วไม่กดซ้ำ ตรวจอย่างเดียว · เดิม 2.10 + 2.11 (_movement_play specs/50-close) · snapshot bf-before-close.json อยู่ใต้ EVIDENCE_DIR เหมือนต้นฉบับ · ต้นฉบับ 2.11 บันทึก FAIL แต่ assert แค่ว่ามีรายการ — port assert ไม่มีรายการไม่ตรงและไม่มีรายการเกินมา · 2.11 เคย FAIL ใน period09 (2026-10-01, TEST-MOVE/T-03-F) — รอบ p10-r3 / p11-r4 / avg2607-r4 (2026-10-02) PASS จึงไม่ใช่บั๊กที่รู้อยู่ · ซ้อนกับ TC-PE-040001 ใน 900-period-end ซึ่งเป็น skip ว่าง · ขัดกับ gap TC-PE-040104 (docs/test-cases/gaps/900-period-end-gap.md) ที่คาดว่าหลังปิดการ์ดงวดแสดงป้าย Closed และปุ่มถูก disable — ต้นฉบับ assert ว่า /period-ends/current เลื่อนเป็นงวดถัดไป (หลักฐานทุกรอบ: งวดปัจจุบันเลื่อน หน้า Period End แสดงงวดใหม่) port คงตามต้นฉบับ ต้องตกลงว่าแบบไหนถูกแล้วแก้ฝั่งใดฝั่งหนึ่ง",
+          "[IRREVERSIBLE] ปิดงวดจริง ย้อนไม่ได้ — skip ถ้างวด active ของ BU ไม่ใช่งวดของ scenario · รันซ้ำหลังปิดแล้วไม่กดซ้ำ ตรวจอย่างเดียว · เดิม 2.10 + 2.11 (_movement_play specs/50-close) · snapshot bf-before-close.json อยู่ใต้ EVIDENCE_DIR เหมือนต้นฉบับ · ต้นฉบับ 2.11 บันทึก FAIL แต่ assert แค่ว่ามีรายการ — port assert ไม่มีรายการไม่ตรงและไม่มีรายการเกินมา · 2.11 เคย FAIL ใน period09 (2026-10-01, BU เดิม) — รอบ p10-r3 / p11-r4 / avg2607-r4 (2026-10-02) PASS จึงไม่ใช่บั๊กที่รู้อยู่ · ซ้อนกับ TC-PE-040001 ใน 900-period-end ซึ่งเป็น skip ว่าง · ขัดกับ gap TC-PE-040104 (docs/test-cases/gaps/900-period-end-gap.md) ที่คาดว่าหลังปิดการ์ดงวดแสดงป้าย Closed และปุ่มถูก disable — ต้นฉบับ assert ว่า /period-ends/current เลื่อนเป็นงวดถัดไป (หลักฐานทุกรอบ: งวดปัจจุบันเลื่อน หน้า Period End แสดงงวดใหม่) port คงตามต้นฉบับ ต้องตกลงว่าแบบไหนถูกแล้วแก้ฝั่งใดฝั่งหนึ่ง",
       },
     ],
   },
   async ({ page }) => {
-    test.skip(!irreversibleAllowed(PERIOD), irreversibleSkip("Close Period locks the period"));
+    test.skip(!(await irreversibleAllowed(PERIOD)), irreversibleSkip("Close Period locks the period"));
     const images: string[] = [];
     let closeStatus = "(ปิดไว้แล้วจากรอบก่อน)";
 
@@ -179,12 +185,16 @@ test(
     const opened = openedIn(NEXT);
     const key = (b: Bal) => `${b.loc}/${b.prod}`;
     const openMap = new Map(opened.map((b) => [key(b), b]));
+    // AVG / AVG-LOCATION: the carried row is priced at the rounded 2-decimal average × qty (backend 72eb733be), so the
+    // expected value is that product, not the unrounded ledger balance (APL 2610: 18 × 130.78 = 2354.04, ledger 2354.11)
+    const carried = (b: Bal) => (SCN.method === "fifo" ? b.value : Math.round(b.qty * (Math.round((b.cost ?? 0) * 100) / 100) * 100) / 100);
     const rows = before.map((b) => {
       const o = openMap.get(key(b));
-      return { k: key(b), bq: b.qty, bv: b.value, bc: b.cost, oq: o?.qty ?? 0, ov: o?.value ?? 0, oc: o?.cost };
+      return { k: key(b), bq: b.qty, bv: carried(b), bc: b.cost, oq: o?.qty ?? 0, ov: o?.value ?? 0, oc: o?.cost };
     });
     const extra = opened.filter((o) => !before.some((b) => key(b) === key(o)));
-    const isAvg = SCN.method === "average";
+    // AVG-LOCATION posts stock at save like AVG, and with one location its per-location average = the average (eb02388 live finding)
+    const isAvg = SCN.method !== "fifo";
     const mismatch = rows.filter(
       (r) => Math.abs(r.bq - r.oq) > 1e-6 || Math.abs(r.bv - r.ov) > 0.01 || (isAvg && Math.abs((r.bc ?? 0) - (r.oc ?? 0)) > 0.01),
     );
@@ -244,7 +254,8 @@ test(
     ],
   },
   async () => {
-    test.skip(SCN.method !== "average", "เฉพาะต้นทุนเฉลี่ย");
+    // AVG-LOCATION posts stock at save like AVG, and with one location its per-location average = the average (eb02388 live finding)
+    test.skip(SCN.method === "fifo", "เฉพาะต้นทุนเฉลี่ย");
     test.skip((await currentPeriod(BU)) !== NEXT, irreversibleSkip("the period is not closed yet, so there is nothing carried forward to check"));
     const held = [getDoc(SCN.keys.nextGrn), getDoc("siNextHeld")].filter(Boolean) as { id: string; no: string }[];
     const [{ opened }] = sql<{ opened: string }>(`select max(cl.created_at)::text opened from ${SCHEMA}.tb_inventory_transaction_cost_layer cl

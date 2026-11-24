@@ -17,7 +17,6 @@ import {
   createGrn,
   commitGrn,
   deleteCreditNoteDraft,
-  submitCreditNote,
   tryVoidGrn,
   type CreatedDoc,
 } from "./helpers/period-close/docs";
@@ -29,7 +28,8 @@ import {
  *   TC-PE-460001  #712 — a new CN number never reuses the number of a deleted draft
  *   TC-PE-460002  #713 — voiding a GRN whose stock was already issued is refused (409)
  *   TC-PE-460003  the toast of that refusal names the real reason (known bug, test.fail)
- *   TC-PE-460004  #713 — a CN returning more than is on hand only takes what is there
+ *   TC-PE-460004  backend 490fc9ee1 (replaces #713's "CN takes only what is on hand") — a CN returning more than is on hand is refused
+ *                 422 CREDIT_NOTE_INSUFFICIENT_STOCK, no CN is created, stock is unchanged and non-negative
  *
  * Not reversible: posts real documents into the scenario's period (GRN saved then
  * committed, Stock Out completed, CN completed; two CN drafts created and deleted).
@@ -42,7 +42,7 @@ import {
  * succeed and reverse stock; 460002 pins the opposite for a GRN whose stock was
  * already issued — both can be right, they cover different states.
  *
- * Run: E2E_PERIOD_SCENARIO=<avg scenario, e.g. avg2607> bun run test:period-close -- tests/916-period-close-fix-guards.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/916-period-close-fix-guards.spec.ts
  *
  * Origin: _movement_play/eop_bf/e2e/specs/23-fix-guards.spec.ts
  */
@@ -54,6 +54,7 @@ import {
  * ล็อตของ GRN ใหม่จึง "ดูไม่ถูกใช้" ทั้งที่ของถูกจ่ายไปแล้ว — เคสข้างล่างจัดให้เกิดสภาพนั้นจริง แล้วดูว่าระบบไม่ปล่อยให้คลังติดลบ
  */
 const CASE = "Case 4 · พิสูจน์ PR #712 / #713";
+// คงเป็น average อย่างเดียว: #713 เป็นเรื่อง processAverageClose (แถวปิด/เปิดงวด AVG ไม่ผูก parent_lot_no) ยังไม่มีหลักฐานว่า average_per_location เป็นแบบเดียวกัน
 test.skip(SCN.method !== "average", "เฉพาะ BU แบบ average");
 
 test.beforeAll(() => requireScenario());
@@ -61,7 +62,7 @@ gatePhase({ dates: true });
 
 const DATE = SCN.case1Date;
 const prodId = (code: string) => `(select id from ${SCHEMA}.tb_product where code = '${code}')`;
-const locId = `(select id from ${SCHEMA}.tb_location where code = '${L.code}')`;
+const locId = () => `(select id from ${SCHEMA}.tb_location where code = '${L.code}')`;
 
 /** ยอดที่หยิบได้ของคลัง (งวดปัจจุบัน) — กติกาเดียวกับด่านของ backend: รับเข้างวดนี้/ก่อนหน้า − จ่ายออกทุกงวด */
 function drawable(code: string): number {
@@ -71,7 +72,7 @@ function drawable(code: string): number {
     select coalesce(sum(in_qty) filter (where in_qty > 0 and (at_period is null or at_period in (select period from dr))), 0)
          - coalesce(sum(out_qty) filter (where out_qty > 0), 0) b
     from ${SCHEMA}.tb_inventory_transaction_cost_layer
-    where deleted_at is null and product_id = ${prodId(code)} and location_id = ${locId}`);
+    where deleted_at is null and product_id = ${prodId(code)} and location_id = ${locId()}`);
   return Number(r.b);
 }
 
@@ -79,7 +80,7 @@ function drawable(code: string): number {
 function visibleLots(code: string): number {
   const [r] = sql<{ v: string }>(`
     with recv as (select lot_no, sum(in_qty) tin from ${SCHEMA}.tb_inventory_transaction_cost_layer
-                  where deleted_at is null and in_qty > 0 and product_id = ${prodId(code)} and location_id = ${locId} group by 1)
+                  where deleted_at is null and in_qty > 0 and product_id = ${prodId(code)} and location_id = ${locId()} group by 1)
     select coalesce(sum(greatest(r.tin - coalesce((select sum(o.out_qty) from ${SCHEMA}.tb_inventory_transaction_cost_layer o
             where o.deleted_at is null and o.out_qty > 0 and o.parent_lot_no = r.lot_no), 0), 0)), 0) v from recv r`);
   return Number(r.v);
@@ -111,12 +112,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); phase 910 (เดิม 00-prestep) สร้าง grnA ไว้ใน state.json; ยังไม่กด Start Period Close",
+          "E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); phase 910 (เดิม 00-prestep) สร้าง grnA ไว้ใน state.json; ยังไม่กด Start Period Close",
       },
       {
         type: "steps",
         description:
-          "1. สร้างใบลดหนี้ร่างอ้าง grnA คืน Shredded pork skin 1 (Tax Invoice E2E-712-A) → ได้เลขใบแรก\n2. เปิดใบ → Edit → Delete → ยืนยัน\n3. สร้างใบลดหนี้ร่างใบใหม่แบบเดียวกัน (Tax Invoice E2E-712-B) → ได้เลขใบที่สอง\n4. ลบใบที่สองทิ้ง (เก็บกวาด)\n5. นับแถวใน tb_credit_note (รวมที่ลบแล้ว) ที่ใช้เลขใบที่สอง",
+          "1. สร้างใบลดหนี้ร่างอ้าง grnA คืน P1 1 (Tax Invoice E2E-712-A) → ได้เลขใบแรก\n2. เปิดใบ → Edit → Delete → ยืนยัน\n3. สร้างใบลดหนี้ร่างใบใหม่แบบเดียวกัน (Tax Invoice E2E-712-B) → ได้เลขใบที่สอง\n4. ลบใบที่สองทิ้ง (เก็บกวาด)\n5. นับแถวใน tb_credit_note (รวมที่ลบแล้ว) ที่ใช้เลขใบที่สอง",
       },
       {
         type: "expected",
@@ -134,7 +135,9 @@ test(
   },
   async ({ page }) => {
     const grnA = getDoc("grnA")!;
-    const cnLine = [{ productName: P.P4.name, qty: 1 }];
+    // P1, not P4: 914's draft CN (cnDraftIn) holds P4 of grnA and a product can be credited once per GRN (drafts count).
+    // Both drafts here are deleted, so P1 is free again for 919.
+    const cnLine = [{ productName: P.P1.name, qty: 1 }];
     const first = await createCreditNote(page, { grnNo: grnA.no, docDate: DATE, taxInvoiceNo: "E2E-712-A", lines: cnLine, status: "draft" });
     const img1 = await shot(page, "4.1", `CN-${first!.no}-ร่างใบแรก`);
     await deleteCreditNoteDraft(page, first!.id);
@@ -173,12 +176,12 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
         {
           type: "preconditions",
           description:
-            "E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); คลัง 1AG01 มี Ground Beef จากงวดก่อน ๆ (ล็อตเก่าที่ปิดงวดแล้ว); ยังไม่กด Start Period Close; รันซ้ำต้องตั้ง E2E_PERIOD_K42 ชุดใหม่",
+            "E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); คลัง L มี E2E-PC-1 จากงวดก่อน ๆ (ล็อตเก่าที่ปิดงวดแล้ว); ยังไม่กด Start Period Close; รันซ้ำต้องตั้ง E2E_PERIOD_K42 ชุดใหม่",
         },
         {
           type: "steps",
           description:
-            "1. สร้าง GRN แบบ saved ที่ 1AG01: Ground Beef 10 @150 (AVG ลงสต๊อกตอน save) → จดล็อตของใบ\n2. สร้าง Stock Out (completed) จ่าย Ground Beef จนยอดหยิบได้เหลือ 3 → จด parent_lot_no ที่ถูกผูก\n3. เปิด GRN → Void → ใส่เหตุผล → ยืนยัน แล้วดักคำตอบของ POST …/void\n4. อ่านสถานะใบและยอดหยิบได้ของคลังหลังลอง void\n5. ถ้าใบยัง saved: Commit ทิ้งไว้ (ใบ saved ขวางการเริ่มนับ)",
+            "1. สร้าง GRN แบบ saved ที่คลัง L: E2E-PC-1 10 @150 (AVG ลงสต๊อกตอน save) → จดล็อตของใบ\n2. สร้าง Stock Out (completed) จ่าย E2E-PC-1 จนยอดหยิบได้เหลือ 3 → จด parent_lot_no ที่ถูกผูก\n3. เปิด GRN → Void → ใส่เหตุผล → ยืนยัน แล้วดักคำตอบของ POST …/void\n4. อ่านสถานะใบและยอดหยิบได้ของคลังหลังลอง void\n5. ถ้าใบยัง saved: Commit ทิ้งไว้ (ใบ saved ขวางการเริ่มนับ)",
         },
         {
           type: "expected",
@@ -203,7 +206,7 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
       const lotsBefore = visibleLots(P.P1.code);
       // จ่ายออกจนเหลือ 3 — ตัวจัดสรรตัดล็อตเก่าที่ดูเต็มก่อน ล็อตของ GRN นี้จึงไม่ถูกผูก
       const so = await once(`so713a${K42}`, () =>
-        createAdjustment(page, { type: "stock-out", date: DATE, reason: "Test stock_out", status: "completed", lines: [{ product: P.P1.code, qty: before - 3 }] }),
+        createAdjustment(page, { type: "stock-out", date: DATE, reason: "E2E IA stock out", status: "completed", lines: [{ product: P.P1.code, qty: before - 3 }] }),
       );
       const parents = [...new Set(docLayers(so.id).filter((l) => Number(l.out_qty) > 0).map((l) => l.parent_lot_no))];
       const afterIssue = drawable(P.P1.code);
@@ -212,7 +215,12 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
       const img = await shot(page, "4.2", `void-${grn.no}-ถูกปฏิเสธ`);
       const afterVoid = drawable(P.P1.code);
       const byGuard = tried.http === 409 && tried.appCode === "GRN_RECEIPT_ALREADY_CONSUMED";
-      const ok = byGuard && tried.status === "saved" && afterVoid >= 0 && !parents.includes(grnLot ?? "");
+      // The lot-binding check only means something when the old lots look fuller than reality (the post-close state that
+      // caused #713). On a fresh TEST BU with no closed AVG period there is no such lot, so the allocator may legitimately
+      // draw the new receipt's lot too; the 409 guard + non-negative stock are still asserted unconditionally.
+      const oldLotsLookFull = lotsBefore > before;
+      const lotOk = !oldLotsLookFull || !parents.includes(grnLot ?? "");
+      const ok = byGuard && tried.status === "saved" && afterVoid >= 0 && lotOk;
       // ใบ saved ขวางการเริ่มนับ — commit ทิ้งไว้ (AVG commit แค่ล็อกเอกสาร สต๊อกลงไปแล้วตั้งแต่ save)
       if (tried.status === "saved") await commitGrn(page, grn.id);
       record({
@@ -226,7 +234,7 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
         ],
         expected:
           "หลังบ้านตอบ 409 GRN_RECEIPT_ALREADY_CONSUMED · ใบยัง saved · ยอดคลังไม่ติดลบ — การจ่ายผูกล็อตเก่า ไม่ใช่ล็อตของใบนี้ (ก่อน #713 จะ void ผ่านแล้วคลังเหลือ −7)",
-        actual: `ก่อนจ่าย: ยอดจริง ${before} · ล็อตที่ตัวจัดสรรเห็น ${lotsBefore} · SO ผูก parent ${parents.join(", ")} (ล็อตของ GRN ${parents.includes(grnLot ?? "") ? "ถูกผูก" : "ไม่ถูกผูก"}) · หลังจ่ายเหลือ ${afterIssue} · Void → HTTP ${tried.http} ${tried.appCode || "(ไม่มีรหัส)"} · สถานะ ${tried.status} · ยอดหลังลอง void ${afterVoid}`,
+        actual: `ก่อนจ่าย: ยอดจริง ${before} · ล็อตที่ตัวจัดสรรเห็น ${lotsBefore} · SO ผูก parent ${parents.join(", ")} (ล็อตของ GRN ${parents.includes(grnLot ?? "") ? "ถูกผูก" : "ไม่ถูกผูก"}${oldLotsLookFull ? "" : " · ไม่มีล็อตเก่าที่ดูเต็ม จึงไม่ตรวจการผูกล็อต"}) · หลังจ่ายเหลือ ${afterIssue} · Void → HTTP ${tried.http} ${tried.appCode || "(ไม่มีรหัส)"} · สถานะ ${tried.status} · ยอดหลังลอง void ${afterVoid}`,
         status: ok ? "PASS" : "FAIL",
         docs: [grn.no, so.no],
         images: [img],
@@ -248,7 +256,7 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
       expect(tried.status).toBe("saved");
       expect(afterVoid).toBeGreaterThanOrEqual(0);
       expect({ http: tried.http, appCode: tried.appCode }).toEqual({ http: 409, appCode: "GRN_RECEIPT_ALREADY_CONSUMED" });
-      expect(parents, `Stock Out ต้องผูกล็อตเก่า ไม่ใช่ล็อตของ ${grn.no} (${grnLot})`).not.toContain(grnLot ?? "");
+      if (oldLotsLookFull) expect(parents, `Stock Out ต้องผูกล็อตเก่า ไม่ใช่ล็อตของ ${grn.no} (${grnLot})`).not.toContain(grnLot ?? "");
     },
   );
 
@@ -275,12 +283,11 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
         {
           type: "note",
           description:
-            "เดิม 4.2-msg (_movement_play specs/23-fix-guards) · บั๊กที่รู้อยู่ (test.fail): ผลล่าสุด avg2605-r2 2026-10-02T06:47Z FAIL — FE ไม่มีข้อความของรหัส GRN_RECEIPT_ALREADY_CONSUMED จึงตกไปข้อความกลางของ 409 · FE PR #216 (merge 2026-10-02 ราว 10:05Z หลังหลักฐานล่าสุด) เพิ่มข้อความแล้ว — ถ้าเคสนี้ขึ้น \"unexpectedly passed\" ให้เอา test.fail ออก · แถว results.json ยังบันทึกใน TC-PE-460002 ตามเดิม",
+            "เดิม 4.2-msg (_movement_play specs/23-fix-guards) · บั๊กที่รู้อยู่ (เคยเป็น test.fail — ถอดแล้ว 2026-11-24 เพราะผ่านจริงบน BU-GR2VYNKQ หลัง FE #216): ผลล่าสุดเดิม avg2605-r2 2026-10-02T06:47Z FAIL — FE ไม่มีข้อความของรหัส GRN_RECEIPT_ALREADY_CONSUMED จึงตกไปข้อความกลางของ 409 · FE PR #216 (merge 2026-10-02 ราว 10:05Z หลังหลักฐานล่าสุด) เพิ่มข้อความแล้ว — แถว results.json ยังบันทึกใน TC-PE-460002 ตามเดิม",
         },
       ],
     },
     async () => {
-      test.fail(true, "known bug 4.2-msg: a void refused with 409 GRN_RECEIPT_ALREADY_CONSUMED shows the generic \"someone else changed\" toast (FE #216 not yet verified)");
       expect(voidToast, "TC-PE-460002 ต้องรันก่อนในรอบเดียวกัน").toBeDefined();
       expect(voidToast).not.toMatch(/someone else changed|มีคนแก้ใบนี้/i);
     },
@@ -288,74 +295,73 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
 });
 
 test(
-  "TC-PE-460004 ใบลดหนี้คืนของเกินยอดคลังจริงต้องตัดสต๊อกได้แค่ที่มี (#713)",
+  "TC-PE-460004 ใบลดหนี้คืนของเกินยอดคลังจริงต้องถูกปฏิเสธ 422 และคลังไม่ติดลบ (backend 490fc9ee1 แทน #713)",
   {
     annotation: [
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); คลัง 1AG01 มี Australian Sirloin จากงวดก่อน ๆ; ยังไม่กด Start Period Close; ใช้ evidence folder ใหม่ (รันซ้ำจะใช้ใบเดิมจาก state.json)",
+          "E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); คลัง L มี E2E-PC-2 จากงวดก่อน ๆ; ยังไม่กด Start Period Close; ใช้ evidence folder ใหม่ (รันซ้ำจะใช้ใบเดิมจาก state.json)",
       },
       {
         type: "steps",
         description:
-          "1. สร้าง GRN committed ที่ 1AG01: Australian Sirloin 10 @290\n2. สร้าง Stock Out (completed) จ่าย Australian Sirloin จนยอดหยิบได้เหลือ 2\n3. สร้างใบลดหนี้อ้าง GRN นั้น คืน Australian Sirloin 10 → Create → Submit (ถ้ามีใบร่างค้างจากรอบที่ถูกขัดจังหวะ ใช้ใบนั้น Submit ต่อ)\n4. อ่าน cost layer ของใบลดหนี้ (ตัดไปเท่าไร, note shortfall) และยอดหยิบได้หลัง CN",
+          "1. สร้าง GRN committed ที่คลัง L: E2E-PC-2 10 @290\n2. สร้าง Stock Out (completed) จ่าย E2E-PC-2 จนยอดหยิบได้เหลือ 2\n3. สร้างใบลดหนี้อ้าง GRN นั้น คืน E2E-PC-2 10 → Create (ถูกปฏิเสธ)\n4. อ่าน cost layer ของใบลดหนี้ (ตัดไปเท่าไร, note shortfall) และยอดหยิบได้หลัง CN",
       },
       {
         type: "expected",
         description:
-          "ใบลดหนี้เป็น completed, ตัดสต๊อกได้เท่ายอดที่เหลือจริง (2), อีก 8 ลงเป็น shortfall \"No stock available …\" (ส่วนต่างราคา ไม่ตัดสต๊อก) และยอดหยิบได้หลัง CN = 0 ไม่ติดลบ (ก่อน #713 ตัดจากล็อตของ GRN ที่ดูยังเต็ม 10 → คลัง −8)",
+          "สร้างใบลดหนี้คืน 10 ขณะที่เหลือจริง 2 แล้วหลังบ้านตอบ 422 CREDIT_NOTE_INSUFFICIENT_STOCK (on_hand 2, requested 10) ไม่มีใบลดหนี้ถูกสร้าง และยอดหยิบได้ของคลังยังเท่าเดิม ไม่ติดลบ",
       },
       { type: "priority", description: "High" },
       { type: "testType", description: "Edge Case" },
       {
         type: "note",
         description:
-          "เดิม 4.3 (_movement_play specs/23-fix-guards) · พิสูจน์ backend PR #713 · ผลล่าสุด avg2605-r2 2026-10-02 PASS · เดิมยืนยันแค่ยอดไม่ติดลบ — เพิ่มการยืนยันว่าตัดได้เท่ายอดที่มี, ยอดเหลือ 0 และใบเป็น completed ให้ตรงกับ verdict · รันซ้ำในโฟลเดอร์เดิมคำนวณยอดก่อน CN ใหม่ไม่ได้ ทั้ง results.json และเคสจะเป็น FAIL",
+          "เดิม 4.3 (_movement_play specs/23-fix-guards) พิสูจน์ PR #713 ที่ให้ CN ตัดเท่าที่มี — backend 490fc9ee1 (2026-10-07) มาแทน #713 แล้ว เคสนี้จึงยืนยันกติกาใหม่: CN คืนเกินยอดคลังถูกปฏิเสธ 422 CREDIT_NOTE_INSUFFICIENT_STOCK · ไม่มีใบลดหนี้ถูกสร้าง · ยอดคลังเท่าเดิมและไม่ติดลบ · รันซ้ำในโฟลเดอร์เดิมคำนวณยอดก่อน CN ใหม่ไม่ได้ ทั้ง results.json และเคสจะเป็น FAIL",
       },
     ],
   },
   async ({ page }) => {
+    // Backend 490fc9ee1 (2026-10-07) replaced the #713 behaviour: a CN used to take what was on hand and book the rest as a
+    // shortfall; now a CN returning more than is on hand AS OF ITS OWN DATE is refused (422 CREDIT_NOTE_INSUFFICIENT_STOCK).
+    // The case keeps its ID and now asserts the new rule: refused, nothing created, stock does not go negative.
+    // Stock Out is checked against the balance on its own date: stock received later in the period (GRN P2 day 20) is not
+    // drawable at day 15, so this case works on day 25, after every receipt of the scenario.
+    const D713B = `${DATE.slice(0, 8)}25`;
     const grn = await once("g713b", () =>
-      createGrn(page, { date: DATE, invoiceNo: `E2E-${SCN.period}-713b`, status: "committed", lines: [{ product: P.P2.code, qty: 10, price: 290 }] }),
+      createGrn(page, { date: D713B, invoiceNo: `E2E-${SCN.period}-713b`, status: "committed", lines: [{ product: P.P2.code, qty: 10, price: 290 }] }),
     );
     const before = drawable(P.P2.code);
     const so = await once("so713b", () =>
-      createAdjustment(page, { type: "stock-out", date: DATE, reason: "Test stock_out", status: "completed", lines: [{ product: P.P2.code, qty: before - 2 }] }),
+      createAdjustment(page, { type: "stock-out", date: D713B, reason: "E2E IA stock out", status: "completed", lines: [{ product: P.P2.code, qty: before - 2 }] }),
     );
     const afterIssue = drawable(P.P2.code);
     const lotsVisible = visibleLots(P.P2.code);
-    // รอบที่ถูกขัดจังหวะระหว่าง Submit ทิ้งใบร่างไว้ — สินค้าบนใบรับคืนได้ครั้งเดียว (ร่างก็นับ) ใบรับจึงหายจากช่องเลือก
-    // ใช้ใบเดิมต่อแทนการสร้างใหม่
-    if (!getDoc("cn713b")) {
-      const [left] = sql<{ id: string; cn_no: string; s: string }>(`select id, cn_no, doc_status::text s from ${SCHEMA}.tb_credit_note
-        where grn_id = '${grn.id}' and deleted_at is null and doc_status::text in ('draft', 'completed') order by created_at desc limit 1`);
-      if (left) {
-        if (left.s === "draft") await submitCreditNote(page, left.id);
-        putDoc("cn713b", { id: left.id, no: left.cn_no, status: "completed" });
-      }
+    const cnsBefore = Number(sql<{ n: string }>(`select count(*) n from ${SCHEMA}.tb_credit_note where grn_id = '${grn.id}' and deleted_at is null`)[0].n);
+    let refusal = "";
+    try {
+      await createCreditNote(page, { grnNo: grn.no, docDate: D713B, taxInvoiceNo: `E2E-713-${SCN.period}`, lines: [{ productName: P.P2.name, qty: 10 }], status: "completed" });
+    } catch (e) {
+      refusal = e instanceof Error ? e.message : String(e);
     }
-    const cn = await once("cn713b", () =>
-      createCreditNote(page, { grnNo: grn.no, docDate: DATE, taxInvoiceNo: `E2E-713-${SCN.period}`, lines: [{ productName: P.P2.name, qty: 10 }], status: "completed" }),
-    );
-    const img = await shot(page, "4.3", `CN-${cn.no}`);
-    const layers = docLayers(cn.id);
-    const taken = layers.reduce((s, l) => s + Number(l.out_qty), 0);
-    const shortfall = layers.find((l) => (l.note ?? "").startsWith("No stock available"))?.note ?? "(ไม่มี)";
+    const img = await shot(page, "4.3", `CN-refused-${grn.no}`);
+    const refused = /\b422\b/.test(refusal) && refusal.includes("CREDIT_NOTE_INSUFFICIENT_STOCK");
+    const cnsAfter = Number(sql<{ n: string }>(`select count(*) n from ${SCHEMA}.tb_credit_note where grn_id = '${grn.id}' and deleted_at is null`)[0].n);
     const afterCn = drawable(P.P2.code);
     record({
       id: "4.3",
       case: CASE,
       title: `CN คืน ${P.P2.name} 10 อ้าง ${grn.no} ขณะที่คลังเหลือจริง 2`,
-      steps: [`GRN committed ${P.P2.name} 10 @290 (${grn.no})`, `SO จ่าย ${before - 2} จนเหลือ 2 (${so.no})`, `CN คืน 10 → Submit (${cn.no})`],
-      expected:
-        "ตัดสต๊อกได้ 2 · อีก 8 ลง shortfall (ส่วนต่างราคา ไม่ตัดสต๊อก) · ยอดคลังเหลือ 0 ไม่ติดลบ (ก่อน #713 ตัดจากล็อตของ GRN ที่ดูยังเต็ม 10 → คลัง −8)",
-      actual: `ก่อน CN: ยอดจริง ${afterIssue} · ล็อตที่ตัวจัดสรรเห็น ${lotsVisible} · CN ${cn.status} ตัดไป ${taken} · shortfall: ${shortfall} · ยอดหลัง CN ${afterCn}`,
-      status: taken === afterIssue && afterCn === 0 && cn.status === "completed" ? "PASS" : "FAIL",
-      docs: [grn.no, so.no, cn.no],
+      steps: [`GRN committed ${P.P2.name} 10 @290 (${grn.no})`, `SO จ่าย ${before - 2} จนเหลือ 2 (${so.no})`, "CN คืน 10 → Create"],
+      expected: "หลังบ้านตอบ 422 CREDIT_NOTE_INSUFFICIENT_STOCK · ไม่มีใบลดหนี้ถูกสร้าง · ยอดคลังเท่าเดิม ไม่ติดลบ (กติกาใหม่ backend 490fc9ee1 แทนพฤติกรรม #713 เดิมที่ตัดเท่าที่มี)",
+      actual: `ก่อน CN: ยอดจริง ${afterIssue} · ล็อตที่ตัวจัดสรรเห็น ${lotsVisible} · ${refused ? "ถูกปฏิเสธ 422 CREDIT_NOTE_INSUFFICIENT_STOCK" : `ไม่ถูกปฏิเสธตามคาด: ${refusal || "(สร้างได้)"}`} · ใบลดหนี้ของ GRN ${cnsBefore} → ${cnsAfter} · ยอดหลัง CN ${afterCn}`,
+      status: refused && cnsAfter === cnsBefore && afterCn === afterIssue && afterCn >= 0 ? "PASS" : "FAIL",
+      docs: [grn.no, so.no],
       images: [img],
     });
-    expect(afterCn).toBeGreaterThanOrEqual(0);
-    expect({ taken, afterCn, status: cn.status }).toEqual({ taken: afterIssue, afterCn: 0, status: "completed" });
+    expect(refused, `CN ที่คืนเกินยอดต้องถูกปฏิเสธ 422 CREDIT_NOTE_INSUFFICIENT_STOCK: ${refusal || "(สร้างได้)"}`).toBe(true);
+    expect(cnsAfter, "ต้องไม่มีใบลดหนี้ถูกสร้าง").toBe(cnsBefore);
+    expect({ afterCn, nonNegative: afterCn >= 0 }).toEqual({ afterCn: afterIssue, nonNegative: true });
   },
 );

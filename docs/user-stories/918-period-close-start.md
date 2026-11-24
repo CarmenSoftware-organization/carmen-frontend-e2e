@@ -24,7 +24,7 @@ _Generated from `tests/918-period-close-start.spec.ts` annotations. Edit annotat
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO=<scenario> และ E2E_ALLOW_IRREVERSIBLE=<BU>:<period> ตรงกับงวดปัจจุบัน (ไม่ตั้ง = ข้าม); Login เป็น admin@carmen.com (movement-setup); งวดปัจจุบันของ BU = งวดของ scenario; phase 910–917 ผ่านแล้ว (รวม TC-PE-440007 ตรวจความพร้อม) — review.start_blocking.total = 0 และรอบนับของงวดยังเป็น draft; เอกสารนอกงวด (GRN งวดหน้า saved/draft) และใบลดหนี้ร่างที่ phase ก่อนสร้างยังเปิดค้างอยู่ใน state.json
+E2E_PERIOD_BU=<BU> เป็น TEST BU และงวด active ของ BU = งวดของ scenario (ไม่ใช่ = ข้าม); Login เป็น Admin (gmail, project setup); งวดปัจจุบันของ BU = งวดของ scenario; phase 910–917 ผ่านแล้ว (รวม TC-PE-440007 ตรวจความพร้อม) — review.start_blocking.total = 0 และรอบนับของงวดยังเป็น draft; เอกสารนอกงวด (GRN งวดหน้า saved/draft) และใบลดหนี้ร่างที่ phase ก่อนสร้างยังเปิดค้างอยู่ใน state.json
 
 **Steps**
 
@@ -39,9 +39,9 @@ E2E_PERIOD_SCENARIO=<scenario> และ E2E_ALLOW_IRREVERSIBLE=<BU>:<period> �
 
 POST start-counting ตอบ 2xx, toast "Counting started.", หน้าพาไป /inventory-management/period-end/review และ review.physical_count_period.status เปลี่ยน draft → counting — เอกสารนอกงวดและใบลดหนี้ร่างไม่ขวางการเริ่มนับ
 
-> _Note: เดิม 2.6 (_movement_play specs/25-start) · ย้อนกลับไม่ได้: เปิดรอบนับของงวดจริง ต้องได้รับอนุมัติต่อรอบแล้วตั้ง E2E_ALLOW_IRREVERSIBLE · ผลล่าสุด PASS ทั้ง avg2607-r4 และ p11-r4 (2026-10-02) · เดิมรอหน้า review ด้วย .catch() — เปลี่ยนเป็น expect.soft บน URL เพื่อให้แถว 2.6 ใน results.json ยังถูกบันทึกหลังกดจริงแม้หน้าไม่พาไป review · กรณี Start ถูกขวาง (422) อยู่ใน 912 (เดิม 10-case1-start) · ตรวจความพร้อมแบบไม่กดอยู่ใน TC-PE-440007_
+> _Note: เดิม 2.6 (_movement_play specs/25-start) · ย้อนกลับไม่ได้: เปิดรอบนับของงวดจริง ทำได้เฉพาะบน TEST BU ที่รีเซ็ตด้วย data:reset ได้ · ผลล่าสุด PASS ทั้ง avg2607-r4 และ p11-r4 (2026-10-02) · เดิมรอหน้า review ด้วย .catch() — เปลี่ยนเป็น expect.soft บน URL เพื่อให้แถว 2.6 ใน results.json ยังถูกบันทึกหลังกดจริงแม้หน้าไม่พาไป review · กรณี Start ถูกขวาง (422) อยู่ใน 912 (เดิม 10-case1-start) · ตรวจความพร้อมแบบไม่กดอยู่ใน TC-PE-440007_
 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>
