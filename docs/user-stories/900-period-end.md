@@ -417,18 +417,19 @@ Login เป็น carmensoftware.dev+purchase@gmail.com และมี period 
 
 **Preconditions**
 
-ปิดงวดจริงแล้วด้วย phase 924 (TC-PE-540001) และตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ของงวดที่ปิด
+TEST BU อย่างน้อยหนึ่งตัวใน TEST_BUS มีงวดที่ปิดแล้ว (ปิดด้วย period-close phase 924 — TC-PE-540001); หลัง data:reset ทุก BU ไม่มีงวดปิด เคสนี้จึง skip
 
 **Steps**
 
-1. อ่าน /api/<BU>/activity-logs?entity_type=period เรียงใหม่สุดก่อน
-2. หาแถวของงวดที่ปิด
+1. ไล่ TEST_BUS หางวด status = closed ล่าสุดจาก /api/<BU>/inventory-periods
+2. อ่าน /api/<BU>/activity-logs?entity_type=inventory_period เรียงใหม่สุดก่อน
+3. หาแถวของงวดที่ปิด
 
 **Expected**
 
-มี activity entry entity_type=period ของงวดนั้นที่ new_data.status = closed พร้อม actor_id
+มี activity entry entity_type=inventory_period ของงวดนั้นที่ new_data.status = closed พร้อม actor_id
 
-> _Note: ต้องมีการปิดงวดจริง (ย้อนกลับไม่ได้) จึงกั้นเหมือน 924 — ไม่ปิดงวดเองในเคสนี้ ส่วนตัวกรอง Period ตรวจใน TC-PE-340006_
+> _Note: อ่านอย่างเดียว ไม่ปิดงวดเอง (ย้อนกลับไม่ได้) · backend บันทึกการปิดงวดเป็น entity_type = inventory_period (action update) ไม่ใช่ period · ตัวกรอง Period ตรวจใน TC-PE-340006_
 
 ---
 
@@ -449,11 +450,11 @@ Login เป็น carmensoftware.dev+admin@gmail.com ที่เปิด Acti
 
 **Expected**
 
-request ส่ง entity_type=period ตอบ 200 ทุกแถวที่ได้เป็น entity_type period และตัวกรองแสดง Record Type = period
+request ส่ง entity_type=inventory_period ตอบ 200 ได้อย่างน้อยหนึ่งแถว ทุกแถวเป็น entity_type inventory_period และตัวกรองแสดง Record Type = Period
 
-> _Note: ส่วนที่ย้อนกลับได้ของ TC-PE-340001 (ต้องปิดงวดจริง) — อ่านอย่างเดียว ไม่ปิดงวด_
+> _Note: ส่วนที่ย้อนกลับได้ของ TC-PE-340001 — อ่านอย่างเดียว ไม่ปิดงวด · backend บันทึกงวดเป็น entity_type = inventory_period (data:reset สร้างงวดไว้แล้วจึงมีแถวเสมอ) · ก่อน FE แก้ ตัวกรองส่ง entity_type=period ซึ่งไม่มีแถวเลย และเคสนี้เคยผ่านทั้งที่ได้ list ว่าง_
 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 0707775</sub>
