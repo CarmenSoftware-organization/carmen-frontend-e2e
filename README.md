@@ -102,7 +102,7 @@ bun run report                  # open last HTML report
 | `E2E_PERIOD_CLOSE` | No | `1` = register the opt-in `period-close` project (depends on `setup`, gmail `TEST_USERS`) | — |
 | `E2E_DB_URL` | For period-close | Postgres URL (read-only role is enough) — `.env.local` only. The tenant schema is resolved from `CARMEN_SYSTEM.tb_business_unit.db_schema`, not from the BU code | — |
 | `E2E_API_URL` / `E2E_X_APP_ID` | No | Backend for the period-close / doc-flow API checks; falls back to the frontend's `/config.json` | — |
-| `E2E_MOVEMENT_DATE` | No | Date for the doc-flow helpers' stock-posting documents (`tests/helpers/movement/doc-flow.ts`) | today if in the BU's current period, else its 15th |
+| `E2E_MOVEMENT_DATE` | No | Legacy: read only by `tests/helpers/movement/doc-flow.ts` (used by `scripts/movement/setup-workflows.ts`); doc-flow specs use `tests/helpers/doc-flow/data.ts` and period-close ignores it | today if in the BU's current period, else its 15th |
 | `E2E_SRI_BU` / `E2E_SRI_PHASE` | No | SR → Issue flow: `FIFO` variant; AVG phase `pre` / `post` / `all` | AVG / `all` |
 | `E2E_PERIOD_BU` | For period-close | TEST BU code (`tests/test-users.ts` `TEST_BUS`) the period-close run targets; reset it first with `data:reset --with-history`. Start / Close run only when the BU is a TEST BU and its active period is the scenario period; a run before the 3rd of the month (Bangkok) is refused | — |
 | `E2E_EVIDENCE_DIR` | No | Period-close evidence folder | `runs/period-close/<BU>/<period>` |
@@ -142,7 +142,7 @@ Any `playwright test` flag (`--headed`, `--ui`, `-g <pattern>`, `--debug`, …) 
 │   ├── results/*.json            # per-spec result JSONs (checked in as seeds; updated each run)
 │   ├── scripts/                  # shell runners (run-module.sh, run-all.sh)
 │   ├── test-users.ts             # role-based test accounts
-│   └── movement-users.ts         # legacy movement accounts (CARMEN-AVG / CARMEN-FIFO) — unused by period-close; only scripts/movement/* and the legacy fixture import it
+│   └── movement-users.ts         # legacy movement accounts (CARMEN-AVG / CARMEN-FIFO) — used only by legacy movement helpers/scripts (movement.setup.ts, helpers/movement/api.ts + doc-flow.ts, scripts/movement/*) and as unused defaults in movement.fixture.ts; not by period-close or the doc-flow specs
 ├── .auth/                        # runtime — gitignored; storageState files written by setup
 └── scripts/                      # run-env, sync-test-results, audits, seed-master, capture-screens
 ```
