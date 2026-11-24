@@ -142,7 +142,7 @@ Any `playwright test` flag (`--headed`, `--ui`, `-g <pattern>`, `--debug`, …) 
 │   ├── results/*.json            # per-spec result JSONs (checked in as seeds; updated each run)
 │   ├── scripts/                  # shell runners (run-module.sh, run-all.sh)
 │   ├── test-users.ts             # role-based test accounts
-│   └── movement-users.ts         # legacy movement accounts (CARMEN-AVG / CARMEN-FIFO) — used only by legacy movement helpers/scripts (movement.setup.ts, helpers/movement/api.ts + doc-flow.ts, scripts/movement/*) and as unused defaults in movement.fixture.ts; its accounts are not used at runtime by period-close (which loads the file indirectly via movement.fixture.ts but overrides the accounts) or by the doc-flow specs
+│   └── movement-users.ts         # legacy movement accounts (CARMEN-AVG / CARMEN-FIFO) — its accounts are used at runtime only by tests/helpers/movement/api.ts (900-period-end.spec.ts and legacy scripts/movement/*); period-close and the doc-flow specs do not use them (period-close loads the file via movement.fixture.ts but overrides the accounts)
 ├── .auth/                        # runtime — gitignored; storageState files written by setup
 └── scripts/                      # run-env, sync-test-results, audits, seed-master, capture-screens
 ```
