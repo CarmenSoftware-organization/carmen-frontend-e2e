@@ -7,7 +7,7 @@ import { L, P, PERIOD } from "./helpers/period-close/scenarios";
  *
  * Counts every location of the count round through the real screens (location card
  * on the review page → entry → Submit for Review → Submit):
- *  - the price-test location L (1AG01): P1/P2/P3 counted +2 over, P4 counted −2 short,
+ *  - the price-test location L: P1/P2/P3 counted +2 over, P4 counted −2 short,
  *    everything else equal to the system quantity — this produces the compensation
  *    Stock In / Stock Out that TC-PE-520001 / 520002 check
  *  - every other location: counted equal to the quantity the sheet compares against
@@ -15,17 +15,16 @@ import { L, P, PERIOD } from "./helpers/period-close/scenarios";
  *
  * IRREVERSIBLE: a submitted count sheet is `completed` and cannot be reopened. The
  * source suite did not gate this phase; here it is gated like Start / Close — the
- * test is skipped unless E2E_ALLOW_IRREVERSIBLE=<BU>:<period> names this scenario's
- * BU and period. A rerun skips locations already completed.
+ * test is skipped unless the BU is a TEST BU whose active period is the scenario's (irreversibleAllowed). A rerun skips locations already completed.
  *
  * Prerequisites: count round started (status `counting`); TC-PE-500001 ran (its
  * documents must still be open while L is counted — they are price traps for 2.9).
  * E2E_PERIOD_LOC=code1,code2 limits the run to those locations.
- * Run: E2E_PERIOD_SCENARIO=<scenario> E2E_ALLOW_IRREVERSIBLE=<BU>:<period> bun run test:period-close -- tests/921-period-close-count.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/921-period-close-count.spec.ts
  * Origin: _movement_play/eop_bf/e2e/specs/40-count.spec.ts
  */
-// Case 2 · นับ + ชดเชย — นับครบ 13 คลังผ่านหน้าจอ (ย้อนกลับไม่ได้ต่อคลัง: submit แล้ว = completed)
-// คลัง L (1AG01): P1/P2/P3 นับเกิน +2 · P4 นับขาด −2 · Chicken frame เท่ายอดระบบ
+// Case 2 · นับ + ชดเชย — นับครบทุกคลังที่ review ระบุผ่านหน้าจอ (ย้อนกลับไม่ได้ต่อคลัง: submit แล้ว = completed)
+// คลัง L: P1/P2/P3 นับเกิน +2 · P4 นับขาด −2 · E2E-PC-X เท่ายอดระบบ
 // คลังอื่น: นับเท่ายอดที่ระบบใช้เทียบ (รวมรายการงวดหลังที่ปนมา — ผู้ใช้รับทราบ ไม่ให้เกิดใบชดเชยปลอม)
 // LOC=code1,code2 = จำกัดคลังที่จะนับรอบนี้ (ที่นี่ใช้ E2E_PERIOD_LOC)
 
@@ -39,10 +38,7 @@ test.beforeAll(async () => {
 });
 
 /**
- * คลังที่จะนับ — ต้นฉบับ hardcode 13 คลัง:
- *   "1AG02", "1BQ01", "1EG01", "1FB01", "1FB03", "1FO01", "1FO02", "1HK01", "1HR01", // ว่าง
- *   "1FB02", "1SR01", "TEST-MOVE", // มีสินค้า นับเท่ายอดระบบ
- *   L.code, // คลังทดสอบราคา — นับขาด/เกิน
+ * คลังที่จะนับ — ต้นฉบับ hardcode รายชื่อคลังของ BU เก่า (คลังว่าง · คลังที่มีสินค้านับเท่ายอดระบบ · คลังทดสอบราคา)
  * ที่นี่อ่านจากรายการคลังที่ต้องนับใน review (physical_count_type = yes) แล้วเอาคลังทดสอบราคาไว้ท้ายสุดเหมือนเดิม
  */
 async function countTargets(): Promise<string[]> {
@@ -57,24 +53,24 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO, E2E_DB_URL และ E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ตั้งไว้; งวดที่ทดสอบยังเป็นงวดปัจจุบัน รอบนับอยู่สถานะ counting; TC-PE-500001 รันแล้วและเอกสารของมันยังค้างอยู่",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU, E2E_DB_URL ตั้งไว้ และงวด active ของ TEST BU = งวดของ scenario; งวดที่ทดสอบยังเป็นงวดปัจจุบัน รอบนับอยู่สถานะ counting; TC-PE-500001 รันแล้วและเอกสารของมันยังค้างอยู่",
       },
       {
         type: "steps",
         description:
-          "1. อ่านรายการคลังที่ต้องนับจาก /period-ends/review (คลังทดสอบราคา 1AG01 ไว้ท้ายสุด; E2E_PERIOD_LOC จำกัดได้)\n2. ต่อคลัง: คิดยอดที่ใบนับใช้เทียบ (cost layer ของงวดที่นับ) — คลัง 1AG01 ตั้ง P1/P2/P3 เกิน +2 และ P4 ขาด −2 คลังอื่นนับเท่ายอดระบบ (ยอดติดลบนับเป็น 0)\n3. Period End → Review → กดการ์ดคลัง → กรอกยอดทีละสินค้าผ่านช่องค้นหา\n4. กด Submit for Review แล้ว Submit\n5. อ่านแถวของใบนับ (ยอดระบบ / ยอดนับ / ส่วนต่าง) จากฐานข้อมูล",
+          "1. อ่านรายการคลังที่ต้องนับจาก /period-ends/review (คลังทดสอบราคา คลัง L ไว้ท้ายสุด; E2E_PERIOD_LOC จำกัดได้)\n2. ต่อคลัง: คิดยอดที่ใบนับใช้เทียบ (cost layer ของงวดที่นับ) — คลัง L ตั้ง P1/P2/P3 เกิน +2 และ P4 ขาด −2 คลังอื่นนับเท่ายอดระบบ (ยอดติดลบนับเป็น 0)\n3. Period End → Review → กดการ์ดคลัง → กรอกยอดทีละสินค้าผ่านช่องค้นหา\n4. กด Submit for Review แล้ว Submit\n5. อ่านแถวของใบนับ (ยอดระบบ / ยอดนับ / ส่วนต่าง) จากฐานข้อมูล",
       },
       {
         type: "expected",
         description:
-          "ทุกคลังที่นับ: ใบนับสถานะ completed และ diff_qty ของทุกสินค้าตรงกับที่ตั้ง — 1AG01 ส่วนต่าง P1/P2/P3 = +2, P4 = −2 ตัวอื่น 0 · คลังอื่นส่วนต่าง 0 (ยกเว้นยอดระบบติดลบที่นับเป็น 0)",
+          "ทุกคลังที่นับ: ใบนับสถานะ completed และ diff_qty ของทุกสินค้าตรงกับที่ตั้ง — คลัง L ส่วนต่าง P1/P2/P3 = +2, P4 = −2 ตัวอื่น 0 · คลังอื่นส่วนต่าง 0 (ยกเว้นยอดระบบติดลบที่นับเป็น 0)",
       },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
       {
         type: "note",
         description:
-          "[IRREVERSIBLE] submit ใบนับแล้วเป็น completed ย้อนไม่ได้ — ต้นฉบับไม่ได้กั้น port นี้ skip ถ้าไม่ได้ตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> · เดิม 2.7 (_movement_play specs/40-count) ซึ่งสร้างหนึ่ง test ต่อคลังด้วยชื่อแบบ dynamic — port รวมเป็น test เดียววน test.step ต่อคลัง หลักฐาน 2.7-<รหัสคลัง> เหมือนเดิม · ต้นฉบับ hardcode 13 คลัง (1AG02 1BQ01 1EG01 1FB01 1FB03 1FO01 1FO02 1HK01 1HR01 1FB02 1SR01 TEST-MOVE 1AG01) — port อ่านจาก review.details.physical_count · ส่วนต่างที่ผิดใช้ expect.soft เพื่อให้นับคลังที่เหลือต่อ (ต้นฉบับแยก test ต่อคลังจึงล้มทีละคลัง) รันซ้ำข้ามคลังที่ completed แล้ว · ซ้อนกับ TC-PE-330001 ใน 900-period-end ซึ่งเป็น skip ว่าง · รอบล่าสุด p11-r4 / avg2607-r4 (2026-10-02) PASS ทุกคลัง",
+          "[IRREVERSIBLE] submit ใบนับแล้วเป็น completed ย้อนไม่ได้ — ต้นฉบับไม่ได้กั้น port นี้ skip ถ้างวด active ของ BU ไม่ใช่งวดของ scenario · เดิม 2.7 (_movement_play specs/40-count) ซึ่งสร้างหนึ่ง test ต่อคลังด้วยชื่อแบบ dynamic — port รวมเป็น test เดียววน test.step ต่อคลัง หลักฐาน 2.7-<รหัสคลัง> เหมือนเดิม · ต้นฉบับ hardcode รายชื่อ 13 คลังของ BU เดิม — port อ่านจาก review.details.physical_count · ส่วนต่างที่ผิดใช้ expect.soft เพื่อให้นับคลังที่เหลือต่อ (ต้นฉบับแยก test ต่อคลังจึงล้มทีละคลัง) รันซ้ำข้ามคลังที่ completed แล้ว · ซ้อนกับ TC-PE-330001 ใน 900-period-end ซึ่งเป็น skip ว่าง · รอบล่าสุด p11-r4 / avg2607-r4 (2026-10-02) PASS ทุกคลัง",
       },
     ],
   },

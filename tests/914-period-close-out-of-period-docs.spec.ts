@@ -28,7 +28,7 @@ import { L, PX, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
  * Irreversible? ไม่แตะสถานะงวด — แต่สร้างเอกสารจริงที่ phase ถัดไปใช้ต่อ (GRN งวดหน้า, CN ร่าง) จำไว้ใน state.json
  * Prerequisites: 910 ผ่านแล้ว (GRN ฐาน grnA สำหรับใบลดหนี้) · 912 ผ่านแล้ว (ไม่มีเอกสารค้างในงวด) · งวดถัดไปเปิดอยู่
  *   · รอบนับยังไม่เริ่ม (ยกเว้น E2E_PERIOD_AFTER_START=1)
- * Run:  E2E_PERIOD_SCENARIO=<s> bun run test:period-close -- tests/914-period-close-out-of-period-docs.spec.ts
+ * Run:  E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/914-period-close-out-of-period-docs.spec.ts
  *   E2E_PERIOD_AFTER_START=1: รันซ้ำบางข้อหลังกด Start ไปแล้ว — ทุกแถวที่บันทึกมีหมายเหตุว่ารันระหว่างนับ
  *
  * Serial: TC-PE-440007 (2.6-ready) ตรวจเอกสารที่ 440001 / 440002 / 440006 สร้างไว้
@@ -75,7 +75,7 @@ test(
   "TC-PE-440001 GRN บันทึกแล้ว (saved) ลงวันที่งวดถัดไปสร้างได้ เพื่อใช้ตรวจว่าไม่ขวาง Start ของงวดนี้",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม; admin ผูกกับคลัง L (910)" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม; admin ผูกกับคลัง L (910)" },
       { type: "steps", description: "1. Goods Receive Note → New (Manual) · Vendor C010 · GRN Date = วันที่ในงวดถัดไปตาม scenario (nextGrn.date)\n2. คลัง L · สินค้า nextGrn ของ scenario qty 10 ราคาตาม scenario\n3. กด Create (saved)\n4. อ่านสถานะใบสดจาก API แล้วเปิดใบ" },
       { type: "expected", description: "GRN มีสถานะ saved (งวดถัดไปเปิดอยู่จึงสร้างได้) — ใบนี้ต้องไม่ขวาง Start ของงวดนี้ (ตรวจใน TC-PE-440007)" },
       { type: "priority", description: "High" },
@@ -108,8 +108,8 @@ test(
   "TC-PE-440002 GRN ร่างลงวันที่งวดถัดไปสร้างได้ เพื่อใช้ตรวจว่าไม่ขวาง Start ของงวดนี้",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม" },
-      { type: "steps", description: "1. Goods Receive Note → New (Manual) · Vendor C010 · GRN Date = วันที่ในงวดถัดไปตาม scenario (nextGrnDraftDate)\n2. คลัง L · Chicken frame qty 1 @10\n3. กด Save Draft\n4. อ่านสถานะใบสดจาก API แล้วเปิดใบ" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม" },
+      { type: "steps", description: "1. Goods Receive Note → New (Manual) · Vendor C010 · GRN Date = วันที่ในงวดถัดไปตาม scenario (nextGrnDraftDate)\n2. คลัง L · E2E-PC-X qty 1 @10\n3. กด Save Draft\n4. อ่านสถานะใบสดจาก API แล้วเปิดใบ" },
       { type: "expected", description: "GRN มีสถานะ draft (เลข draft-…) — ใบนี้ต้องไม่ขวาง Start ของงวดนี้ (ตรวจใน TC-PE-440007)" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
@@ -161,7 +161,7 @@ test(
   "TC-PE-440003 ฟอร์ม Stock In เลือกวันที่ในงวดถัดไปไม่ได้ (ปฏิทินล็อกไว้ที่งวดปัจจุบัน)",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario" },
       { type: "steps", description: "1. Inventory Adjustment → Add Stock In\n2. เปิดปฏิทินช่อง Date → กดเดือนถัดไปหนึ่งครั้ง → ดูวันที่ของงวดหน้าตาม scenario (nextMonth.day)\n3. ปิดปฏิทิน แล้วใช้ date picker เดินเดือนไปเลือกวันที่ในงวดถัดไป (nextGrn.date)" },
       { type: "expected", description: "วันที่ของงวดถัดไปเลือกไม่ได้ทั้งสองทาง (ปุ่มวันถูกปิดหรือเดินเดือนไปไม่ถึง) — สร้าง Stock In ลงงวดหน้าผ่าน UI ไม่ได้ จึงบันทึกเป็น N/A" },
       { type: "priority", description: "Medium" },
@@ -190,7 +190,7 @@ test(
   "TC-PE-440004 ฟอร์ม Stock Out เลือกวันที่ในงวดถัดไปไม่ได้ (ปฏิทินล็อกไว้ที่งวดปัจจุบัน)",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario" },
       { type: "steps", description: "1. Inventory Adjustment → Add Stock Out\n2. เปิดปฏิทินช่อง Date → กดเดือนถัดไปหนึ่งครั้ง → ดูวันที่ของงวดหน้าตาม scenario (nextMonth.day)\n3. ปิดปฏิทิน แล้วใช้ date picker เดินเดือนไปเลือกวันที่ในงวดถัดไป (nextGrn.date)" },
       { type: "expected", description: "วันที่ของงวดถัดไปเลือกไม่ได้ทั้งสองทาง — สร้าง Stock Out ลงงวดหน้าผ่าน UI ไม่ได้ จึงบันทึกเป็น N/A" },
       { type: "priority", description: "Medium" },
@@ -222,7 +222,7 @@ test(
   "TC-PE-440005 ใบลดหนี้ลงวันที่งวดถัดไปต้องถูกปฏิเสธ (CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD)",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; มี GRN ฐานที่ commit แล้ว (grnA จาก 910 หรือเลข GRN ที่ scenario ระบุ)" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; มี GRN ฐานที่ commit แล้ว (grnA จาก 910 หรือเลข GRN ที่ scenario ระบุ)" },
       { type: "steps", description: "1. Credit Note → New · Vendor C010 · GRN = GRN ฐานของ scenario · Reason ของ BU · Doc Date / Tax Invoice Date = วันที่ในงวดถัดไป (cnNext.date)\n2. Add Item → Select from GRN: สินค้า cnNext ของ scenario คืน 1\n3. กด Create (→ Submit ถ้าสร้างได้)\n4. ถ้ามีใบ: อ่านสถานะ และ cost layer ของใบลดหนี้ที่คลัง L" },
       { type: "expected", description: "หลังบ้านปฏิเสธด้วย 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD และไม่มีใบลดหนี้ที่ completed — ใบลดหนี้ลงวันที่ได้เฉพาะงวด active" },
       { type: "priority", description: "High" },
@@ -267,7 +267,7 @@ test(
   "TC-PE-440006 เปิดค้างไว้: ใบลดหนี้ร่างในงวดนี้ และตรวจว่า PR / PO ค้างไม่อยู่ในตัวขวาง Start",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; มี GRN ฐาน grnA ที่ commit แล้ว (910); รอบนับยังไม่เริ่ม" },
+      { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; มี GRN ฐาน grnA ที่ commit แล้ว (910); รอบนับยังไม่เริ่ม" },
       { type: "steps", description: "1. Credit Note → New · GRN = grnA · Doc Date = วันที่ในงวดนี้ (cnDraftIn.date) · สินค้า cnDraftIn คืน 1 → Create (ไม่ Submit)\n2. อ่านสถานะใบสดจาก API แล้วเปิดใบ\n3. GET period-ends/review: หา PR/PO ที่ค้างในงวดจาก details.transaction\n4. มี PR/PO ค้างจริง: เปิด Period End → Review ถ่ายภาพ · ไม่มี: เปิด Purchase Order → New และ Purchase Request → New ดูว่าสร้างได้ไหม" },
       { type: "expected", description: "CN มีสถานะ draft (เปิดค้างไว้ให้ TC-PE-440007 ตรวจว่าไม่ขวาง); start_blocking ไม่มีชนิด pr / po ไม่ว่าจะมี PR/PO ค้างอยู่จริงหรือไม่" },
       { type: "priority", description: "Medium" },
@@ -297,7 +297,7 @@ test(
     expect(d.status, `${d.no}`).toBe("draft");
 
     const images: string[] = [];
-    // BU ที่มี PR/PO ค้างในงวดอยู่จริง (CARMEN-AVG: PO260900001 in_progress) — ใช้ของจริงยืนยันว่าไม่ขวาง Start
+    // ถ้า BU มี PR/PO ค้างในงวดอยู่ (TEST BU ว่าง จึงปกติไม่มี) — ใช้ของจริงยืนยันว่าไม่ขวาง Start
     const rv = await review(BU);
     const openPrPo = (["pr", "po"] as const).flatMap((k) =>
       ((rv.details.transaction[k]?.documents ?? []) as { no: string; status: string }[])
@@ -332,8 +332,8 @@ test(
       expected: "เปิดค้างไว้เพื่อยืนยันว่าไม่ขวาง (ตามโค้ด PR/PO ไม่อยู่ในทั้งสองด่าน)",
       actual:
         (denied.every(Boolean)
-          ? `ทำไม่ได้: admin@carmen.com ไม่อยู่ใน approval flow ใดของ PR/PO บน ${BU} → หน้า New ขึ้น Permission Denied `
-          : `ไม่ได้สร้าง PR/PO ค้างในรอบนี้ (ต้องเดินผ่าน approval flow; ทดสอบด้วยใบจริงแล้วใน avg09 ข้อ 2.5-PRPO: PASS) `) +
+          ? `ทำไม่ได้: Admin (gmail) ไม่อยู่ใน approval flow ใดของ PR/PO บน ${BU} → หน้า New ขึ้น Permission Denied `
+          : `ไม่ได้สร้าง PR/PO ค้างในรอบนี้ (ต้องเดินผ่าน approval flow; รอบเดิมทดสอบด้วยใบจริงแล้ว ข้อ 2.5-PRPO: PASS) `) +
         "(ต้องตั้ง workflow ก่อน) · PR ไม่มีช่องวันที่ในฟอร์มอยู่แล้ว (ลงวันที่ของวันนี้) · ตามโค้ด validatePeriodEnd ตัด PR/PO ออกโดยตั้งใจ",
       status: "N/A", images,
     });
@@ -351,7 +351,7 @@ test(
       { type: "expected", description: "can_start_counting = true และ start_blocking.total = 0; ปุ่ม Start Period Close กดได้ (enabled)" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Happy Path" },
-      { type: "note", description: "เดิม 2.6-ready (_movement_play specs/20-case2) · หยุดก่อนกด Start — การกด Start จริง (ย้อนกลับไม่ได้) อยู่ใน phase ถัดไปและต้องตั้ง E2E_ALLOW_IRREVERSIBLE · ทับซ้อน TC-PE-310001 (ทุก transaction post แล้ว → ผ่านด่าน)" },
+      { type: "note", description: "เดิม 2.6-ready (_movement_play specs/20-case2) · หยุดก่อนกด Start — การกด Start จริง (ย้อนกลับไม่ได้) อยู่ใน phase ถัดไป (918) และรันเฉพาะเมื่อ BU ยังอยู่ที่งวดของ scenario · ทับซ้อน TC-PE-310001 (ทุก transaction post แล้ว → ผ่านด่าน)" },
     ],
   },
   async ({ page }) => {

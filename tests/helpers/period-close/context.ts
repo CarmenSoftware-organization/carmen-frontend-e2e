@@ -296,3 +296,59 @@ const state = new DocState(join(EVIDENCE_DIR, "state.json"));
 export type { DocRef };
 export const getDoc = (key: string): DocRef | undefined => state.get(key);
 export const putDoc = (key: string, doc: DocRef): void => state.put(key, doc);
+
+// ── Lookups of the scenario BU (resolved at call time, never at module level) ────
+
+const listRows = (body: any): any[] => (Array.isArray(body?.data) ? body.data : Array.isArray(body?.data?.items) ? body.data.items : []);
+
+export interface PcLocation {
+  id: string;
+  code: string;
+  name: string;
+}
+
+/** Active inventory locations of the BU, by code — the first one is L (where data:reset seeds E2E-PC-*). */
+export async function inventoryLocations(): Promise<PcLocation[]> {
+  const r = await buConfigSend("Admin", "GET", "/locations?perpage=100", undefined, BU);
+  if (r.status !== 200) throw new Error(`${BU}: locations HTTP ${r.status}`);
+  return listRows(r.body)
+    .filter((l) => (l.location_type ?? "inventory") === "inventory" && l.is_active !== false)
+    .sort((x, y) => String(x.code).localeCompare(String(y.code)))
+    .map((l) => ({ id: String(l.id), code: String(l.code), name: String(l.name ?? l.code) }));
+}
+
+let srWorkflowCache: { id: string; name: string } | null = null;
+/**
+ * The BU's active store-requisition workflow that has an Issue stage — found by its stages, not by name
+ * (TEST BUs do not share the legacy "SR Test Flow v2" name). Several matches: the first by name.
+ */
+export async function srIssueWorkflow(): Promise<{ id: string; name: string }> {
+  if (srWorkflowCache) return srWorkflowCache;
+  const list = await apiGet(`/api/config/${BU}/workflows?perpage=100`);
+  const hits: { id: string; name: string }[] = [];
+  for (const w of listRows(list.body).filter((x) => x.workflow_type === "store_requisition" && x.is_active)) {
+    const d = await apiGet(`/api/config/${BU}/workflows/${w.id}`);
+    const roles = ((d.body?.data?.data?.stages ?? []) as any[]).map((s) => String(s.role).toLowerCase());
+    if (roles.includes("issue")) hits.push({ id: String(w.id), name: String(w.name) });
+  }
+  if (!hits.length) throw new Error(`${BU}: no active store_requisition workflow with an Issue stage`);
+  hits.sort((a, b) => a.name.localeCompare(b.name));
+  return (srWorkflowCache = hits[0]);
+}
+
+/** Id of a period-close account in the system schema (for requestor_id / received_by_id of API-created documents). */
+export function pcUserId(user: PcUser): string {
+  const id = rawSql<{ id: string }>(`select id from "CARMEN_SYSTEM".tb_user where email = '${PC_USERS[user].email}'`)[0]?.id;
+  if (!id) throw new Error(`period-close: ${PC_USERS[user].email} not found in CARMEN_SYSTEM.tb_user`);
+  return id;
+}
+
+/** An active adjustment type of the BU for Stock In / Stock Out (the E2E-IA-* ones data:reset seeds win). */
+export async function adjustmentTypeId(kind: "stock_in" | "stock_out"): Promise<string> {
+  const r = await buConfigSend("Admin", "GET", "/adjustment-types?perpage=100", undefined, BU);
+  if (r.status !== 200) throw new Error(`${BU}: adjustment-types HTTP ${r.status}`);
+  const of = listRows(r.body).filter((t) => t.type === kind && t.is_active !== false);
+  const hit = of.find((t) => String(t.code).startsWith("E2E-IA")) ?? of[0];
+  if (!hit) throw new Error(`${BU}: no active ${kind} adjustment type`);
+  return String(hit.id);
+}

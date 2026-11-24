@@ -42,7 +42,7 @@ import {
  * succeed and reverse stock; 460002 pins the opposite for a GRN whose stock was
  * already issued — both can be right, they cover different states.
  *
- * Run: E2E_PERIOD_SCENARIO=<avg scenario, e.g. avg2607> bun run test:period-close -- tests/916-period-close-fix-guards.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/916-period-close-fix-guards.spec.ts
  *
  * Origin: _movement_play/eop_bf/e2e/specs/23-fix-guards.spec.ts
  */
@@ -111,7 +111,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); phase 910 (เดิม 00-prestep) สร้าง grnA ไว้ใน state.json; ยังไม่กด Start Period Close",
+          "E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); phase 910 (เดิม 00-prestep) สร้าง grnA ไว้ใน state.json; ยังไม่กด Start Period Close",
       },
       {
         type: "steps",
@@ -173,12 +173,12 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
         {
           type: "preconditions",
           description:
-            "E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); คลัง 1AG01 มี Ground Beef จากงวดก่อน ๆ (ล็อตเก่าที่ปิดงวดแล้ว); ยังไม่กด Start Period Close; รันซ้ำต้องตั้ง E2E_PERIOD_K42 ชุดใหม่",
+            "E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); คลัง L มี E2E-PC-1 จากงวดก่อน ๆ (ล็อตเก่าที่ปิดงวดแล้ว); ยังไม่กด Start Period Close; รันซ้ำต้องตั้ง E2E_PERIOD_K42 ชุดใหม่",
         },
         {
           type: "steps",
           description:
-            "1. สร้าง GRN แบบ saved ที่ 1AG01: Ground Beef 10 @150 (AVG ลงสต๊อกตอน save) → จดล็อตของใบ\n2. สร้าง Stock Out (completed) จ่าย Ground Beef จนยอดหยิบได้เหลือ 3 → จด parent_lot_no ที่ถูกผูก\n3. เปิด GRN → Void → ใส่เหตุผล → ยืนยัน แล้วดักคำตอบของ POST …/void\n4. อ่านสถานะใบและยอดหยิบได้ของคลังหลังลอง void\n5. ถ้าใบยัง saved: Commit ทิ้งไว้ (ใบ saved ขวางการเริ่มนับ)",
+            "1. สร้าง GRN แบบ saved ที่คลัง L: E2E-PC-1 10 @150 (AVG ลงสต๊อกตอน save) → จดล็อตของใบ\n2. สร้าง Stock Out (completed) จ่าย E2E-PC-1 จนยอดหยิบได้เหลือ 3 → จด parent_lot_no ที่ถูกผูก\n3. เปิด GRN → Void → ใส่เหตุผล → ยืนยัน แล้วดักคำตอบของ POST …/void\n4. อ่านสถานะใบและยอดหยิบได้ของคลังหลังลอง void\n5. ถ้าใบยัง saved: Commit ทิ้งไว้ (ใบ saved ขวางการเริ่มนับ)",
         },
         {
           type: "expected",
@@ -294,12 +294,12 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); Login เป็น admin@carmen.com (movement-setup); คลัง 1AG01 มี Australian Sirloin จากงวดก่อน ๆ; ยังไม่กด Start Period Close; ใช้ evidence folder ใหม่ (รันซ้ำจะใช้ใบเดิมจาก state.json)",
+          "E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (gmail, project setup); คลัง L มี E2E-PC-2 จากงวดก่อน ๆ; ยังไม่กด Start Period Close; ใช้ evidence folder ใหม่ (รันซ้ำจะใช้ใบเดิมจาก state.json)",
       },
       {
         type: "steps",
         description:
-          "1. สร้าง GRN committed ที่ 1AG01: Australian Sirloin 10 @290\n2. สร้าง Stock Out (completed) จ่าย Australian Sirloin จนยอดหยิบได้เหลือ 2\n3. สร้างใบลดหนี้อ้าง GRN นั้น คืน Australian Sirloin 10 → Create → Submit (ถ้ามีใบร่างค้างจากรอบที่ถูกขัดจังหวะ ใช้ใบนั้น Submit ต่อ)\n4. อ่าน cost layer ของใบลดหนี้ (ตัดไปเท่าไร, note shortfall) และยอดหยิบได้หลัง CN",
+          "1. สร้าง GRN committed ที่คลัง L: E2E-PC-2 10 @290\n2. สร้าง Stock Out (completed) จ่าย E2E-PC-2 จนยอดหยิบได้เหลือ 2\n3. สร้างใบลดหนี้อ้าง GRN นั้น คืน E2E-PC-2 10 → Create → Submit (ถ้ามีใบร่างค้างจากรอบที่ถูกขัดจังหวะ ใช้ใบนั้น Submit ต่อ)\n4. อ่าน cost layer ของใบลดหนี้ (ตัดไปเท่าไร, note shortfall) และยอดหยิบได้หลัง CN",
       },
       {
         type: "expected",

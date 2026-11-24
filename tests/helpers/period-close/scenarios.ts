@@ -66,8 +66,6 @@ interface Scenario {
   location: { code: string; name: string };
   /** เหตุผลของใบลดหนี้ (master ต่อ BU ไม่เหมือนกัน) — scenarioFor ใส่ "" แล้วเติมตอนรัน */
   cnReason: string;
-  /** (เลิกใช้ — เหลือไว้ให้ spec เดิม type-check จนถึง Task 5) */
-  preBlockers?: { soDrafts: string[]; srInProgress: string[]; srApprover: string };
   period: string;
   next: string;
   periodEnd: string;
@@ -206,5 +204,5 @@ function readLocation(bu: string): { code: string; name: string } {
 export const SCN: Scenario = scenarioFor(SCENARIO, bangkokToday(), readLocation(SCENARIO));
 export const PERIOD = SCN.period;
 export const NEXT = SCN.next;
-/** คลังที่ใช้ (เดิมเป็นค่าคงที่ 1AG01) — ยังส่งออกเป็น L ให้ spec เดิมจนถึง Task 5 */
+/** คลังแรกของ BU (คลังที่ seed สินค้า E2E-PC-*) — spec ใช้ชื่อ L */
 export const L = SCN.location;

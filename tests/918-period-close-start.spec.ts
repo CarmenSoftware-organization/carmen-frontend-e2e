@@ -22,20 +22,19 @@ import { PERIOD, SCN } from "./helpers/period-close/scenarios";
  * start, observed through the real screen rather than inferred from the API.
  *
  * IRREVERSIBLE: opens the count round of the scenario's current period. Runs only
- * with E2E_ALLOW_IRREVERSIBLE=<BU>:<period> matching the scenario, and only when
+ * on a TEST BU whose active period is the scenario's (irreversibleAllowed — data:reset --with-history puts it there), and only when
  * the backend reports nothing blocking (start_blocking.total = 0). If the round is
  * already counting (an earlier run started it), the case ends without pressing again.
  * Prerequisites: phases 910–917 (origin 00-prestep … 24-new-rules) done for the same
  * scenario — the documents listed in state.json are the ones left open on purpose.
  *
- * Run: E2E_PERIOD_SCENARIO=<s> E2E_ALLOW_IRREVERSIBLE=<BU>:<period> bun run test:period-close -- tests/918-period-close-start.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/918-period-close-start.spec.ts
  *
  * Origin: _movement_play/eop_bf/e2e/specs/25-start.spec.ts
  */
-// ⚠️ ย้อนกลับไม่ได้ — กด Start Period Close ของ CARMEN-FIFO งวดปัจจุบันจริง (รอบนับ draft → counting)
-// ผู้ใช้อนุมัติ: 2603 (2026-09-30 "ลองได้เลย…") · 2604 (อนุมัติแผน last_cost 2026-09-30) · 2605 (ยืนยัน PR #702 ผ่าน UI "เอาขึ้น แล้ว")
-// รันได้เฉพาะเมื่อ ALLOW_IRREVERSIBLE=CARMEN-FIFO:2603 และ precheck ผ่านครบ · ถ้าเริ่มไปแล้วจะไม่กดซ้ำ
-// (ที่นี่: E2E_ALLOW_IRREVERSIBLE=<BU>:<period>)
+// ⚠️ ย้อนกลับไม่ได้ — กด Start Period Close ของ TEST BU (E2E_PERIOD_BU) งวดปัจจุบันจริง (รอบนับ draft → counting)
+// รันได้เฉพาะเมื่อ BU เป็น TEST BU และงวด active ตรงกับ scenario (irreversibleAllowed) และ precheck ผ่านครบ · ถ้าเริ่มไปแล้วจะไม่กดซ้ำ
+// (TEST BU รีเซ็ตกลับได้ด้วย data:reset --bu <BU> --with-history จึงไม่ต้องขอสิทธิ์รายรอบเหมือนเดิม)
 // เอกสารที่เปิดค้างตอนกด = หลักฐานว่าไม่ขวางการเริ่มนับจริง (ไม่ใช่แค่ดูจาก API)
 
 const CASE = "Case 2 · เอกสารนอกงวด";
@@ -49,7 +48,7 @@ test(
       {
         type: "preconditions",
         description:
-          "E2E_PERIOD_SCENARIO=<scenario> และ E2E_ALLOW_IRREVERSIBLE=<BU>:<period> ตรงกับงวดปัจจุบัน (ไม่ตั้ง = ข้าม); Login เป็น admin@carmen.com (movement-setup); งวดปัจจุบันของ BU = งวดของ scenario; phase 910–917 ผ่านแล้ว (รวม TC-PE-440007 ตรวจความพร้อม) — review.start_blocking.total = 0 และรอบนับของงวดยังเป็น draft; เอกสารนอกงวด (GRN งวดหน้า saved/draft) และใบลดหนี้ร่างที่ phase ก่อนสร้างยังเปิดค้างอยู่ใน state.json",
+          "E2E_PERIOD_BU=<BU> เป็น TEST BU และงวด active ของ BU = งวดของ scenario (ไม่ใช่ = ข้าม); Login เป็น Admin (gmail, project setup); งวดปัจจุบันของ BU = งวดของ scenario; phase 910–917 ผ่านแล้ว (รวม TC-PE-440007 ตรวจความพร้อม) — review.start_blocking.total = 0 และรอบนับของงวดยังเป็น draft; เอกสารนอกงวด (GRN งวดหน้า saved/draft) และใบลดหนี้ร่างที่ phase ก่อนสร้างยังเปิดค้างอยู่ใน state.json",
       },
       {
         type: "steps",
@@ -66,7 +65,7 @@ test(
       {
         type: "note",
         description:
-          "เดิม 2.6 (_movement_play specs/25-start) · ย้อนกลับไม่ได้: เปิดรอบนับของงวดจริง ต้องได้รับอนุมัติต่อรอบแล้วตั้ง E2E_ALLOW_IRREVERSIBLE · ผลล่าสุด PASS ทั้ง avg2607-r4 และ p11-r4 (2026-10-02) · เดิมรอหน้า review ด้วย .catch() — เปลี่ยนเป็น expect.soft บน URL เพื่อให้แถว 2.6 ใน results.json ยังถูกบันทึกหลังกดจริงแม้หน้าไม่พาไป review · กรณี Start ถูกขวาง (422) อยู่ใน 912 (เดิม 10-case1-start) · ตรวจความพร้อมแบบไม่กดอยู่ใน TC-PE-440007",
+          "เดิม 2.6 (_movement_play specs/25-start) · ย้อนกลับไม่ได้: เปิดรอบนับของงวดจริง ทำได้เฉพาะบน TEST BU ที่รีเซ็ตด้วย data:reset ได้ · ผลล่าสุด PASS ทั้ง avg2607-r4 และ p11-r4 (2026-10-02) · เดิมรอหน้า review ด้วย .catch() — เปลี่ยนเป็น expect.soft บน URL เพื่อให้แถว 2.6 ใน results.json ยังถูกบันทึกหลังกดจริงแม้หน้าไม่พาไป review · กรณี Start ถูกขวาง (422) อยู่ใน 912 (เดิม 10-case1-start) · ตรวจความพร้อมแบบไม่กดอยู่ใน TC-PE-440007",
       },
     ],
   },

@@ -1,5 +1,4 @@
-import { test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, record, shot, gatePhase } from "./helpers/period-close/context";
-import { apiGet } from "./helpers/movement/api";
+import { test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, record, shot, gatePhase, apiGet } from "./helpers/period-close/context";
 import { createAdjustment } from "./helpers/period-close/docs";
 import { currentPeriod, expectedIssueCost, voidedLotCosts } from "./helpers/period-close/estimate";
 import { L, P, PERIOD } from "./helpers/period-close/scenarios";
@@ -19,7 +18,7 @@ import { L, P, PERIOD } from "./helpers/period-close/scenarios";
  * Prerequisites: the scenario's pre-step documents exist (3.1 / 3.3 read location L's
  * lots); 3.2 needs at least one closed period to have open/close rows to check — on the
  * first period after a reset it records N/A and checks the list is empty.
- * Run: E2E_PERIOD_SCENARIO=<scenario> bun run test:period-close -- tests/923-period-close-ledger-views.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/923-period-close-ledger-views.spec.ts
  * Origin: _movement_play/eop_bf/e2e/specs/47-ledger-views.spec.ts
  */
 /**
@@ -45,12 +44,12 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO และ E2E_DB_URL ตั้งไว้; คลัง 1AG01 มีล็อตของ P1–P4 จาก pre-step (บางสินค้ามีล็อตของ GRN ที่ void เป็นตัวหลอก)",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU และ E2E_DB_URL ตั้งไว้; คลัง L มีล็อตของ P1–P4 จาก pre-step (บางสินค้ามีล็อตของ GRN ที่ void เป็นตัวหลอก)",
       },
       {
         type: "steps",
         description:
-          "1. เปิดฟอร์ม Stock In ใหม่ ลงวันที่สิ้นงวดปัจจุบัน คลัง 1AG01 เพิ่ม P1–P4 อย่างละ 3 หน่วย อ่านราคาต่อหน่วยที่ฟอร์มเติมให้ (ไม่บันทึก)\n2. ทำแบบเดียวกันกับฟอร์ม Stock Out อ่านช่อง Total Cost (ไม่บันทึก)\n3. คิดราคาที่คาดจาก cost layer: FIFO ตัดล็อตเก่าก่อนจากงวดที่หยิบได้ · AVG ค่าเฉลี่ยสุทธิ · ของไม่พอ = ไม่เติมราคา",
+          "1. เปิดฟอร์ม Stock In ใหม่ ลงวันที่สิ้นงวดปัจจุบัน คลัง L เพิ่ม P1–P4 อย่างละ 3 หน่วย อ่านราคาต่อหน่วยที่ฟอร์มเติมให้ (ไม่บันทึก)\n2. ทำแบบเดียวกันกับฟอร์ม Stock Out อ่านช่อง Total Cost (ไม่บันทึก)\n3. คิดราคาที่คาดจาก cost layer: FIFO ตัดล็อตเก่าก่อนจากงวดที่หยิบได้ · AVG ค่าเฉลี่ยสุทธิ · ของไม่พอ = ไม่เติมราคา",
       },
       {
         type: "expected",
@@ -122,7 +121,7 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_DB_URL ตั้งไว้; มีงวดที่ปิดแล้วอย่างน้อยหนึ่งงวดจึงจะมีแถว open/close ให้ตรวจ (งวดแรกหลังรีเซ็ตบันทึก N/A)",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_DB_URL ตั้งไว้; มีงวดที่ปิดแล้วอย่างน้อยหนึ่งงวดจึงจะมีแถว open/close ให้ตรวจ (งวดแรกหลังรีเซ็ตบันทึก N/A)",
       },
       {
         type: "steps",
@@ -220,12 +219,12 @@ test(
       {
         type: "preconditions",
         description:
-          "BU ของ scenario; E2E_DB_URL ตั้งไว้; P1 (11110001) ที่คลัง 1AG01 มีรายการเคลื่อนไหวจาก pre-step (บางรอบมี GRN ที่ void ของ P1 เป็นตัวหลอก)",
+          "BU ของ scenario; E2E_DB_URL ตั้งไว้; P1 (11110001) ที่คลัง L มีรายการเคลื่อนไหวจาก pre-step (บางรอบมี GRN ที่ void ของ P1 เป็นตัวหลอก)",
       },
       {
         type: "steps",
         description:
-          "1. GET /api/<BU>/inventory-info/<P1>/<1AG01> ในนาม admin (ไม่มีหน้าจอ FE แสดงรายการนี้)\n2. อ่านล็อตของรายการที่ยังไม่ void และล็อตของใบที่ void ของ P1 ที่ 1AG01 จากฐานข้อมูล\n3. เทียบรายการที่ API คืนกับทั้งสองชุด",
+          "1. GET /api/<BU>/inventory-info/<P1>/<คลัง L> ในนาม admin (ไม่มีหน้าจอ FE แสดงรายการนี้)\n2. อ่านล็อตของรายการที่ยังไม่ void และล็อตของใบที่ void ของ P1 ที่คลัง L จากฐานข้อมูล\n3. เทียบรายการที่ API คืนกับทั้งสองชุด",
       },
       {
         type: "expected",

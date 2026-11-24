@@ -26,7 +26,7 @@ import { L, SCN, PERIOD } from "./helpers/period-close/scenarios";
  * period-close project runs with fullyParallel: false and one worker.
  *
  * Prerequisites: TC-PE-510001 counted every location; the period under test is still current.
- * Run: E2E_PERIOD_SCENARIO=<scenario> bun run test:period-close -- tests/922-period-close-verify.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/922-period-close-verify.spec.ts
  * Origin: _movement_play/eop_bf/e2e/specs/45-verify.spec.ts
  */
 // ตรวจผลหลังนับครบ: 2.8 ใบชดเชย (เลข/ชนิด/วันที่) · 2.9 ราคา SI ชดเชย vs กติกาที่ผู้ใช้เคาะ · ข้อค้นพบ on-hand ของใบนับ
@@ -61,7 +61,7 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO และ E2E_DB_URL ตั้งไว้; TC-PE-510001 นับครบทุกคลังแล้ว (คลัง 1AG01 มีทั้งนับเกินและนับขาด); งวดที่ทดสอบยังเป็นงวดปัจจุบัน",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU และ E2E_DB_URL ตั้งไว้; TC-PE-510001 นับครบทุกคลังแล้ว (คลัง L มีทั้งนับเกินและนับขาด); งวดที่ทดสอบยังเป็นงวดปัจจุบัน",
       },
       {
         type: "steps",
@@ -131,7 +131,7 @@ test(
       {
         type: "preconditions",
         description:
-          "TC-PE-520001 รันแล้ว (ภาพใบชดเชย); ใบชดเชยของคลัง 1AG01 มีบรรทัดของสินค้าทุกตัวใน costCases ของ scenario; เอกสารรับเข้า/กับดักราคาของ pre-step และ TC-PE-500001 ยังอยู่; E2E_DB_URL ตั้งไว้",
+          "TC-PE-520001 รันแล้ว (ภาพใบชดเชย); ใบชดเชยของคลัง L มีบรรทัดของสินค้าทุกตัวใน costCases ของ scenario; เอกสารรับเข้า/กับดักราคาของ pre-step และ TC-PE-500001 ยังอยู่; E2E_DB_URL ตั้งไว้",
       },
       {
         type: "steps",

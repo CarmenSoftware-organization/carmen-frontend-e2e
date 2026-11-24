@@ -20,7 +20,7 @@ import { L, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
  *          its stock when this period closes, after the brought-forward rows
  *
  * IRREVERSIBLE: closing a period cannot be undone. 2.10/2.11 are skipped unless
- * E2E_ALLOW_IRREVERSIBLE=<BU>:<period> names this scenario's BU and period; a rerun after
+ * the BU is a TEST BU whose active period is the scenario's (irreversibleAllowed); a rerun after
  * the close does not press it again (it only re-checks). 5.5 is read-only and skips
  * itself until the period is closed.
  *
@@ -28,11 +28,11 @@ import { L, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
  * mismatch must not hide the 5.5 result.
  *
  * Prerequisites: TC-PE-520004 passed (can_close = true, the Close Period button enabled).
- * Run: E2E_PERIOD_SCENARIO=<scenario> E2E_ALLOW_IRREVERSIBLE=<BU>:<period> bun run test:period-close -- tests/924-period-close-close.spec.ts
+ * Run: E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/924-period-close-close.spec.ts
  * Origin: _movement_play/eop_bf/e2e/specs/50-close.spec.ts
  */
-// ⚠️ ย้อนกลับไม่ได้ — กด Close Period ของ CARMEN-FIFO งวดปัจจุบันจริง แล้วตรวจยอดยกไป (BF) ของงวดถัดไป
-// ผู้ใช้อนุมัติ: 2603 ("เอาเลย" 2026-09-30) · 2604 (อนุมัติแผน last_cost) · 2605 (ยืนยัน PR #702) · รันได้เฉพาะเมื่อ ALLOW_IRREVERSIBLE=CARMEN-FIFO:<งวด>
+// ⚠️ ย้อนกลับไม่ได้ — กด Close Period ของ TEST BU (E2E_PERIOD_BU) งวดปัจจุบันจริง แล้วตรวจยอดยกไป (BF) ของงวดถัดไป
+// รันได้เฉพาะเมื่อ BU เป็น TEST BU และงวด active ตรงกับ scenario (irreversibleAllowed) — รีเซ็ตกลับได้ด้วย data:reset --bu <BU> --with-history
 // ก่อนกด: เก็บยอดคงเหลือต่อล็อต ณ สิ้น 2603 · หลังกด: เทียบกับ layer open_period ของ 2604 ทีละคลัง/สินค้า (จำนวน + มูลค่า)
 
 const SNAP = join(EVIDENCE_DIR, "bf-before-close.json");
@@ -105,7 +105,7 @@ test(
       {
         type: "preconditions",
         description:
-          "Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO, E2E_DB_URL และ E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ตั้งไว้; TC-PE-520004 ผ่านแล้ว (can_close = true, ปุ่ม Close Period กดได้) — หรือปิดงวดไปแล้วจากรอบก่อนและมี bf-before-close.json ในโฟลเดอร์หลักฐาน",
+          "Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU, E2E_DB_URL ตั้งไว้ และงวด active ของ TEST BU = งวดของ scenario; TC-PE-520004 ผ่านแล้ว (can_close = true, ปุ่ม Close Period กดได้) — หรือปิดงวดไปแล้วจากรอบก่อนและมี bf-before-close.json ในโฟลเดอร์หลักฐาน",
       },
       {
         type: "steps",
@@ -122,7 +122,7 @@ test(
       {
         type: "note",
         description:
-          "[IRREVERSIBLE] ปิดงวดจริง ย้อนไม่ได้ — skip ถ้าไม่ได้ตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> · รันซ้ำหลังปิดแล้วไม่กดซ้ำ ตรวจอย่างเดียว · เดิม 2.10 + 2.11 (_movement_play specs/50-close) · snapshot bf-before-close.json อยู่ใต้ EVIDENCE_DIR เหมือนต้นฉบับ · ต้นฉบับ 2.11 บันทึก FAIL แต่ assert แค่ว่ามีรายการ — port assert ไม่มีรายการไม่ตรงและไม่มีรายการเกินมา · 2.11 เคย FAIL ใน period09 (2026-10-01, TEST-MOVE/T-03-F) — รอบ p10-r3 / p11-r4 / avg2607-r4 (2026-10-02) PASS จึงไม่ใช่บั๊กที่รู้อยู่ · ซ้อนกับ TC-PE-040001 ใน 900-period-end ซึ่งเป็น skip ว่าง · ขัดกับ gap TC-PE-040104 (docs/test-cases/gaps/900-period-end-gap.md) ที่คาดว่าหลังปิดการ์ดงวดแสดงป้าย Closed และปุ่มถูก disable — ต้นฉบับ assert ว่า /period-ends/current เลื่อนเป็นงวดถัดไป (หลักฐานทุกรอบ: งวดปัจจุบันเลื่อน หน้า Period End แสดงงวดใหม่) port คงตามต้นฉบับ ต้องตกลงว่าแบบไหนถูกแล้วแก้ฝั่งใดฝั่งหนึ่ง",
+          "[IRREVERSIBLE] ปิดงวดจริง ย้อนไม่ได้ — skip ถ้างวด active ของ BU ไม่ใช่งวดของ scenario · รันซ้ำหลังปิดแล้วไม่กดซ้ำ ตรวจอย่างเดียว · เดิม 2.10 + 2.11 (_movement_play specs/50-close) · snapshot bf-before-close.json อยู่ใต้ EVIDENCE_DIR เหมือนต้นฉบับ · ต้นฉบับ 2.11 บันทึก FAIL แต่ assert แค่ว่ามีรายการ — port assert ไม่มีรายการไม่ตรงและไม่มีรายการเกินมา · 2.11 เคย FAIL ใน period09 (2026-10-01, BU เดิม) — รอบ p10-r3 / p11-r4 / avg2607-r4 (2026-10-02) PASS จึงไม่ใช่บั๊กที่รู้อยู่ · ซ้อนกับ TC-PE-040001 ใน 900-period-end ซึ่งเป็น skip ว่าง · ขัดกับ gap TC-PE-040104 (docs/test-cases/gaps/900-period-end-gap.md) ที่คาดว่าหลังปิดการ์ดงวดแสดงป้าย Closed และปุ่มถูก disable — ต้นฉบับ assert ว่า /period-ends/current เลื่อนเป็นงวดถัดไป (หลักฐานทุกรอบ: งวดปัจจุบันเลื่อน หน้า Period End แสดงงวดใหม่) port คงตามต้นฉบับ ต้องตกลงว่าแบบไหนถูกแล้วแก้ฝั่งใดฝั่งหนึ่ง",
       },
     ],
   },
