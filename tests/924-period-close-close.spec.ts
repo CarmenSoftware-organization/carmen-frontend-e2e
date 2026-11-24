@@ -185,9 +185,12 @@ test(
     const opened = openedIn(NEXT);
     const key = (b: Bal) => `${b.loc}/${b.prod}`;
     const openMap = new Map(opened.map((b) => [key(b), b]));
+    // AVG / AVG-LOCATION: the carried row is priced at the rounded 2-decimal average × qty (backend 72eb733be), so the
+    // expected value is that product, not the unrounded ledger balance (APL 2610: 18 × 130.78 = 2354.04, ledger 2354.11)
+    const carried = (b: Bal) => (SCN.method === "fifo" ? b.value : Math.round(b.qty * (Math.round((b.cost ?? 0) * 100) / 100) * 100) / 100);
     const rows = before.map((b) => {
       const o = openMap.get(key(b));
-      return { k: key(b), bq: b.qty, bv: b.value, bc: b.cost, oq: o?.qty ?? 0, ov: o?.value ?? 0, oc: o?.cost };
+      return { k: key(b), bq: b.qty, bv: carried(b), bc: b.cost, oq: o?.qty ?? 0, ov: o?.value ?? 0, oc: o?.cost };
     });
     const extra = opened.filter((o) => !before.some((b) => key(b) === key(o)));
     // AVG-LOCATION posts stock at save like AVG, and with one location its per-location average = the average (eb02388 live finding)

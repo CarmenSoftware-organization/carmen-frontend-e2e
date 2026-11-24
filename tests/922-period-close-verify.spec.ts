@@ -189,6 +189,24 @@ test(
     // ค่าเฉลี่ย ณ ปิดงวด (สูตร computePeriodAverages): มูลค่า/จำนวนรับเข้าทั้งงวดของสินค้า ทุกคลัง รวมยอดยกมา
     // ไม่รวม close_period และไม่รวมใบชดเชยของรอบนี้เอง (มันเกิดหลังตีราคา)
     const periodAverage = (code: string) => {
+      // average_per_location: the count's compensation Stock In starts at the location's net moving average (Σ (in − out) × cost
+      // ÷ Σ (in − out) at the location, micro-business getNetAverageCostAsOf), not the BU-wide period average — the close
+      // values each location at its own closing value ÷ closing qty. Compensation docs of this round are left out (they come after pricing).
+      if (SCN.method === "average_per_location") {
+        const [n] = sql(`
+          select round(sum((cl.in_qty - cl.out_qty) * cl.cost_per_unit) / nullif(sum(cl.in_qty - cl.out_qty), 0), 2) avg,
+                 sum(cl.in_qty - cl.out_qty) qty, sum((cl.in_qty - cl.out_qty) * cl.cost_per_unit) val
+          from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
+          join ${SCHEMA}.tb_inventory_transaction_detail itd on itd.id = cl.inventory_transaction_detail_id
+          join ${SCHEMA}.tb_inventory_transaction it on it.id = itd.inventory_transaction_id
+          where cl.product_id = (select id from ${SCHEMA}.tb_product where code = '${code}')
+            and cl.location_id = (select id from ${SCHEMA}.tb_location where code = '${L.code}')
+            and cl.deleted_at is null and cl.transaction_type::text <> 'close_period'
+            and it.inventory_doc_no not in (
+              select id from ${SCHEMA}.tb_stock_in where description = '${DESC}'
+              union all select id from ${SCHEMA}.tb_stock_out where description = '${DESC}')`);
+        return { avg: Number(n?.avg), qty: Number(n?.qty), val: Number(n?.val) };
+      }
       const [r] = sql(`
         select round(sum(cl.total_cost) / nullif(sum(cl.in_qty), 0), 2) avg, sum(cl.in_qty) qty, sum(cl.total_cost) val
         from ${SCHEMA}.tb_inventory_transaction_cost_layer cl

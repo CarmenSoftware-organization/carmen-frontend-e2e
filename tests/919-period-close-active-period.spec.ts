@@ -23,8 +23,8 @@ import { L, P as PROD, PX, SCN } from "./helpers/period-close/scenarios";
  * Setup first: phase 910 ran (L holds E2E-PC-1 with stock in the active period — GRN "grnA").
  *
  * Four cases pin known bugs with `test.fail()` (evidence 2026-10-02 r4). Method-gated since the TEST BU runs of 2026-11-24:
- * A5c is pinned on average and average_per_location (passed on FIFO); A8 is pinned on average_per_location only (passed on
- * FIFO and average); A10 is pinned everywhere except average (passed on the average TEST BU, fails on FIFO):
+ * A5c is pinned on average and average_per_location (passed on FIFO); A8 is no longer pinned (passed on all three);
+ * A10 is pinned everywhere except average (passed on the average TEST BU, fails on FIFO and average_per_location):
  *   TC-PE-490005  A5c  — CN dated the 1st of the active period (Thai time) refused (#724 boundary)
  *   TC-PE-490008  A8   — SO / SI created without a date get no date at all (#724 follow-up)
  *   TC-PE-490009  A9ab — reports lookups current/previous period follow the newest period
@@ -665,8 +665,7 @@ test(
     ],
   },
   async () => {
-    // known bug A8 (#724 follow-up): a Stock Out / Stock In created via API without a date is stored with no date instead of one inside the active period — not pinned on FIFO or average (passed there 2026-11-24)
-    test.fail(SCN.method === "average_per_location", "known bug A8 (#724 follow-up): a Stock Out / Stock In created via API without a date is stored with no date instead of one inside the active period");
+    // A8 (#724 follow-up) no longer pinned: passed on all three TEST BUs on 2026-11-24 (FIFO, average, average_per_location)
     test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     const P = periods();
     const lid = idOf("tb_location", `code = '${stock().loc}'`);
