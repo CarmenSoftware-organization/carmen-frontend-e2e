@@ -89,7 +89,7 @@ export async function createBlockers(_page: Page): Promise<{ soDrafts: DocRef[];
     description: `E2E ${PERIOD}: SO ร่างขวาง Start`,
     adjustment_type_id: await adjustmentTypeId("stock_out"),
     location_id: from.id,
-    stock_out_detail: { add: [{ product_id: prodId, qty: 1, cost_per_unit: 0, total_cost: 0 }] },
+    stock_out_detail: { add: [{ product_id: prodId, qty: 1 }] },
   });
   expect(so.status, `สร้าง SO ร่าง ${so.status} ${JSON.stringify(so.body).slice(0, 300)}`).toBeLessThan(300);
   const soId = so.body.data.id as string;
@@ -133,6 +133,10 @@ export async function createBlockers(_page: Page): Promise<{ soDrafts: DocRef[];
   expect(sub.status, `submit SR ${sub.status} ${JSON.stringify(sub.body).slice(0, 300)}`).toBeLessThan(300);
   const [srRow] = sql<{ no: string; st: string }>(`select sr_no no, doc_status::text st from ${SCHEMA}.tb_store_requisition where id = '${srId}'`);
   expect(srRow.st, `SR ${srRow.no} ต้องค้างอยู่ (in_progress) ที่ขั้น HOD`).toBe("in_progress");
+  // open-period ต้องลงวันที่ในงวดของ scenario จริง (ตรวจ ไม่ได้สมมติ) — เทียบเดือนตามเวลาไทย
+  const srDate = (await get()).sr_date as string;
+  const srMonth = new Date(new Date(srDate).getTime() + 7 * 3600_000).toISOString().slice(0, 7);
+  expect(srMonth, `SR ${srRow.no} sr_date ${srDate} ต้องอยู่ในงวด ${PERIOD} (${SCN.descPeriod})`).toBe(SCN.descPeriod);
 
   const out = {
     soDrafts: [{ id: soId, no: soRow.no, status: "draft" }],
@@ -198,7 +202,10 @@ test(
 
     // ผลของขั้นกด Start เก็บลง state — รันซ้ำหลังเคลียร์ไปบางส่วนแล้วจะได้ไม่เสียหลักฐานรอบแรก
     type StartStep = { counts: Record<string, number>; total: number; listed: { no: string; shown: boolean }[]; note?: string };
-    let start = getDoc("1.N1-start") as unknown as StartStep | undefined;
+    // ผลที่เก็บไว้ใช้ได้เฉพาะเมื่อเป็นของตัวขวางชุดเดียวกัน — createBlockers สร้างชุดใหม่ (เลขใหม่) = ทิ้งของเก่า
+    const blockerIds = [...blockers.soDrafts, ...blockers.srInProgress].map((d) => d.id).join(",");
+    let start = getDoc("1.N1-start") as unknown as (StartStep & { blockerIds?: string }) | undefined;
+    if (start && start.blockerIds !== blockerIds) start = undefined;
     if (!start) {
       const before = await review(BU);
       for (const d of sr) {
@@ -214,7 +221,7 @@ test(
         counts: before.start_blocking.counts, total: before.start_blocking.total,
         listed: [...so, ...sr].map((d) => ({ no: d.no, shown: dialogText.includes(d.no) })),
       };
-      putDoc("1.N1-start", { id: "", no: "", status: "done", ...start });
+      putDoc("1.N1-start", { id: "", no: "", status: "done", blockerIds, ...start });
     }
     const listed = start.listed;
 

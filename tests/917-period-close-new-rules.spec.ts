@@ -28,7 +28,8 @@ import { L, PX, SCN, PERIOD, NEXT } from "./helpers/period-close/scenarios";
  * ยิง API เฉพาะสิ่งที่หน้าจอทำไม่ได้ — apiSend ของ helpers/period-close/context.ts (ล็อกอินเป็นบัญชี gmail บน TEST BU)
  */
 const CASE = "Case 5 · กติกาใหม่ (PR #715 · #718 · #719)";
-const isAvg = SCN.method === "average";
+// AVG-LOCATION posts stock at save like AVG, and with one location its per-location average = the average (eb02388 live finding)
+const isAvg = SCN.method !== "fifo";
 
 /** layer ที่ยังไม่ถูกลบของเอกสาร (ผ่านหัวรายการเคลื่อนไหวที่ inventory_doc_no = id ของเอกสาร) */
 function docLayerCount(docId: string): number {

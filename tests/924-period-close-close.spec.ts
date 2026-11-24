@@ -184,7 +184,8 @@ test(
       return { k: key(b), bq: b.qty, bv: b.value, bc: b.cost, oq: o?.qty ?? 0, ov: o?.value ?? 0, oc: o?.cost };
     });
     const extra = opened.filter((o) => !before.some((b) => key(b) === key(o)));
-    const isAvg = SCN.method === "average";
+    // AVG-LOCATION posts stock at save like AVG, and with one location its per-location average = the average (eb02388 live finding)
+    const isAvg = SCN.method !== "fifo";
     const mismatch = rows.filter(
       (r) => Math.abs(r.bq - r.oq) > 1e-6 || Math.abs(r.bv - r.ov) > 0.01 || (isAvg && Math.abs((r.bc ?? 0) - (r.oc ?? 0)) > 0.01),
     );
@@ -244,7 +245,8 @@ test(
     ],
   },
   async () => {
-    test.skip(SCN.method !== "average", "เฉพาะต้นทุนเฉลี่ย");
+    // AVG-LOCATION posts stock at save like AVG, and with one location its per-location average = the average (eb02388 live finding)
+    test.skip(SCN.method === "fifo", "เฉพาะต้นทุนเฉลี่ย");
     test.skip((await currentPeriod(BU)) !== NEXT, irreversibleSkip("the period is not closed yet, so there is nothing carried forward to check"));
     const held = [getDoc(SCN.keys.nextGrn), getDoc("siNextHeld")].filter(Boolean) as { id: string; no: string }[];
     const [{ opened }] = sql<{ opened: string }>(`select max(cl.created_at)::text opened from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
