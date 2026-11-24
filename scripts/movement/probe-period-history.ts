@@ -105,7 +105,7 @@ async function check2() {
     if (r.status === 403) { who = "Purchase (Admin got 403)"; r = await grnCommit("Purchase", tpl, date, `${tag}-${date}-P`); }
     report(r.stage === "commit" && r.status < 300 && r.doc_status === "committed", label, `as ${who}: ${date} → ${r.stage} ${r.status} doc_status=${(r as any).doc_status ?? "-"} ${(r as any).no ?? ""} ${r.msg}`);
   }
-  // Stock In dated today: saves (draft), then removed again
+  // Stock In dated today: saves as a draft (left in place; the next reset wipes it)
   const admin = await as("Admin");
   const types = await admin.get(`/api/config/${bu}/adjustment-types?perpage=100`);
   const list: any[] = Array.isArray(types.body?.data) ? types.body.data : types.body?.data?.items ?? [];

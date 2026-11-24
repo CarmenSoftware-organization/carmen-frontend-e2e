@@ -7,7 +7,7 @@ bun run data:reset --dry-run   # อ่านอย่างเดียว: ต
 bun run data:reset --yes       # ของจริง (backend ไม่ใช่ localhost ต้องมี --yes)
 bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล้ว — ปฏิเสธถ้ายังมี PR อยู่
 bun run data:reset --yes --bu BU-96EAT3GX   # BU เดียวจาก TEST_BUS (AVG BU-GR2VYNKQ · FIFO BU-96EAT3GX · AVG-LOCATION BU-0706T34Y)
-bun run data:reset --yes --bu BU-96EAT3GX --with-history   # เปิดงวดเดือนก่อนเป็นงวดแรก (+ เดือนนี้ + เดือนหน้า) สำหรับชุดปิดงวด — ต้องระบุ --bu ทีละ BU ห้ามใช้กับ all
+bun run data:reset --yes --bu BU-96EAT3GX --with-history   # เปิดงวดเดือนก่อนเป็นงวดแรก (+ เดือนนี้ + เดือนหน้า) สำหรับชุดปิดงวด — ต้องระบุ --bu <code> ทีละ BU (ไม่ระบุ --bu หรือใช้กับ all = ปฏิเสธ)
 bun run data:reset --yes --bu all          # ทั้งสาม BU ตามลำดับ — สั่งก่อนรันเทส doc-flow ครั้งแรก
 ```
 

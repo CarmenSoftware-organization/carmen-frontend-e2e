@@ -132,7 +132,14 @@ async function seedPeriodWithHistory(sessions: Sessions, cfg: ResetConfig, now: 
     result.created += 1;
   }
 
-  let rows = (await listPeriods(admin, base)).rows;
+  const read = async () => {
+    const r = await listPeriods(admin, base);
+    if (!r.ok) result.failed.push(`GET ${base} → ${r.status}`);
+    return r;
+  };
+  let listed = await read();
+  if (!listed.ok) return result;
+  let rows = listed.rows;
   for (let call = 0; call < 3; call++) {
     if (rows.some((p) => coversToday(p, today)) && hasMonth(rows, next.fiscal_year, next.fiscal_month)) break;
     const open = rows.filter((p) => p.status === "open" || p.status === "locked").length;
@@ -142,7 +149,9 @@ async function seedPeriodWithHistory(sessions: Sessions, cfg: ResetConfig, now: 
       return result;
     }
     result.created += 1;
-    rows = (await listPeriods(admin, base)).rows;
+    listed = await read();
+    if (!listed.ok) return result;
+    rows = listed.rows;
   }
   if (!rows.some((p) => coversToday(p, today))) result.failed.push(`no open period covers ${today} after generate (3 calls)`);
   if (!hasMonth(rows, next.fiscal_year, next.fiscal_month)) result.failed.push(`next period ${ym(next.fiscal_year, next.fiscal_month)} missing after generate (3 calls)`);

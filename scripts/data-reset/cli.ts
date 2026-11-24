@@ -28,7 +28,9 @@ const FLAGS: Record<string, BooleanFlag> = {
 export function parseResetArgs(argv: string[]): ResetArgs {
   const args: ResetArgs = { dryRun: false, yes: false, skipReset: false, verbose: false, help: false, withHistory: false, bu: BU_CODE };
   const allowed = [...TEST_BUS.map((b) => b.code), "all"];
+  let buGiven = false;
   const setBu = (value: string | undefined): void => {
+    buGiven = true;
     if (value === undefined || !allowed.includes(value)) {
       throw new Error(`Unknown BU ${value === undefined ? "(missing value)" : value} (allowed: ${allowed.join(", ")})`);
     }
@@ -48,7 +50,7 @@ export function parseResetArgs(argv: string[]): ResetArgs {
     if (!key) throw new Error(`Unknown flag: ${arg}`);
     args[key] = true;
   }
-  if (args.withHistory && args.bu === "all") {
+  if (args.withHistory && (!buGiven || args.bu === "all")) {
     throw new Error("--with-history needs one --bu <code> (not all): each BU needs its own period-close run");
   }
   return args;
