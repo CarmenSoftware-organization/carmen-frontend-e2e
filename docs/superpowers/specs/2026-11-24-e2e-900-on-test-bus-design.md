@@ -21,12 +21,7 @@ other case already runs on `BU-GR2VYNKQ` with the gmail accounts. Only TC-PE-340
   the backend records; the case ID and its meaning stay the same.
 - The rest of 900 is untouched.
 
-## Found, not fixed here
-- The FE activity-log Record Type filter sends `entity_type=period`
-  (`carmen-frontend` `routes/system-admin/activity-log/activity-log-component.tsx`, `ENTITY_TYPE_OPTIONS`). The backend has no
-  `period` rows, so the filter returns nothing. TC-PE-340006 only checks that every row returned is `period`, so it passes on an
-  empty list. This needs the user's decision: fix the FE value, and tighten 340006 so it requires at least one row.
-</content>
-</invoke>
-<invoke name="Bash">
-<parameter name="command">cd /Users/samutpra/GitHub/carmensoftware-organize/carmen-frontend-e2e && git add tests/900-period-end.spec.ts docs/user-stories/900-period-end.md README.md docs/superpowers/specs/2026-11-24-e2e-900-on-test-bus-design.md && git commit -q -m "test(900): TC-PE-340001 อ่าน log การปิดงวดจาก TEST BU ที่มีงวดปิดแล้ว — เลิกใช้ E2E_ALLOW_IRREVERSIBLE และบัญชี movement, entity_type = inventory_period ตามที่ backend บันทึกจริง" && git log --oneline -1 && trail check 2>&1 | tail -4
+## Follow-up decided (user, 2026-11-24: "ทำด้วย")
+- The FE activity-log Record Type filter sent `entity_type=period`, which has no rows, so it was always empty. carmen-frontend#719
+  changes the value to `inventory_period`. TC-PE-340006 now requires at least one `inventory_period` row; before, it passed on an
+  empty list. Merge FE #719 first.
