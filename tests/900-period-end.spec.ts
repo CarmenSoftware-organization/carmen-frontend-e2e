@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
-import { apiGet } from "./helpers/movement/api";
+import { rawSend } from "./helpers/bu-api";
+import { TEST_BUS } from "./test-users";
 import { PeriodEndPage, LIST_PATH } from "./pages/period-end.page";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -498,19 +499,29 @@ adminTest.describe("Period End — Activity log", () => {
     "TC-PE-340001 Happy Path - Log Activity Entry",
     {
       annotation: [
-        { type: "preconditions", description: "ปิดงวดจริงแล้วด้วย phase 924 (TC-PE-540001) และตั้ง E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด> ของงวดที่ปิด" },
-        { type: "steps", description: "1. อ่าน /api/<BU>/activity-logs?entity_type=period เรียงใหม่สุดก่อน\n2. หาแถวของงวดที่ปิด" },
-        { type: "expected", description: "มี activity entry entity_type=period ของงวดนั้นที่ new_data.status = closed พร้อม actor_id" },
+        { type: "preconditions", description: "TEST BU อย่างน้อยหนึ่งตัวใน TEST_BUS มีงวดที่ปิดแล้ว (ปิดด้วย period-close phase 924 — TC-PE-540001); หลัง data:reset ทุก BU ไม่มีงวดปิด เคสนี้จึง skip" },
+        { type: "steps", description: "1. ไล่ TEST_BUS หางวด status = closed ล่าสุดจาก /api/<BU>/inventory-periods\n2. อ่าน /api/<BU>/activity-logs?entity_type=inventory_period เรียงใหม่สุดก่อน\n3. หาแถวของงวดที่ปิด" },
+        { type: "expected", description: "มี activity entry entity_type=inventory_period ของงวดนั้นที่ new_data.status = closed พร้อม actor_id" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
-        { type: "note", description: "ต้องมีการปิดงวดจริง (ย้อนกลับไม่ได้) จึงกั้นเหมือน 924 — ไม่ปิดงวดเองในเคสนี้ ส่วนตัวกรอง Period ตรวจใน TC-PE-340006" },
+        { type: "note", description: "อ่านอย่างเดียว ไม่ปิดงวดเอง (ย้อนกลับไม่ได้) · backend บันทึกการปิดงวดเป็น entity_type = inventory_period (action update) ไม่ใช่ period · ตัวกรอง Period ตรวจใน TC-PE-340006" },
       ],
     },
     async () => {
-      const gate = process.env.E2E_ALLOW_IRREVERSIBLE ?? "";
-      const [bu, period] = gate.split(":");
-      adminTest.skip(!bu || !/^\d{4}$/.test(period ?? ""), "irreversible: needs E2E_ALLOW_IRREVERSIBLE=<BU>:<period>, not run in catch-up per user 2026-11-22");
-      const r = await apiGet(`/api/${bu}/activity-logs?entity_type=period&sort=-created_at&perpage=50`);
+      // The newest closed period of the first TEST BU that has one — period-close (910–924) leaves it behind; nothing is closed here.
+      let found: { bu: string; period: string } | undefined;
+      for (const { code } of TEST_BUS) {
+        const r = await rawSend<{ data?: { period: string; status: string; start_at: string }[] }>("Admin", "GET", `/api/${code}/inventory-periods?perpage=100`);
+        expect(r.status, `inventory-periods of ${code}`).toBe(200);
+        const closed = (r.body.data ?? []).filter((p) => p.status === "closed").sort((a, b) => b.start_at.localeCompare(a.start_at));
+        if (closed.length) {
+          found = { bu: code, period: closed[0].period };
+          break;
+        }
+      }
+      adminTest.skip(!found, "no TEST BU has a closed period — run the period-close suite (924) on one first");
+      const { bu, period } = found!;
+      const r = await rawSend("Admin", "GET", `/api/${bu}/activity-logs?entity_type=inventory_period&sort=-created_at&perpage=100`);
       expect(r.status).toBe(200);
       const entry = (r.body.data as { new_data?: { period?: string; status?: string }; actor_id?: string }[]).find(
         (e) => e.new_data?.period === period && e.new_data?.status === "closed",
