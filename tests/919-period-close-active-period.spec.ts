@@ -22,8 +22,10 @@ import { L, P as PROD, PX, SCN } from "./helpers/period-close/scenarios";
  * own evidence folder (active-r4-avg / active-r4-fifo), so set E2E_EVIDENCE_DIR.
  * Setup first: phase 910 ran (L holds E2E-PC-1 with stock in the active period — GRN "grnA").
  *
- * Two cases pin known bugs with `test.fail()` (evidence 2026-10-02 r4; A5c / A8 passed on the FIFO TEST BU
- * on 2026-11-24 — their markers are dropped, the cases now assert the correct behaviour):
+ * Four cases pin known bugs with `test.fail()` (evidence 2026-10-02 r4). A5c / A8 are pinned on average and
+ * average_per_location only — they passed on the FIFO TEST BU on 2026-11-24, so FIFO is no longer pinned:
+ *   TC-PE-490005  A5c  — CN dated the 1st of the active period (Thai time) refused (#724 boundary)
+ *   TC-PE-490008  A8   — SO / SI created without a date get no date at all (#724 follow-up)
  *   TC-PE-490009  A9ab — reports lookups current/previous period follow the newest period
  *   TC-PE-490011  A10  — v_inventory_eop_checklist.period follows the newest period
  * Once one turns red ("unexpectedly passed"), drop its marker.
@@ -430,6 +432,8 @@ test(
     ],
   },
   async ({ page }) => {
+    // known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD — not pinned on FIFO (passes there)
+    test.fail(SCN.method !== "fifo", "known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD");
     test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     test.setTimeout(5 * 60_000);
     const P = periods();
@@ -660,6 +664,8 @@ test(
     ],
   },
   async () => {
+    // known bug A8 (#724 follow-up): a Stock Out / Stock In created via API without a date is stored with no date instead of one inside the active period — not pinned on FIFO (passes there)
+    test.fail(SCN.method !== "fifo", "known bug A8 (#724 follow-up): a Stock Out / Stock In created via API without a date is stored with no date instead of one inside the active period");
     test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     const P = periods();
     const lid = idOf("tb_location", `code = '${stock().loc}'`);
