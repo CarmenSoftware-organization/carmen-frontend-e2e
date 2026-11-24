@@ -61,7 +61,7 @@ gatePhase({ dates: true });
 
 const DATE = SCN.case1Date;
 const prodId = (code: string) => `(select id from ${SCHEMA}.tb_product where code = '${code}')`;
-const locId = `(select id from ${SCHEMA}.tb_location where code = '${L.code}')`;
+const locId = () => `(select id from ${SCHEMA}.tb_location where code = '${L.code}')`;
 
 /** ยอดที่หยิบได้ของคลัง (งวดปัจจุบัน) — กติกาเดียวกับด่านของ backend: รับเข้างวดนี้/ก่อนหน้า − จ่ายออกทุกงวด */
 function drawable(code: string): number {
@@ -71,7 +71,7 @@ function drawable(code: string): number {
     select coalesce(sum(in_qty) filter (where in_qty > 0 and (at_period is null or at_period in (select period from dr))), 0)
          - coalesce(sum(out_qty) filter (where out_qty > 0), 0) b
     from ${SCHEMA}.tb_inventory_transaction_cost_layer
-    where deleted_at is null and product_id = ${prodId(code)} and location_id = ${locId}`);
+    where deleted_at is null and product_id = ${prodId(code)} and location_id = ${locId()}`);
   return Number(r.b);
 }
 
@@ -79,7 +79,7 @@ function drawable(code: string): number {
 function visibleLots(code: string): number {
   const [r] = sql<{ v: string }>(`
     with recv as (select lot_no, sum(in_qty) tin from ${SCHEMA}.tb_inventory_transaction_cost_layer
-                  where deleted_at is null and in_qty > 0 and product_id = ${prodId(code)} and location_id = ${locId} group by 1)
+                  where deleted_at is null and in_qty > 0 and product_id = ${prodId(code)} and location_id = ${locId()} group by 1)
     select coalesce(sum(greatest(r.tin - coalesce((select sum(o.out_qty) from ${SCHEMA}.tb_inventory_transaction_cost_layer o
             where o.deleted_at is null and o.out_qty > 0 and o.parent_lot_no = r.lot_no), 0), 0)), 0) v from recv r`);
   return Number(r.v);
