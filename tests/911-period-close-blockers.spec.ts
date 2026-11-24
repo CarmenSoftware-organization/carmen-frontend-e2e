@@ -200,9 +200,9 @@ test(
     const so = soDocs().filter((d) => d.st === "draft");
     const sr = srDocs().filter((d) => d.st === "in_progress");
 
-    // ผลของขั้นกด Start เก็บลง state — รันซ้ำหลังเคลียร์ไปบางส่วนแล้วจะได้ไม่เสียหลักฐานรอบแรก
+    // ผลของขั้นกด Start เก็บลง state — รันซ้ำกับตัวขวางชุดเดิม (ยังไม่เคลียร์ครบ) จะได้ไม่เสียหลักฐานรอบแรก
     type StartStep = { counts: Record<string, number>; total: number; listed: { no: string; shown: boolean }[]; note?: string };
-    // ผลที่เก็บไว้ใช้ได้เฉพาะเมื่อเป็นของตัวขวางชุดเดียวกัน — createBlockers สร้างชุดใหม่ (เลขใหม่) = ทิ้งของเก่า
+    // ใช้ซ้ำเฉพาะเมื่อตัวขวางเป็นใบเดิม (รันซ้ำก่อนเคลียร์ครบ) — เคลียร์แล้วรันใหม่ createBlockers สร้างชุดใหม่ (เลขใหม่) จึงเก็บหลักฐาน Start ใหม่ ซึ่งถูกต้อง
     const blockerIds = [...blockers.soDrafts, ...blockers.srInProgress].map((d) => d.id).join(",");
     let start = getDoc("1.N1-start") as unknown as (StartStep & { blockerIds?: string }) | undefined;
     if (start && start.blockerIds !== blockerIds) start = undefined;

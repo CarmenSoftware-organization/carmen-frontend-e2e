@@ -52,7 +52,12 @@ function balancesUpTo(period: string): Bal[] {
     from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
     join ${SCHEMA}.tb_location l on l.id = cl.location_id join ${SCHEMA}.tb_product p on p.id = cl.product_id
     where cl.deleted_at is null and cl.at_period <= '${period}'
-    group by 1,2 having sum(cl.in_qty - cl.out_qty) <> 0 order by 1,2`).map((r) => ({ loc: r.loc, prod: r.prod, qty: Number(r.qty), value: Number(r.value) }));
+    group by 1,2 having sum(cl.in_qty - cl.out_qty) <> 0 order by 1,2`).map((r) => {
+    const qty = Number(r.qty);
+    const value = Number(r.value);
+    // average_per_location: ต้นทุน/หน่วยที่คาดคือค่าเฉลี่ยของคลังนั้นเอง = มูลค่า ÷ จำนวนของแถว (FIFO ไม่เทียบต้นทุน)
+    return { loc: r.loc, prod: r.prod, qty, value, ...(SCN.method === "average_per_location" ? { cost: qty ? value / qty : 0 } : {}) };
+  });
 }
 
 /**
@@ -87,9 +92,9 @@ function avgExpected(period: string): Bal[] {
   }));
 }
 
-/** ยอดที่ถูกยกเข้างวดถัดไป = layer open_period ของงวดนั้น (AVG: มูลค่าอ่านจาก total_cost เพราะไม่เท่า qty × final_avg เสมอไป) */
+/** ยอดที่ถูกยกเข้างวดถัดไป = layer open_period ของงวดนั้น (AVG / AVG-LOCATION: มูลค่าอ่านจาก total_cost เพราะไม่เท่า qty × final_avg เสมอไป — AVG-LOCATION โพสต์ตอน save เหมือน AVG) */
 function openedIn(period: string): Bal[] {
-  const value = SCN.method === "average" ? "sum(cl.total_cost)" : "sum(cl.in_qty * cl.cost_per_unit)";
+  const value = SCN.method !== "fifo" ? "sum(cl.total_cost)" : "sum(cl.in_qty * cl.cost_per_unit)";
   return sql<{ loc: string; prod: string; qty: string; value: string; cost: string }>(`
     select l.code loc, p.code prod, sum(cl.in_qty) qty, ${value} value, max(cl.cost_per_unit) cost
     from ${SCHEMA}.tb_inventory_transaction_cost_layer cl

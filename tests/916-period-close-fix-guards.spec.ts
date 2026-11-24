@@ -54,6 +54,7 @@ import {
  * ล็อตของ GRN ใหม่จึง "ดูไม่ถูกใช้" ทั้งที่ของถูกจ่ายไปแล้ว — เคสข้างล่างจัดให้เกิดสภาพนั้นจริง แล้วดูว่าระบบไม่ปล่อยให้คลังติดลบ
  */
 const CASE = "Case 4 · พิสูจน์ PR #712 / #713";
+// คงเป็น average อย่างเดียว: #713 เป็นเรื่อง processAverageClose (แถวปิด/เปิดงวด AVG ไม่ผูก parent_lot_no) ยังไม่มีหลักฐานว่า average_per_location เป็นแบบเดียวกัน
 test.skip(SCN.method !== "average", "เฉพาะ BU แบบ average");
 
 test.beforeAll(() => requireScenario());
