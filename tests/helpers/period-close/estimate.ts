@@ -77,6 +77,24 @@ export function expectedIssueCost(productCode: string, qty: number, period: stri
   return { ok: true, avg, total: r2(qty * avg), how: `ค่าเฉลี่ยสุทธิ${scope ? "ของคลัง" : "ทั้ง BU"} ${v} ÷ ${q}` };
 }
 
+/**
+ * Starting price the Stock In form prefills on an `average` BU (si.cost-from = average): the period receipt average the close
+ * books, BU-wide — Σ total_cost ÷ Σ in_qty of the period's receipts (no close_period / transfer_in rows), dated up to the
+ * document's day (the probe dates the form at the end of the period, so everything counts). null = nothing received in the
+ * period yet (the backend then falls back to the net moving average). average_per_location and FIFO do not use this.
+ * (micro-business getPeriodReceiptAverageAsOf)
+ */
+export function periodReceiptAverage(productCode: string, period: string): number | null {
+  const [r] = sql<{ q: string | null; v: string | null }>(`
+    select sum(cl.in_qty) q, sum(cl.total_cost) v
+    from ${SCHEMA}.tb_inventory_transaction_cost_layer cl
+    where cl.deleted_at is null and cl.in_qty > 0 and cl.at_period = '${period}'
+      and cl.transaction_type::text not in ('close_period', 'transfer_in')
+      and cl.product_id = (select id from ${SCHEMA}.tb_product where code = '${productCode}')`);
+  const q = Number(r?.q ?? 0);
+  return q > 0 ? r2(Number(r.v) / q) : null;
+}
+
 /** ราคาของล็อตจาก GRN ที่ void แล้วที่คลังนั้น — ตัวหลอกที่โค้ดก่อน #708 เคยเสนอ */
 export function voidedLotCosts(productCode: string): number[] {
   return sql<{ c: string }>(`

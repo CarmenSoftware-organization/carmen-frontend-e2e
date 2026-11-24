@@ -1,6 +1,6 @@
 import { test, expect, gotoInBu, BU, SCHEMA, requireScenario, sql, record, shot, gatePhase, apiGet } from "./helpers/period-close/context";
 import { createAdjustment } from "./helpers/period-close/docs";
-import { currentPeriod, expectedIssueCost, voidedLotCosts } from "./helpers/period-close/estimate";
+import { currentPeriod, expectedIssueCost, periodReceiptAverage, voidedLotCosts } from "./helpers/period-close/estimate";
 import { L, P, PERIOD, SCN } from "./helpers/period-close/scenarios";
 
 /**
@@ -93,7 +93,9 @@ test(
       // FIFO: the SI form prefills by si.cost-from (last cost — the scenario's costCases price), while the SO form
       // shows what the post will charge (FIFO lots). AVG: both come from the same average.
       const lastCost = SCN.method === "fifo" ? SCN.costCases.find((c) => c.p.code === p.code && c.side !== "out")?.want : undefined;
-      const siWant = want.ok ? (typeof lastCost === "number" ? lastCost : want.avg) : 0;
+      // average BU: the SI form prefills the period receipt average (not the net average the SO posts at)
+      const periodAvg = SCN.method === "average" ? periodReceiptAverage(p.code, cur.period) : null;
+      const siWant = want.ok ? (typeof lastCost === "number" ? lastCost : periodAvg ?? want.avg) : 0;
       const pass = want.ok
         ? Number(si) === siWant && soTotal(so) === want.total && !noisy
         : [si, so].every((v) => v === "" || soTotal(v) === 0);

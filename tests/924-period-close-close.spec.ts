@@ -63,7 +63,8 @@ function balancesUpTo(period: string): Bal[] {
 /**
  * AVG (calculation_method = average): ยอดที่ processAverageClose จะยกไป คิดจาก layer ของงวดที่ปิดเท่านั้น (ไม่รวม close_period)
  * final_avg ต่อสินค้า = round2(มูลค่ารับเข้าทุกคลัง / จำนวนรับเข้าทุกคลัง) · ต่อคลัง: closing_qty = รับเข้า (หัก adjustment_out) − จ่ายออก
- * มูลค่า = มูลค่ารับเข้า (หัก adjustment_out) − round2(จ่ายออก × final_avg) — ใบ open ของงวดถัดไปลง in=closing_qty @final_avg total=มูลค่านี้
+ * มูลค่าที่ยก = closing_qty × final_avg (backend 72eb733be: ปิดงวด AVG ยกมาด้วย ค่าเฉลี่ย × จำนวน ส่วนต่างอยู่ที่แถวยกยอดไปที่เดียว —
+ * เดิมสูตรนี้ใช้ มูลค่ารับเข้า − round2(จ่ายออก × final_avg) ซึ่งไม่เท่ากันเมื่อรับเข้าหลายราคา) — ใบ open ของงวดถัดไปลง in=closing_qty @final_avg total=มูลค่านี้
  */
 function avgExpected(period: string): Bal[] {
   return sql<{ loc: string; prod: string; qty: string; value: string; cost: string }>(`
@@ -84,7 +85,7 @@ function avgExpected(period: string): Bal[] {
         coalesce(sum(oq) filter (where oq > 0 and tt <> 'adjustment_out'), 0) iss_q
       from l group by 1,2)
     select loc.code loc, p.code prod, round(b.tin_q - b.iss_q, 2) qty, pa.final_avg cost,
-      round(b.tin_v - round(b.iss_q * pa.final_avg, 2), 2) value
+      round(round(b.tin_q - b.iss_q, 2) * pa.final_avg, 2) value
     from b join pa on pa.product_id = b.product_id
     join ${SCHEMA}.tb_location loc on loc.id = b.location_id join ${SCHEMA}.tb_product p on p.id = b.product_id
     where round(b.tin_q - b.iss_q, 2) > 0 order by 1,2`).map((r) => ({

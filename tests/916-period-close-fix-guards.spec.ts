@@ -117,7 +117,7 @@ test(
       {
         type: "steps",
         description:
-          "1. สร้างใบลดหนี้ร่างอ้าง grnA คืน Shredded pork skin 1 (Tax Invoice E2E-712-A) → ได้เลขใบแรก\n2. เปิดใบ → Edit → Delete → ยืนยัน\n3. สร้างใบลดหนี้ร่างใบใหม่แบบเดียวกัน (Tax Invoice E2E-712-B) → ได้เลขใบที่สอง\n4. ลบใบที่สองทิ้ง (เก็บกวาด)\n5. นับแถวใน tb_credit_note (รวมที่ลบแล้ว) ที่ใช้เลขใบที่สอง",
+          "1. สร้างใบลดหนี้ร่างอ้าง grnA คืน P1 1 (Tax Invoice E2E-712-A) → ได้เลขใบแรก\n2. เปิดใบ → Edit → Delete → ยืนยัน\n3. สร้างใบลดหนี้ร่างใบใหม่แบบเดียวกัน (Tax Invoice E2E-712-B) → ได้เลขใบที่สอง\n4. ลบใบที่สองทิ้ง (เก็บกวาด)\n5. นับแถวใน tb_credit_note (รวมที่ลบแล้ว) ที่ใช้เลขใบที่สอง",
       },
       {
         type: "expected",
@@ -135,7 +135,9 @@ test(
   },
   async ({ page }) => {
     const grnA = getDoc("grnA")!;
-    const cnLine = [{ productName: P.P4.name, qty: 1 }];
+    // P1, not P4: 914's draft CN (cnDraftIn) holds P4 of grnA and a product can be credited once per GRN (drafts count).
+    // Both drafts here are deleted, so P1 is free again for 919.
+    const cnLine = [{ productName: P.P1.name, qty: 1 }];
     const first = await createCreditNote(page, { grnNo: grnA.no, docDate: DATE, taxInvoiceNo: "E2E-712-A", lines: cnLine, status: "draft" });
     const img1 = await shot(page, "4.1", `CN-${first!.no}-ร่างใบแรก`);
     await deleteCreditNoteDraft(page, first!.id);
@@ -213,7 +215,12 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
       const img = await shot(page, "4.2", `void-${grn.no}-ถูกปฏิเสธ`);
       const afterVoid = drawable(P.P1.code);
       const byGuard = tried.http === 409 && tried.appCode === "GRN_RECEIPT_ALREADY_CONSUMED";
-      const ok = byGuard && tried.status === "saved" && afterVoid >= 0 && !parents.includes(grnLot ?? "");
+      // The lot-binding check only means something when the old lots look fuller than reality (the post-close state that
+      // caused #713). On a fresh TEST BU with no closed AVG period there is no such lot, so the allocator may legitimately
+      // draw the new receipt's lot too; the 409 guard + non-negative stock are still asserted unconditionally.
+      const oldLotsLookFull = lotsBefore > before;
+      const lotOk = !oldLotsLookFull || !parents.includes(grnLot ?? "");
+      const ok = byGuard && tried.status === "saved" && afterVoid >= 0 && lotOk;
       // ใบ saved ขวางการเริ่มนับ — commit ทิ้งไว้ (AVG commit แค่ล็อกเอกสาร สต๊อกลงไปแล้วตั้งแต่ save)
       if (tried.status === "saved") await commitGrn(page, grn.id);
       record({
@@ -227,7 +234,7 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
         ],
         expected:
           "หลังบ้านตอบ 409 GRN_RECEIPT_ALREADY_CONSUMED · ใบยัง saved · ยอดคลังไม่ติดลบ — การจ่ายผูกล็อตเก่า ไม่ใช่ล็อตของใบนี้ (ก่อน #713 จะ void ผ่านแล้วคลังเหลือ −7)",
-        actual: `ก่อนจ่าย: ยอดจริง ${before} · ล็อตที่ตัวจัดสรรเห็น ${lotsBefore} · SO ผูก parent ${parents.join(", ")} (ล็อตของ GRN ${parents.includes(grnLot ?? "") ? "ถูกผูก" : "ไม่ถูกผูก"}) · หลังจ่ายเหลือ ${afterIssue} · Void → HTTP ${tried.http} ${tried.appCode || "(ไม่มีรหัส)"} · สถานะ ${tried.status} · ยอดหลังลอง void ${afterVoid}`,
+        actual: `ก่อนจ่าย: ยอดจริง ${before} · ล็อตที่ตัวจัดสรรเห็น ${lotsBefore} · SO ผูก parent ${parents.join(", ")} (ล็อตของ GRN ${parents.includes(grnLot ?? "") ? "ถูกผูก" : "ไม่ถูกผูก"}${oldLotsLookFull ? "" : " · ไม่มีล็อตเก่าที่ดูเต็ม จึงไม่ตรวจการผูกล็อต"}) · หลังจ่ายเหลือ ${afterIssue} · Void → HTTP ${tried.http} ${tried.appCode || "(ไม่มีรหัส)"} · สถานะ ${tried.status} · ยอดหลังลอง void ${afterVoid}`,
         status: ok ? "PASS" : "FAIL",
         docs: [grn.no, so.no],
         images: [img],
@@ -249,7 +256,7 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
       expect(tried.status).toBe("saved");
       expect(afterVoid).toBeGreaterThanOrEqual(0);
       expect({ http: tried.http, appCode: tried.appCode }).toEqual({ http: 409, appCode: "GRN_RECEIPT_ALREADY_CONSUMED" });
-      expect(parents, `Stock Out ต้องผูกล็อตเก่า ไม่ใช่ล็อตของ ${grn.no} (${grnLot})`).not.toContain(grnLot ?? "");
+      if (oldLotsLookFull) expect(parents, `Stock Out ต้องผูกล็อตเก่า ไม่ใช่ล็อตของ ${grn.no} (${grnLot})`).not.toContain(grnLot ?? "");
     },
   );
 
@@ -276,12 +283,11 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
         {
           type: "note",
           description:
-            "เดิม 4.2-msg (_movement_play specs/23-fix-guards) · บั๊กที่รู้อยู่ (test.fail): ผลล่าสุด avg2605-r2 2026-10-02T06:47Z FAIL — FE ไม่มีข้อความของรหัส GRN_RECEIPT_ALREADY_CONSUMED จึงตกไปข้อความกลางของ 409 · FE PR #216 (merge 2026-10-02 ราว 10:05Z หลังหลักฐานล่าสุด) เพิ่มข้อความแล้ว — ถ้าเคสนี้ขึ้น \"unexpectedly passed\" ให้เอา test.fail ออก · แถว results.json ยังบันทึกใน TC-PE-460002 ตามเดิม",
+            "เดิม 4.2-msg (_movement_play specs/23-fix-guards) · บั๊กที่รู้อยู่ (เคยเป็น test.fail — ถอดแล้ว 2026-11-24 เพราะผ่านจริงบน BU-GR2VYNKQ หลัง FE #216): ผลล่าสุดเดิม avg2605-r2 2026-10-02T06:47Z FAIL — FE ไม่มีข้อความของรหัส GRN_RECEIPT_ALREADY_CONSUMED จึงตกไปข้อความกลางของ 409 · FE PR #216 (merge 2026-10-02 ราว 10:05Z หลังหลักฐานล่าสุด) เพิ่มข้อความแล้ว — แถว results.json ยังบันทึกใน TC-PE-460002 ตามเดิม",
         },
       ],
     },
     async () => {
-      test.fail(true, "known bug 4.2-msg: a void refused with 409 GRN_RECEIPT_ALREADY_CONSUMED shows the generic \"someone else changed\" toast (FE #216 not yet verified)");
       expect(voidToast, "TC-PE-460002 ต้องรันก่อนในรอบเดียวกัน").toBeDefined();
       expect(voidToast).not.toMatch(/someone else changed|มีคนแก้ใบนี้/i);
     },
@@ -317,12 +323,15 @@ test(
     ],
   },
   async ({ page }) => {
+    // Stock Out is checked against the balance on its own date: stock received later in the period (GRN P2 day 20) is not
+    // drawable at day 15, so this case works on day 25, after every receipt of the scenario.
+    const D713B = `${DATE.slice(0, 8)}25`;
     const grn = await once("g713b", () =>
-      createGrn(page, { date: DATE, invoiceNo: `E2E-${SCN.period}-713b`, status: "committed", lines: [{ product: P.P2.code, qty: 10, price: 290 }] }),
+      createGrn(page, { date: D713B, invoiceNo: `E2E-${SCN.period}-713b`, status: "committed", lines: [{ product: P.P2.code, qty: 10, price: 290 }] }),
     );
     const before = drawable(P.P2.code);
     const so = await once("so713b", () =>
-      createAdjustment(page, { type: "stock-out", date: DATE, reason: "E2E IA stock out", status: "completed", lines: [{ product: P.P2.code, qty: before - 2 }] }),
+      createAdjustment(page, { type: "stock-out", date: D713B, reason: "E2E IA stock out", status: "completed", lines: [{ product: P.P2.code, qty: before - 2 }] }),
     );
     const afterIssue = drawable(P.P2.code);
     const lotsVisible = visibleLots(P.P2.code);
@@ -337,7 +346,7 @@ test(
       }
     }
     const cn = await once("cn713b", () =>
-      createCreditNote(page, { grnNo: grn.no, docDate: DATE, taxInvoiceNo: `E2E-713-${SCN.period}`, lines: [{ productName: P.P2.name, qty: 10 }], status: "completed" }),
+      createCreditNote(page, { grnNo: grn.no, docDate: D713B, taxInvoiceNo: `E2E-713-${SCN.period}`, lines: [{ productName: P.P2.name, qty: 10 }], status: "completed" }),
     );
     const img = await shot(page, "4.3", `CN-${cn.no}`);
     const layers = docLayers(cn.id);
