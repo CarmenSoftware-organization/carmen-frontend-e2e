@@ -20,6 +20,18 @@ function readRateLimitBypassToken(): string {
   }
   return "";
 }
+// E2E_DB_URL (read-only SQL for the movement / period-close suites) has the same problem.
+// Read it from .env.local without printing it; a value already in the environment wins.
+if (!process.env.E2E_DB_URL) {
+  try {
+    const text = readFileSync(resolve(__dirname, ".env.local"), "utf8");
+    const m = /^E2E_DB_URL=(.*)$/m.exec(text);
+    const value = m?.[1]?.trim().replace(/^(['"])(.*)\1$/, "$2");
+    if (value) process.env.E2E_DB_URL = value;
+  } catch {
+    // no .env.local — fall through
+  }
+}
 const RATE_LIMIT_BYPASS_TOKEN_CONFIGURED = readRateLimitBypassToken();
 // Workers inherit process.env, so tests/helpers read the one resolved value (tests/helpers/rate-limit.ts).
 if (RATE_LIMIT_BYPASS_TOKEN_CONFIGURED) process.env.E2E_RATE_LIMIT_BYPASS_TOKEN = RATE_LIMIT_BYPASS_TOKEN_CONFIGURED;

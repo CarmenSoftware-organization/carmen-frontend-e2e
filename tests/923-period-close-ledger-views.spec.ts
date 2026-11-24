@@ -71,7 +71,7 @@ test(
     const images: Record<string, string> = {};
     for (const type of ["stock-in", "stock-out"] as const) {
       await createAdjustment(page, {
-        type, date: cur.end_at, reason: type === "stock-in" ? "Test stock_in" : "Test stock_out", status: "draft", dryRun: true,
+        type, date: cur.end_at, reason: type === "stock-in" ? "E2E IA stock in" : "E2E IA stock out", status: "draft", dryRun: true,
         lines: PRODUCTS.map((p) => ({ product: p.code, qty: PROBE_QTY })),
         onAutoCost: (c) => (auto[type] = c),
       });

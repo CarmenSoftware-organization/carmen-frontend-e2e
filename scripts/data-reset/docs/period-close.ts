@@ -12,6 +12,10 @@ import { rowsOf, type StepResult } from "../step-result";
 import { listAll } from "./accounting";
 import { refId } from "./refs";
 import { why } from "./transition";
+import { DF_CN_REASON } from "./doc-flow";
+import { withAdminDefaultBu } from "../bu-base";
+import { TEST_BUS } from "../../../tests/test-users";
+import { IA_TYPES } from "./ia";
 
 export const PC_PRODUCTS = ["E2E-PC-1", "E2E-PC-2", "E2E-PC-3", "E2E-PC-4"] as const;
 export const PC_SPARE = "E2E-PC-X";
@@ -88,6 +92,31 @@ export async function seedPeriodClose(sessions: Sessions, cfg: ResetConfig): Pro
     if (res.ok) result.created++;
     else result.failed.push(why(`product ${code}`, res));
   }
+
+  // The suite files a credit note and stock in/out adjustments; the reset empties the reasons and the
+  // master workbook ships neither them nor adjustment types, so keep one of each (skip when present).
+  const reasonsPath = `/api/config/${bu}/credit-note-reasons`;
+  const reasons = await admin.get(`${reasonsPath}?perpage=100`);
+  if (!reasons.ok) {
+    result.failed.push(why("list credit-note reasons", reasons));
+  } else if (rowsOf<Row>(reasons.body).some((r) => r.is_active !== false)) {
+    result.skipped++;
+  } else {
+    const res = await admin.post(reasonsPath, { name: DF_CN_REASON, description: "period-close E2E (data:reset)" });
+    if (res.ok) result.created++;
+    else result.failed.push(why(`credit-note reason ${DF_CN_REASON}`, res));
+  }
+  const typePath = `/api/config/${bu}/adjustment-types`;
+  const haveTypes = new Set((await listAll(admin, typePath)).map((r) => String(r.code)));
+  for (const t of IA_TYPES) {
+    if (haveTypes.has(t.code)) {
+      result.skipped++;
+      continue;
+    }
+    const res = await admin.post(typePath, { code: t.code, name: t.name, type: t.type, description: "", is_active: true });
+    if (res.ok) result.created++;
+    else result.failed.push(why(`adjustment type ${t.code}`, res));
+  }
   return result;
 }
 
@@ -119,4 +148,37 @@ export async function verifyPeriodClose(sessions: Sessions, cfg: ResetConfig): P
     check(code, linked.length === 1 && linked[0] === firstId, `expected linked to first location ${firstId} only, found [${linked.join(", ")}]`);
   }
   return { lines, short };
+}
+
+/**
+ * si.cost-from of the TEST BU = what the scenario expects (FIFO: last_cost, AVG: average). The Default Setting
+ * page writes the admin's default BU only, so the UI case (910 / 0.4) cannot set it on a TEST BU — set it
+ * here, through the same default-BU switch the other steps use. Idempotent: an existing right value is skipped.
+ */
+export async function seedCostFrom(sessions: Sessions, cfg: ResetConfig): Promise<StepResult> {
+  const result: StepResult = { step: "cost-from", created: 0, skipped: 0, failed: [] };
+  const method = TEST_BUS.find((b) => b.code === cfg.buCode)?.method;
+  const want = method === "fifo" ? "last_cost" : "average";
+  return withAdminDefaultBu(sessions, cfg, result, async () => {
+    const admin = await sessions.client(cfg.adminEmail);
+    const bu = await admin.get("/api/business-units");
+    const row = bu.ok ? (bu.body?.data as Row | undefined) : undefined;
+    if (!row?.id || row.code !== cfg.buCode) {
+      result.failed.push(`GET /api/business-units → ${bu.status}, current BU ${row?.code ?? "unknown"} is not ${cfg.buCode}`);
+      return result;
+    }
+    const config: Row[] = Array.isArray(row.config) ? row.config : [];
+    if (config.find((c) => c.key === "si.cost-from")?.value === want) {
+      result.skipped++;
+      return result;
+    }
+    const next = [
+      ...config.filter((c) => c.key !== "si.cost-from"),
+      { key: "si.cost-from", label: "Default price for added items", datatype: "enum", value: want },
+    ];
+    const res = await admin.patch("/api/business-units", { id: row.id, doc_version: row.doc_version, config: next });
+    if (res.ok) result.created++;
+    else result.failed.push(why("si.cost-from", res));
+    return result;
+  });
 }

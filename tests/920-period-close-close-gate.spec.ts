@@ -78,7 +78,7 @@ test(
       const lines = [{ product: c.product.code, qty: c.kind === "si-draft" ? 1 : 10, price: c.price }];
       if (c.kind === "si-draft") {
         const d = await once(c.key, (onCreated) => createAdjustment(page, {
-          type: "stock-in", date: c.date, reason: "Test stock_in", status: "draft", onCreated, lines,
+          type: "stock-in", date: c.date, reason: "E2E IA stock in", status: "draft", onCreated, lines,
         }), (id) => adjustmentById("stock-in", id));
         made.push({ c, d, url: adjustmentUrl("stock-in", d.id) });
       } else {

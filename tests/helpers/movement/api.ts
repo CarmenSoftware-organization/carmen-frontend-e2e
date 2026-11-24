@@ -2,6 +2,19 @@ import { rateLimitBypassToken } from "../rate-limit";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { MOVEMENT_USERS, type MovementUser } from "../../movement-users";
+import { TEST_USERS } from "../../test-users";
+
+// The period-close project runs on the TEST BUs with the gmail accounts of the `setup` project, so its
+// verification reads must log in as those — the legacy movement accounts are not on the TEST BUs.
+const PERIOD_CLOSE_ROLES: Record<MovementUser, string> = { admin: "Admin", requestor: "Requestor", purchase: "Purchase", hod: "HOD", fc: "FC" };
+function credentialsFor(user: MovementUser): { email: string; password: string } {
+  if (process.env.E2E_PERIOD_CLOSE === "1") {
+    const u = TEST_USERS.find((x) => x.role === PERIOD_CLOSE_ROLES[user]);
+    if (!u) throw new Error(`movement api: no gmail TEST_USERS account for role ${PERIOD_CLOSE_ROLES[user]}`);
+    return { email: u.email as string, password: u.password as string };
+  }
+  return MOVEMENT_USERS[user];
+}
 
 /**
  * Direct backend access for the movement suite.
@@ -59,7 +72,7 @@ const getBackend = () => (backend ??= resolveBackend());
 
 async function login(user: MovementUser): Promise<string> {
   const { url, appId } = await getBackend();
-  const creds = MOVEMENT_USERS[user];
+  const creds = credentialsFor(user);
   let r: Response | null = null;
   // Login is rate limited per email (429) — the bypass header usually avoids it,
   // the backoff covers a backend that ignores the header.

@@ -123,6 +123,7 @@ export function scenarioFor(bu: TestBuCode, today: string, loc: { code: string; 
     ? { a1: 120, a3: 300, p4: 60, p3: 380, p2: 235, si2: 225, si1: 170, void1: 145, cg2: 250, draft3: 395, next3: 450 }
     : { a1: 140, a3: 340, p4: 70, p3: 400, p2: 275, si2: 240, si1: 190, void1: 165, cg2: 280, draft3: 410, next3: 460 };
   const monthName = new Date(Date.UTC(ny, nm - 1, 1)).toLocaleString("en-US", { month: "long", timeZone: "UTC" });
+  const siP2 = (title: string): Scenario["receipts"][number] => ({ id: "0.3b", key: "siP2", kind: "stock-in", date: d(ym, 5), title, lines: [{ product: P.P2.code, qty: 5, price: price.si2 }] });
   return {
     bu, schema: "", method, location: loc, cnReason: "",
     period, next, periodEnd, descPeriod: ym,
@@ -147,8 +148,11 @@ export function scenarioFor(bu: TestBuCode, today: string, loc: { code: string; 
         ],
       },
       { id: "0.2b", key: "grnP3", kind: "grn", date: d(ym, 14), title: `GRN P3 ลงวันที่ ${mmdd(14)} @${price.p3}`, lines: [{ product: P.P3.code, qty: QTY, price: price.p3 }] },
+      // FIFO: the backend refuses a Stock In dated before the latest receipt of the product in the period
+      // (STOCK_IN_DATE_BEFORE_LATEST_RECEIPT), so the older-dated SI must be created BEFORE the newer GRN there.
+      ...(fifo ? [siP2(`SI P2 ลงวันที่ ${mmdd(5)} @${price.si2} — สร้างก่อน GRN ที่ใหม่กว่า (FIFO ไม่รับ SI ย้อนหลังหลัง GRN)`)] : []),
       { id: "0.3a", key: "grnP2", kind: "grn", date: d(ym, 20), title: `GRN P2 ลงวันที่ ${mmdd(20)} @${price.p2}`, lines: [{ product: P.P2.code, qty: QTY, price: price.p2 }] },
-      { id: "0.3b", key: "siP2", kind: "stock-in", date: d(ym, 5), title: `SI P2 ลงวันที่ ${mmdd(5)} @${price.si2} — สร้างหลัง GRN แต่วันที่เอกสารเก่ากว่า`, lines: [{ product: P.P2.code, qty: 5, price: price.si2 }] },
+      ...(fifo ? [] : [siP2(`SI P2 ลงวันที่ ${mmdd(5)} @${price.si2} — สร้างหลัง GRN แต่วันที่เอกสารเก่ากว่า`)]),
       { id: "0.3c", key: "siP1", kind: "stock-in", date: d(ym, 12), title: `SI P1 ลงวันที่ ${mmdd(12)} @${price.si1} — ใหม่กว่า GRN ฐานของ P1`, lines: [{ product: P.P1.code, qty: 5, price: price.si1 }] },
     ],
     // FIFO: GRN saved ยังไม่ลงสต๊อก → void · AVG: ลงสต๊อกตอน save → commit (void ทีหลังทำยอดในใบนับเพี้ยน)
@@ -166,7 +170,7 @@ export function scenarioFor(bu: TestBuCode, today: string, loc: { code: string; 
     costCases: fifo
       ? [
           { p: P.P1, want: price.si1, wantFrom: `SI completed ${mmdd(12)} @${price.si1}`, trap: `GRN void ${mmdd(18)} @${price.void1} (ใหม่กว่า) · GRN ${mmdd(5)} @${price.a1} (เก่ากว่า)`, topic: "SI นับ · GRN void ไม่นับ" },
-          { p: P.P2, want: price.p2, wantFrom: `GRN committed ${mmdd(20)} @${price.p2}`, trap: `SI ${mmdd(5)} @${price.si2} สร้างทีหลัง · GRN saved ${mmdd(22)} @${price.cg2} (FIFO ยังไม่ลงสต๊อก)`, topic: "เทียบด้วยวันที่เอกสาร · FIFO ไม่นับ saved" },
+          { p: P.P2, want: price.p2, wantFrom: `GRN committed ${mmdd(20)} @${price.p2}`, trap: `SI ${mmdd(5)} @${price.si2} (เก่ากว่า) · GRN saved ${mmdd(22)} @${price.cg2} (FIFO ยังไม่ลงสต๊อก)`, topic: "เทียบด้วยวันที่เอกสาร · FIFO ไม่นับ saved" },
           { p: P.P3, want: price.p3, wantFrom: `GRN committed ${mmdd(14)} @${price.p3}`, trap: `GRN draft ${mmdd(28)} @360 · SI ร่าง ${mmdd(25)} @${price.draft3} · GRN ${mmdd(5)} @${price.a3} (เก่ากว่า) · GRN งวด ${next} @${price.next3}`, topic: "ร่างไม่นับ · GRN งวดหน้าไม่นับ" },
           { p: P.P4, side: "out", want: "posted", wantFrom: "ล็อตที่ตัดจริง", trap: `si.cost-from last_cost = ${price.p4}`, topic: "ของออกตีราคาตามล็อตที่ตัด (#709)" },
         ]

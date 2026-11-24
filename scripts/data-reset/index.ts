@@ -24,7 +24,7 @@ import { verifyEnvironment } from "./verify-env";
 import { loadWorkflowFixture, validateFixture } from "./workflow-template";
 import { seedWorkflows } from "./workflows";
 import { seedAllDocuments } from "./docs/seed-all";
-import { seedPeriodClose } from "./docs/period-close";
+import { seedCostFrom, seedPeriodClose } from "./docs/period-close";
 import { verifyHistoryDataset } from "./verify-dataset";
 import type { TestUserInfo } from "./verify-env";
 import type { Sessions } from "./sessions";
@@ -186,6 +186,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
   if (args.withHistory && results.every((r) => r.failed.length === 0) && mappings.firstDepartment) {
     // No documents of the normal dataset: they could not be dated last month, and open ones would block Start / Close.
     results.push(await seedPeriodClose(sessions, cfg));
+    results.push(await seedCostFrom(sessions, cfg));
     const verified = await verifyHistoryDataset(sessions, cfg, now);
     log(verified.table);
     results.push({ step: "verify", created: 0, skipped: 0, failed: verified.short });

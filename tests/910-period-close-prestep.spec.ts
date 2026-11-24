@@ -176,7 +176,7 @@ test(
   {
     annotation: [
       { type: "preconditions", description: "TC-PE-400002 ผ่านแล้ว (admin ผูกกับคลัง L ของ scenario); งวดปัจจุบันของ BU = งวดของ scenario; E2E_DB_URL ตั้งไว้" },
-      { type: "steps", description: "1. วนเอกสารรับเข้าทุกใบของ scenario (SCN.receipts: 0.2, 0.2b, 0.3, 0.3a, 0.3b, 0.3c ตามที่ scenario มี) — แต่ละใบเป็น test.step ของตัวเอง\n2. GRN: Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ตาม scenario · คลัง L · สินค้า/จำนวน/ราคาตาม scenario → Create → Commit\n3. Stock In: Inventory Adjustment → Add Stock In · Date ตาม scenario · Reason Test stock_in · คลัง L → Commit\n4. เปิดใบ ตรวจว่าแสดงเลขเอกสาร\n5. DB: อ่าน cost layer ของสินค้าแต่ละบรรทัดที่คลัง L" },
+      { type: "steps", description: "1. วนเอกสารรับเข้าทุกใบของ scenario (SCN.receipts: 0.2, 0.2b, 0.3, 0.3a, 0.3b, 0.3c ตามที่ scenario มี) — แต่ละใบเป็น test.step ของตัวเอง\n2. GRN: Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ตาม scenario · คลัง L · สินค้า/จำนวน/ราคาตาม scenario → Create → Commit\n3. Stock In: Inventory Adjustment → Add Stock In · Date ตาม scenario · Reason E2E IA stock in · คลัง L → Commit\n4. เปิดใบ ตรวจว่าแสดงเลขเอกสาร\n5. DB: อ่าน cost layer ของสินค้าแต่ละบรรทัดที่คลัง L" },
       { type: "expected", description: "GRN มีสถานะ committed / Stock In มีสถานะ completed และทุกบรรทัดมี cost layer at_period = งวดของ scenario ที่ in_qty และ cost_per_unit ตรงกับที่กรอก" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
@@ -206,7 +206,7 @@ test(
         } else {
           if (!doc) {
             const created = await createAdjustment(page, {
-              type: "stock-in", date: r.date, reason: "Test stock_in", status: "completed", lines: r.lines,
+              type: "stock-in", date: r.date, reason: "E2E IA stock in", status: "completed", lines: r.lines,
               onCreated: (d) => putDoc(r.key, { ...d }),
             });
             doc = { ...created! };
@@ -225,7 +225,7 @@ test(
         record({
           id: r.id, case: CASE, title: `${r.title} (ลงวันที่ ${r.date})`,
           steps: [
-            r.kind === "grn" ? `Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ${r.date}` : `Inventory Adjustment → Add Stock In · Date ${r.date} · Reason Test stock_in`,
+            r.kind === "grn" ? `Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ${r.date}` : `Inventory Adjustment → Add Stock In · Date ${r.date} · Reason E2E IA stock in`,
             `ที่ ${L.code}: ${r.lines.map((l) => `${l.product} qty ${l.qty} @${l.price}`).join(" · ")}`,
             r.kind === "grn" ? "Create → Commit" : "Commit",
           ],

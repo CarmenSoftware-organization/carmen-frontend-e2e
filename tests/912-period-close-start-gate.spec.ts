@@ -79,7 +79,7 @@ const siDraft = (key: string): Omit<Blocker, "clear" | "clearLabel"> => ({
   key, module: "stock_in", label: "SI draft", docUrl: (d) => adjustmentUrl("stock-in", d.id),
   create: (page, onCreated) =>
     createAdjustment(page, {
-      type: "stock-in", date: SCN.case1Date, reason: "Test stock_in", status: "draft", onCreated,
+      type: "stock-in", date: SCN.case1Date, reason: "E2E IA stock in", status: "draft", onCreated,
       lines: [{ product: PX.code, qty: 1, price: 10 }],
     }),
 });
@@ -87,7 +87,7 @@ const soDraft = (key: string): Omit<Blocker, "clear" | "clearLabel"> => ({
   key, module: "stock_out", label: "SO draft", docUrl: (d) => adjustmentUrl("stock-out", d.id),
   create: (page, onCreated) =>
     createAdjustment(page, {
-      type: "stock-out", date: SCN.case1Date, reason: "Test stock_out", status: "draft", onCreated,
+      type: "stock-out", date: SCN.case1Date, reason: "E2E IA stock out", status: "draft", onCreated,
       lines: [{ product: P.P4.code, qty: 1 }],
     }),
 });
@@ -222,7 +222,7 @@ test(
   {
     annotation: [
       { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว" },
-      { type: "steps", description: "1. Inventory Adjustment → Add Stock In · Date = case1Date ของ scenario · Reason Test stock_in · คลัง L · E2E-PC-X qty 1 @10 → Save (draft)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. เปิดใบ → Edit → Void (กรอก Void Reason)\n6. GET period-ends/review" },
+      { type: "steps", description: "1. Inventory Adjustment → Add Stock In · Date = case1Date ของ scenario · Reason E2E IA stock in · คลัง L · E2E-PC-X qty 1 @10 → Save (draft)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. เปิดใบ → Edit → Void (กรอก Void Reason)\n6. GET period-ends/review" },
       { type: "expected", description: "start_blocking.stock_in = 1 ก่อนกด; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลข SI ของใบนั้น; หลัง Void start_blocking.total = 0; payload void ที่ FE ส่งถูกเก็บไว้ใช้ในข้อ 1.F2" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Negative" },
@@ -242,7 +242,7 @@ test(
   {
     annotation: [
       { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (มีสต๊อก Shredded pork skin ที่คลัง L)" },
-      { type: "steps", description: "1. Inventory Adjustment → Add Stock Out · Date = case1Date ของ scenario · Reason Test stock_out · คลัง L · Shredded pork skin qty 1 → Save (draft)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. เปิดใบ → Edit → Void (กรอก Void Reason)\n6. GET period-ends/review" },
+      { type: "steps", description: "1. Inventory Adjustment → Add Stock Out · Date = case1Date ของ scenario · Reason E2E IA stock out · คลัง L · Shredded pork skin qty 1 → Save (draft)\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog → Close\n5. เปิดใบ → Edit → Void (กรอก Void Reason)\n6. GET period-ends/review" },
       { type: "expected", description: "start_blocking.stock_out = 1 ก่อนกด; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลข SO ของใบนั้น; หลัง Void start_blocking.total = 0" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Negative" },

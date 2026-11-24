@@ -204,7 +204,7 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
       const lotsBefore = visibleLots(P.P1.code);
       // จ่ายออกจนเหลือ 3 — ตัวจัดสรรตัดล็อตเก่าที่ดูเต็มก่อน ล็อตของ GRN นี้จึงไม่ถูกผูก
       const so = await once(`so713a${K42}`, () =>
-        createAdjustment(page, { type: "stock-out", date: DATE, reason: "Test stock_out", status: "completed", lines: [{ product: P.P1.code, qty: before - 3 }] }),
+        createAdjustment(page, { type: "stock-out", date: DATE, reason: "E2E IA stock out", status: "completed", lines: [{ product: P.P1.code, qty: before - 3 }] }),
       );
       const parents = [...new Set(docLayers(so.id).filter((l) => Number(l.out_qty) > 0).map((l) => l.parent_lot_no))];
       const afterIssue = drawable(P.P1.code);
@@ -322,7 +322,7 @@ test(
     );
     const before = drawable(P.P2.code);
     const so = await once("so713b", () =>
-      createAdjustment(page, { type: "stock-out", date: DATE, reason: "Test stock_out", status: "completed", lines: [{ product: P.P2.code, qty: before - 2 }] }),
+      createAdjustment(page, { type: "stock-out", date: DATE, reason: "E2E IA stock out", status: "completed", lines: [{ product: P.P2.code, qty: before - 2 }] }),
     );
     const afterIssue = drawable(P.P2.code);
     const lotsVisible = visibleLots(P.P2.code);
