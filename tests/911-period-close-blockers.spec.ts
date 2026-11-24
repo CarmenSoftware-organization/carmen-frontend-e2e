@@ -25,7 +25,7 @@ import {
 import { deleteAdjustment } from "./helpers/period-close/docs";
 import { startExpectingBlocked } from "./helpers/period-close/period-end";
 import { btn } from "./helpers/movement/ui";
-import { SCN, PERIOD, L, PX } from "./helpers/period-close/scenarios";
+import { SCN, PERIOD, L, P, PX } from "./helpers/period-close/scenarios";
 import { authFile } from "./fixtures/auth.paths";
 
 /**
@@ -84,12 +84,16 @@ export async function createBlockers(_page: Page): Promise<{ soDrafts: DocRef[];
   const at = `${SCN.case1Date}T05:00:00.000Z`; // กลางวันเวลาไทย วันที่ 15 ของงวด
 
   // SO ร่าง — admin
+  // The backend checks stock even for a draft Stock Out, and the spare product has none — draw the 1 unit from P4
+  // (stocked by the 910 base GRN); the draft is deleted by the case, so no stock actually moves.
+  const soProdId = sql<{ id: string }>(`select id from ${SCHEMA}.tb_product where code = '${P.P4.code}' and deleted_at is null limit 1`)[0]?.id;
+  if (!soProdId) throw new Error(`${BU}: ไม่พบสินค้า ${P.P4.code}`);
   const so = await apiSend("POST", `/api/${BU}/stock-outs`, {
     so_date: at,
     description: `E2E ${PERIOD}: SO ร่างขวาง Start`,
     adjustment_type_id: await adjustmentTypeId("stock_out"),
     location_id: from.id,
-    stock_out_detail: { add: [{ product_id: prodId, qty: 1 }] },
+    stock_out_detail: { add: [{ product_id: soProdId, qty: 1 }] },
   });
   expect(so.status, `สร้าง SO ร่าง ${so.status} ${JSON.stringify(so.body).slice(0, 300)}`).toBeLessThan(300);
   const soId = so.body.data.id as string;
@@ -194,7 +198,7 @@ test(
   async ({ page, browser }) => {
     const prev = prevRecord("1.N1");
     test.skip(prev?.status === "PASS", `1.N1 ผ่านแล้วเมื่อ ${prev?.at} — เอกสารค้างถูกเคลียร์ไปแล้ว`);
-    const approver = PC_USERS.hod.email;
+    const approver = PC_USERS.purchase.email; // TEST BU: ขั้น Store Approval ของ workflow SR มอบให้บัญชี Purchase (ดู scripts/data-reset/fixtures/workflows.json)
     blockers = await createBlockers(page);
     const images: string[] = [];
     const so = soDocs().filter((d) => d.st === "draft");

@@ -32,7 +32,7 @@ export const BU = SCN.bu;
 export const SCHEMA = { toString: (): string => (SCN.schema ? `"${SCN.schema}"` : "") };
 
 /** Period-close accounts: the gmail TEST_USERS (same ones the `setup` project signs in), by short key. */
-const PC_ROLES = { admin: "Admin", requestor: "Requestor", hod: "HOD", fc: "FC" } as const satisfies Record<string, Role>;
+const PC_ROLES = { admin: "Admin", requestor: "Requestor", hod: "HOD", purchase: "Purchase", fc: "FC" } as const satisfies Record<string, Role>;
 export type PcUser = keyof typeof PC_ROLES;
 export const PC_USERS = Object.fromEntries(
   (Object.keys(PC_ROLES) as PcUser[]).map((k) => {

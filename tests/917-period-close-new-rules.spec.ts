@@ -167,7 +167,7 @@ test(
 );
 
 test(
-  "TC-PE-470003 ใบรับที่บันทึกแล้วแก้ได้แค่หัวใบ (#715)",
+  "TC-PE-470003 ใบรับที่บันทึกแล้วแก้บรรทัดได้ แต่เปลี่ยนวันที่/สถานะไม่ได้ (#715 → GRN_SAVED_IDENTITY_LOCKED)",
   {
     annotation: [
       {
@@ -183,7 +183,7 @@ test(
       {
         type: "expected",
         description:
-          "แก้บรรทัดและแก้วันที่ → 400 GRN_SAVED_HEADER_ONLY; เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED; แก้ note/invoice_no → สำเร็จ (HTTP < 300) ค่าใหม่ถูกเก็บ และใบยังเป็น saved",
+          "แก้บรรทัด → สำเร็จ (backend ปัจจุบัน: ใบ saved แก้ได้เหมือนร่าง ยกเว้นผู้ขาย/วันที่รับ — GRN_SAVED_HEADER_ONLY เลิกส่งแล้ว); แก้วันที่ → 400 GRN_SAVED_IDENTITY_LOCKED; เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED; แก้ note/invoice_no → สำเร็จ (HTTP < 300) ค่าใหม่ถูกเก็บ และใบยังเป็น saved",
       },
       { type: "priority", description: "High" },
       { type: "testType", description: "Validation" },
@@ -218,8 +218,8 @@ test(
       `select note, invoice_no, doc_status::text doc_status from ${SCHEMA}.tb_good_received_note where id = '${grn.id}'`,
     );
     const ok =
-      lines.status === 400 && lines.appCode === "GRN_SAVED_HEADER_ONLY" &&
-      date.status === 400 && date.appCode === "GRN_SAVED_HEADER_ONLY" &&
+      lines.status < 300 &&
+      date.status === 400 && date.appCode === "GRN_SAVED_IDENTITY_LOCKED" &&
       status.status === 400 && status.appCode === "GRN_STATUS_CHANGE_NOT_ALLOWED" &&
       header.status < 300 && after.note === note && after.invoice_no === `E2E-INV-${PERIOD}` && after.doc_status === "saved";
     record({
@@ -228,7 +228,7 @@ test(
       title: `แก้ใบรับ ${grn.no} ที่บันทึกแล้วผ่าน API`,
       steps: ["แก้จำนวนในบรรทัด", "แก้วันที่ใบรับ (ตัวกำหนดงวด)", "เปลี่ยนสถานะกลับเป็นร่าง", "แก้หมายเหตุกับเลขใบแจ้งหนี้"],
       expected:
-        "แก้บรรทัด / วันที่ → 400 GRN_SAVED_HEADER_ONLY · เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED · แก้หมายเหตุ/เลขใบแจ้งหนี้ → สำเร็จ และใบยังเป็นบันทึกแล้ว",
+        "แก้บรรทัด → สำเร็จ · แก้วันที่ → 400 GRN_SAVED_IDENTITY_LOCKED · เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED · แก้หมายเหตุ/เลขใบแจ้งหนี้ → สำเร็จ และใบยังเป็นบันทึกแล้ว",
       actual: `แก้บรรทัด → ${lines.status} ${lines.appCode} · แก้วันที่ → ${date.status} ${date.appCode} · เปลี่ยนสถานะ → ${status.status} ${status.appCode} · แก้หัวใบ → ${header.status} (note="${after.note}", invoice_no="${after.invoice_no}", สถานะ ${after.doc_status})`,
       status: ok ? "PASS" : "FAIL",
       docs: [grn.no],
@@ -318,7 +318,8 @@ test(
       expect(r.status, `submit ${JSON.stringify(r.body)}`).toBeLessThan(300);
       d = await get(sr.id);
     }
-    if (d.workflow_current_stage === "HOD") {
+    // TEST BU: workflow SR ขั้นอนุมัติชื่อ "Store Approval" และมอบให้บัญชี Purchase (fixtures/workflows.json)
+    if (d.workflow_current_stage === "Store Approval") {
       const r = await apiSend(
         "PATCH",
         `/api/${BU}/store-requisitions/${sr.id}/approve`,
@@ -327,7 +328,7 @@ test(
           stage_role: "approve",
           details: [{ id: lineOf(d), stage_status: "approve", stage_message: "", approved_qty: 1 }],
         },
-        "hod",
+        "purchase",
       );
       trail.push(`HOD อนุมัติ → ${r.status}${r.appCode ? " " + r.appCode : ""}`);
       expect(r.status, `HOD approve ${JSON.stringify(r.body)}`).toBeLessThan(300);

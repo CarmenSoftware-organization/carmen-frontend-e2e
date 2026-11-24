@@ -208,7 +208,7 @@ test(
       "PATCH",
       `/api/${BU}/store-requisitions/${id}/approve`,
       { doc_version: d.doc_version, stage_role: "approve", details: [{ id: lineOf(d), stage_status: "approve", stage_message: "", approved_qty: 1 }] },
-      "hod",
+      "purchase", // TEST BU: ขั้น Store Approval ของ workflow SR มอบให้บัญชี Purchase
     );
     d = await get(id);
     const issue = await apiSend("PATCH", `/api/${BU}/store-requisitions/${id}/approve`, {
@@ -240,7 +240,7 @@ test(
           stage_role: d.workflow_current_stage === "Issue" ? "issue" : "approve",
           details: [{ id: lineOf(d), stage_status: "reject", stage_message: "E2E A4 เก็บกวาด" }],
         },
-        d.workflow_current_stage === "Issue" ? undefined : "hod",
+        d.workflow_current_stage === "Issue" ? undefined : "purchase",
       );
       console.log(`A4 cleanup reject → ${r.status} ${r.appCode}`);
     }

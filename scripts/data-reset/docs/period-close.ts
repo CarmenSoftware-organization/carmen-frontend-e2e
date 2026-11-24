@@ -1,6 +1,6 @@
 // scripts/data-reset/docs/period-close.ts
 // Period-close base: four products (E2E-PC-1..4) plus one spare (E2E-PC-X), copied from a template
-// product and linked to the FIRST inventory location only — no stock, no documents. The period-close
+// product; E2E-PC-1..4 linked to the FIRST inventory location only, the spare to every one — no stock, no documents. The period-close
 // suite (910–924) builds all its own movements on top; `--with-history` seeds nothing else.
 // Also clears the local evidence folder runs/period-close/<BU>/ so a rerun starts clean.
 // ฐานของชุดปิดงวด: สินค้า E2E-PC 4 ตัว + ตัวสำรอง ผูก location แรกแห่งเดียว ไม่มีสต๊อก/เอกสาร
@@ -87,7 +87,9 @@ export async function seedPeriodClose(sessions: Sessions, cfg: ResetConfig): Pro
       ...(itemGroup ? { product_item_group_id: itemGroup } : {}),
       product_status_type: "active",
       product_info: { is_used_in_recipe: false, is_sold_directly: false, barcode: "", sku: "", info: [] },
-      locations: { add: [{ location_id: first.id }] },
+      // PC-1..4 sit in the first location only; the spare is linked everywhere so an SR can name any
+      // inventory location as its destination (the backend refuses products not linked to it).
+      locations: { add: (code === PC_SPARE ? locations : [first]).map((l) => ({ location_id: l.id })) },
     });
     if (res.ok) result.created++;
     else result.failed.push(why(`product ${code}`, res));
@@ -145,7 +147,11 @@ export async function verifyPeriodClose(sessions: Sessions, cfg: ResetConfig): P
     }
     const detail = await admin.get(`/api/config/${bu}/products/${row.id}`);
     const linked = ((detail.body?.data?.locations ?? []) as any[]).map((l) => refId(l, "location") ?? "");
-    check(code, linked.length === 1 && linked[0] === firstId, `expected linked to first location ${firstId} only, found [${linked.join(", ")}]`);
+    if (code === PC_SPARE) {
+      check(code, locations.every((l) => linked.includes(String(l.id))), `expected linked to every inventory location, found [${linked.join(", ")}]`);
+    } else {
+      check(code, linked.length === 1 && linked[0] === firstId, `expected linked to first location ${firstId} only, found [${linked.join(", ")}]`);
+    }
   }
   return { lines, short };
 }
