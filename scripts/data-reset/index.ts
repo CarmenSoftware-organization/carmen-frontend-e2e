@@ -16,7 +16,7 @@ import { seedAccountingBase } from "./accounting";
 import { seedMappings } from "./mappings";
 import { countRolesToCopy } from "./roles";
 import { seedAccess, seedAccountingRoles } from "./access";
-import { seedPeriod, planPeriod, planNextPeriod } from "./period";
+import { seedPeriod, planPeriod, planNextPeriod, planHistoryPeriod } from "./period";
 import { callReset } from "./reset";
 import { createSessions } from "./sessions";
 import type { StepResult } from "./step-result";
@@ -119,6 +119,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log("accounting-roles: would create \"Accounting Approver\" (budget: AP void, JV void / post / reverse) and \"Accounting Viewer\" (requestor: view only) from the BU's permission catalog, unless they exist");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
     log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today, then ensure ${JSON.stringify(planNextPeriod(now))} exists via POST /next`);
+    if (args.withHistory) log(`period: --with-history would instead POST ${JSON.stringify(planHistoryPeriod(now))} first, then generate until today + next month are covered`);
     log("documents: would create 5 stock-ins, 4 doc-flow products, 1 PR template, 41 PRs, 7 POs, 4 GRNs, 2 CNs, 7 SRs, 3 price lists, 3 campaigns, the accounting read set (8 AP documents incl. payments, 1 JV, 1 JV template), then verify the counts");
     return 0;
   }
@@ -171,7 +172,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
   }
   if (mappings.firstDepartment) {
     results.push(await seedWorkflows(sessions, cfg, fixture, env.users, mappings.firstDepartment));
-    results.push(await seedPeriod(sessions, cfg, now));
+    results.push(await seedPeriod(sessions, cfg, now, { withHistory: args.withHistory }));
   }
   if (results.every((r) => r.failed.length === 0) && mappings.firstDepartment) {
     const seedDocuments = deps.seedDocuments ?? ((s, c, u, n, l) => seedAllDocuments(s, c, u, n, {}, l));

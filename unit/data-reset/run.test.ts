@@ -12,7 +12,7 @@ const cfg: ResetConfig = {
   adminEmail: "carmensoftware.dev+admin@gmail.com",
 };
 const args = (over: Partial<ResetArgs> = {}): ResetArgs => ({
-  dryRun: false, yes: true, skipReset: false, verbose: false, help: false, bu: "BU-GR2VYNKQ", ...over,
+  dryRun: false, yes: true, skipReset: false, verbose: false, help: false, withHistory: false, bu: "BU-GR2VYNKQ", ...over,
 });
 const base = "/api/config/BU-GR2VYNKQ";
 const now = new Date("2026-11-05T03:00:00Z");
