@@ -474,24 +474,25 @@ adminTest.describe("Period End — Activity log", () => {
       annotation: [
         { type: "preconditions", description: "Login เป็น carmensoftware.dev+admin@gmail.com ที่เปิด Activity Monitor ได้" },
         { type: "steps", description: "1. ไปที่ /system-admin/activity-log\n2. กด Filter แล้วเลือก Record Type = Period" },
-        { type: "expected", description: "request ส่ง entity_type=period ตอบ 200 ทุกแถวที่ได้เป็น entity_type period และตัวกรองแสดง Record Type = period" },
+        { type: "expected", description: "request ส่ง entity_type=inventory_period ตอบ 200 ได้อย่างน้อยหนึ่งแถว ทุกแถวเป็น entity_type inventory_period และตัวกรองแสดง Record Type = Period" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
-        { type: "note", description: "ส่วนที่ย้อนกลับได้ของ TC-PE-340001 (ต้องปิดงวดจริง) — อ่านอย่างเดียว ไม่ปิดงวด" },
+        { type: "note", description: "ส่วนที่ย้อนกลับได้ของ TC-PE-340001 — อ่านอย่างเดียว ไม่ปิดงวด · backend บันทึกงวดเป็น entity_type = inventory_period (data:reset สร้างงวดไว้แล้วจึงมีแถวเสมอ) · ก่อน FE แก้ ตัวกรองส่ง entity_type=period ซึ่งไม่มีแถวเลย และเคสนี้เคยผ่านทั้งที่ได้ list ว่าง" },
       ],
     },
     async ({ page }) => {
       await page.goto("/system-admin/activity-log");
       await page.getByRole("button", { name: "Filter", exact: true }).click();
-      const filtered = page.waitForResponse((r) => /\/activity-logs\?/.test(r.url()) && r.url().includes("entity_type=period"));
+      const filtered = page.waitForResponse((r) => /\/activity-logs\?/.test(r.url()) && r.url().includes("entity_type=inventory_period"));
       await page.getByText("Record Type").last().click();
       await page.getByRole("option", { name: "Period", exact: true }).click();
       const resp = await filtered;
       expect(resp.status()).toBe(200);
       const rows = (await resp.json()).data as { entity_type: string }[];
-      expect(rows.filter((r) => r.entity_type !== "period"), "every returned row is a period entry").toEqual([]);
+      expect(rows.length, "the Period filter finds the BU's period entries").toBeGreaterThan(0);
+      expect(rows.filter((r) => r.entity_type !== "inventory_period"), "every returned row is a period entry").toEqual([]);
       await expect(page.getByText("Filters:")).toBeVisible();
-      await expect(page.getByText("period", { exact: true })).toBeVisible();
+      await expect(page.locator("#main-content").getByRole("button", { name: "Record Type inventory period" })).toBeVisible();
     },
   );
 

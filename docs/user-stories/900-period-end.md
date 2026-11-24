@@ -450,11 +450,11 @@ Login เป็น carmensoftware.dev+admin@gmail.com ที่เปิด Acti
 
 **Expected**
 
-request ส่ง entity_type=period ตอบ 200 ทุกแถวที่ได้เป็น entity_type period และตัวกรองแสดง Record Type = period
+request ส่ง entity_type=inventory_period ตอบ 200 ได้อย่างน้อยหนึ่งแถว ทุกแถวเป็น entity_type inventory_period และตัวกรองแสดง Record Type = Period
 
-> _Note: ส่วนที่ย้อนกลับได้ของ TC-PE-340001 (ต้องปิดงวดจริง) — อ่านอย่างเดียว ไม่ปิดงวด_
+> _Note: ส่วนที่ย้อนกลับได้ของ TC-PE-340001 — อ่านอย่างเดียว ไม่ปิดงวด · backend บันทึกงวดเป็น entity_type = inventory_period (data:reset สร้างงวดไว้แล้วจึงมีแถวเสมอ) · ก่อน FE แก้ ตัวกรองส่ง entity_type=period ซึ่งไม่มีแถวเลย และเคสนี้เคยผ่านทั้งที่ได้ list ว่าง_
 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git af948fb</sub>
+<sub>Last regenerated: 2026-11-24 · git 0707775</sub>
