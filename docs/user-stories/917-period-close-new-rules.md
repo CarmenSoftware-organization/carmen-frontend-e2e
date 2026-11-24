@@ -13,7 +13,7 @@ _Generated from `tests/917-period-close-new-rules.spec.ts` annotations. Edit ann
 | --- | --- | --- | --- |
 | TC-PE-470001 | ใบรับลงวันที่งวดหน้าที่บันทึกแล้วยังไม่ลงสต๊อก (#719 · AVG) | High | Functional |
 | TC-PE-470002 | Stock In ลงวันที่งวดหน้าที่ยืนยันแล้วยังไม่ลงสต๊อก (#719 · AVG) | High | Functional |
-| TC-PE-470003 | ใบรับที่บันทึกแล้วแก้ได้แค่หัวใบ (#715) | High | Validation |
+| TC-PE-470003 | ใบรับที่บันทึกแล้วแก้บรรทัดได้ แต่เปลี่ยนวันที่/สถานะไม่ได้ (#715 → GRN_SAVED_IDENTITY_LOCKED) | High | Validation |
 | TC-PE-470004 | ใบเบิกลงวันที่งวดหลังอนุมัติถึงขั้นจ่ายได้แต่จ่ายไม่ได้จนกว่างวดนั้นเป็นงวดปัจจุบัน (#718) | High | Negative |
 
 ---
@@ -67,7 +67,7 @@ E2E_PERIOD_BU เป็น TEST BU แบบ average; งวดปัจจุ�
 
 ---
 
-## TC-PE-470003 — ใบรับที่บันทึกแล้วแก้ได้แค่หัวใบ (#715)
+## TC-PE-470003 — ใบรับที่บันทึกแล้วแก้บรรทัดได้ แต่เปลี่ยนวันที่/สถานะไม่ได้ (#715 → GRN_SAVED_IDENTITY_LOCKED)
 
 > **As a** any authenticated user, **I want** the system to block invalid Period Close New Rules submissions, **so that** data quality is preserved.
 
@@ -87,7 +87,7 @@ E2E_PERIOD_BU=<BU> (TEST BU ใดก็ได้); งวดปัจจุบ�
 
 **Expected**
 
-แก้บรรทัดและแก้วันที่ → 400 GRN_SAVED_HEADER_ONLY; เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED; แก้ note/invoice_no → สำเร็จ (HTTP < 300) ค่าใหม่ถูกเก็บ และใบยังเป็น saved
+แก้บรรทัด → สำเร็จ (backend ปัจจุบัน: ใบ saved แก้ได้เหมือนร่าง ยกเว้นผู้ขาย/วันที่รับ — GRN_SAVED_HEADER_ONLY เลิกส่งแล้ว); แก้วันที่ → 400 GRN_SAVED_IDENTITY_LOCKED; เปลี่ยนสถานะ → 400 GRN_STATUS_CHANGE_NOT_ALLOWED; แก้ note/invoice_no → สำเร็จ (HTTP < 300) ค่าใหม่ถูกเก็บ และใบยังเป็น saved
 
 > _Note: เดิม 5.3 (_movement_play specs/24-new-rules) · พิสูจน์ backend PR #715 · ยิง API เพราะหน้าจอไม่ส่งการแก้บรรทัด/สถานะของใบ saved · ผลล่าสุด PASS ทั้ง avg2607-r4 และ p11-r4 (2026-10-02)_
 
@@ -122,4 +122,4 @@ E2E_PERIOD_BU=<BU>; งวดปัจจุบันของ BU = งวดข
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

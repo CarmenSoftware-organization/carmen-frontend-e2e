@@ -28,7 +28,8 @@ import {
  *   TC-PE-460001  #712 — a new CN number never reuses the number of a deleted draft
  *   TC-PE-460002  #713 — voiding a GRN whose stock was already issued is refused (409)
  *   TC-PE-460003  the toast of that refusal names the real reason (known bug, test.fail)
- *   TC-PE-460004  #713 → backend 490fc9ee1 — a CN returning more than is on hand is refused 422 CREDIT_NOTE_INSUFFICIENT_STOCK
+ *   TC-PE-460004  backend 490fc9ee1 (replaces #713's "CN takes only what is on hand") — a CN returning more than is on hand is refused
+ *                 422 CREDIT_NOTE_INSUFFICIENT_STOCK, no CN is created, stock is unchanged and non-negative
  *
  * Not reversible: posts real documents into the scenario's period (GRN saved then
  * committed, Stock Out completed, CN completed; two CN drafts created and deleted).
@@ -294,7 +295,7 @@ test.describe("4.2 void GRN หลังของถูกจ่ายออก�
 });
 
 test(
-  "TC-PE-460004 ใบลดหนี้คืนของเกินยอดคลังจริงต้องถูกปฏิเสธ 422 และคลังไม่ติดลบ (#713)",
+  "TC-PE-460004 ใบลดหนี้คืนของเกินยอดคลังจริงต้องถูกปฏิเสธ 422 และคลังไม่ติดลบ (backend 490fc9ee1 แทน #713)",
   {
     annotation: [
       {
@@ -317,7 +318,7 @@ test(
       {
         type: "note",
         description:
-          "เดิม 4.3 (_movement_play specs/23-fix-guards) · พิสูจน์ backend PR #713 · ผลล่าสุด avg2605-r2 2026-10-02 PASS · เดิมยืนยันแค่ยอดไม่ติดลบ — เพิ่มการยืนยันว่าตัดได้เท่ายอดที่มี, ยอดเหลือ 0 และใบเป็น completed ให้ตรงกับ verdict · รันซ้ำในโฟลเดอร์เดิมคำนวณยอดก่อน CN ใหม่ไม่ได้ ทั้ง results.json และเคสจะเป็น FAIL",
+          "เดิม 4.3 (_movement_play specs/23-fix-guards) พิสูจน์ PR #713 ที่ให้ CN ตัดเท่าที่มี — backend 490fc9ee1 (2026-10-07) มาแทน #713 แล้ว เคสนี้จึงยืนยันกติกาใหม่: CN คืนเกินยอดคลังถูกปฏิเสธ 422 CREDIT_NOTE_INSUFFICIENT_STOCK · ไม่มีใบลดหนี้ถูกสร้าง · ยอดคลังเท่าเดิมและไม่ติดลบ · รันซ้ำในโฟลเดอร์เดิมคำนวณยอดก่อน CN ใหม่ไม่ได้ ทั้ง results.json และเคสจะเป็น FAIL",
       },
     ],
   },

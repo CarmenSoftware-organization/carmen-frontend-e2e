@@ -14,7 +14,7 @@ _Generated from `tests/916-period-close-fix-guards.spec.ts` annotations. Edit an
 | TC-PE-460001 | เลขใบลดหนี้ใหม่ต้องไม่ซ้ำกับใบร่างที่ลบไปแล้ว (#712) | Medium | Functional |
 | TC-PE-460002 | void GRN ที่ของถูกจ่ายออกไปแล้วต้องถูกปฏิเสธและคลังไม่ติดลบ (#713) | High | Negative |
 | TC-PE-460003 | toast เมื่อ void GRN ถูกปฏิเสธต้องบอกเหตุผลจริงว่าของถูกเบิกไปแล้ว | Medium | Negative |
-| TC-PE-460004 | ใบลดหนี้คืนของเกินยอดคลังจริงต้องตัดสต๊อกได้แค่ที่มี (#713) | High | Edge Case |
+| TC-PE-460004 | ใบลดหนี้คืนของเกินยอดคลังจริงต้องถูกปฏิเสธ 422 และคลังไม่ติดลบ (backend 490fc9ee1 แทน #713) | High | Edge Case |
 
 ---
 
@@ -30,7 +30,7 @@ E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (
 
 **Steps**
 
-1. สร้างใบลดหนี้ร่างอ้าง grnA คืน Shredded pork skin 1 (Tax Invoice E2E-712-A) → ได้เลขใบแรก
+1. สร้างใบลดหนี้ร่างอ้าง grnA คืน P1 1 (Tax Invoice E2E-712-A) → ได้เลขใบแรก
 2. เปิดใบ → Edit → Delete → ยืนยัน
 3. สร้างใบลดหนี้ร่างใบใหม่แบบเดียวกัน (Tax Invoice E2E-712-B) → ได้เลขใบที่สอง
 4. ลบใบที่สองทิ้ง (เก็บกวาด)
@@ -91,11 +91,11 @@ TC-PE-460002 ผ่านแล้วในรอบเดียวกัน (se
 
 toast บอกเหตุผลจริงว่าของที่รับเข้าใบนี้ถูกเบิกออกไปแล้วจึงยกเลิกไม่ได้ — ไม่ใช่ "Someone else changed this document. Refresh the page and try again." / "มีคนแก้ใบนี้"
 
-> _Note: เดิม 4.2-msg (_movement_play specs/23-fix-guards) · บั๊กที่รู้อยู่ (test.fail): ผลล่าสุด avg2605-r2 2026-10-02T06:47Z FAIL — FE ไม่มีข้อความของรหัส GRN_RECEIPT_ALREADY_CONSUMED จึงตกไปข้อความกลางของ 409 · FE PR #216 (merge 2026-10-02 ราว 10:05Z หลังหลักฐานล่าสุด) เพิ่มข้อความแล้ว — ถ้าเคสนี้ขึ้น "unexpectedly passed" ให้เอา test.fail ออก · แถว results.json ยังบันทึกใน TC-PE-460002 ตามเดิม_
+> _Note: เดิม 4.2-msg (_movement_play specs/23-fix-guards) · บั๊กที่รู้อยู่ (เคยเป็น test.fail — ถอดแล้ว 2026-11-24 เพราะผ่านจริงบน BU-GR2VYNKQ หลัง FE #216): ผลล่าสุดเดิม avg2605-r2 2026-10-02T06:47Z FAIL — FE ไม่มีข้อความของรหัส GRN_RECEIPT_ALREADY_CONSUMED จึงตกไปข้อความกลางของ 409 · FE PR #216 (merge 2026-10-02 ราว 10:05Z หลังหลักฐานล่าสุด) เพิ่มข้อความแล้ว — แถว results.json ยังบันทึกใน TC-PE-460002 ตามเดิม_
 
 ---
 
-## TC-PE-460004 — ใบลดหนี้คืนของเกินยอดคลังจริงต้องตัดสต๊อกได้แค่ที่มี (#713)
+## TC-PE-460004 — ใบลดหนี้คืนของเกินยอดคลังจริงต้องถูกปฏิเสธ 422 และคลังไม่ติดลบ (backend 490fc9ee1 แทน #713)
 
 > **As a** any authenticated user, **I want** this Period Close Fix Guards behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -110,16 +110,16 @@ E2E_PERIOD_BU เป็น TEST BU แบบ average; Login เป็น Admin (
 
 1. สร้าง GRN committed ที่คลัง L: E2E-PC-2 10 @290
 2. สร้าง Stock Out (completed) จ่าย E2E-PC-2 จนยอดหยิบได้เหลือ 2
-3. สร้างใบลดหนี้อ้าง GRN นั้น คืน E2E-PC-2 10 → Create → Submit (ถ้ามีใบร่างค้างจากรอบที่ถูกขัดจังหวะ ใช้ใบนั้น Submit ต่อ)
+3. สร้างใบลดหนี้อ้าง GRN นั้น คืน E2E-PC-2 10 → Create (ถูกปฏิเสธ)
 4. อ่าน cost layer ของใบลดหนี้ (ตัดไปเท่าไร, note shortfall) และยอดหยิบได้หลัง CN
 
 **Expected**
 
-ใบลดหนี้เป็น completed, ตัดสต๊อกได้เท่ายอดที่เหลือจริง (2), อีก 8 ลงเป็น shortfall "No stock available …" (ส่วนต่างราคา ไม่ตัดสต๊อก) และยอดหยิบได้หลัง CN = 0 ไม่ติดลบ (ก่อน #713 ตัดจากล็อตของ GRN ที่ดูยังเต็ม 10 → คลัง −8)
+สร้างใบลดหนี้คืน 10 ขณะที่เหลือจริง 2 แล้วหลังบ้านตอบ 422 CREDIT_NOTE_INSUFFICIENT_STOCK (on_hand 2, requested 10) ไม่มีใบลดหนี้ถูกสร้าง และยอดหยิบได้ของคลังยังเท่าเดิม ไม่ติดลบ
 
-> _Note: เดิม 4.3 (_movement_play specs/23-fix-guards) · พิสูจน์ backend PR #713 · ผลล่าสุด avg2605-r2 2026-10-02 PASS · เดิมยืนยันแค่ยอดไม่ติดลบ — เพิ่มการยืนยันว่าตัดได้เท่ายอดที่มี, ยอดเหลือ 0 และใบเป็น completed ให้ตรงกับ verdict · รันซ้ำในโฟลเดอร์เดิมคำนวณยอดก่อน CN ใหม่ไม่ได้ ทั้ง results.json และเคสจะเป็น FAIL_
+> _Note: เดิม 4.3 (_movement_play specs/23-fix-guards) พิสูจน์ PR #713 ที่ให้ CN ตัดเท่าที่มี — backend 490fc9ee1 (2026-10-07) มาแทน #713 แล้ว เคสนี้จึงยืนยันกติกาใหม่: CN คืนเกินยอดคลังถูกปฏิเสธ 422 CREDIT_NOTE_INSUFFICIENT_STOCK · ไม่มีใบลดหนี้ถูกสร้าง · ยอดคลังเท่าเดิมและไม่ติดลบ · รันซ้ำในโฟลเดอร์เดิมคำนวณยอดก่อน CN ใหม่ไม่ได้ ทั้ง results.json และเคสจะเป็น FAIL_
 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

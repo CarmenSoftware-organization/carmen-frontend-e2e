@@ -90,7 +90,7 @@ Login เป็น Admin (gmail); งวดปัจจุบันของ BU 
 
 **Steps**
 
-1. Inventory Adjustment → Add Stock In · Date = case1Date ของ scenario · Reason Test stock_in · คลัง L · E2E-PC-X qty 1 @10 → Save (draft)
+1. Inventory Adjustment → Add Stock In · Date = case1Date ของ scenario · Reason E2E IA stock in · คลัง L · E2E-PC-X qty 1 @10 → Save (draft)
 2. GET period-ends/review
 3. Period End → Start Period Close → ยืนยัน
 4. อ่าน dialog → Close
@@ -118,7 +118,7 @@ Login เป็น Admin (gmail); งวดปัจจุบันของ BU 
 
 **Steps**
 
-1. Inventory Adjustment → Add Stock Out · Date = case1Date ของ scenario · Reason Test stock_out · คลัง L · Shredded pork skin qty 1 → Save (draft)
+1. Inventory Adjustment → Add Stock Out · Date = case1Date ของ scenario · Reason E2E IA stock out · คลัง L · Shredded pork skin qty 1 → Save (draft)
 2. GET period-ends/review
 3. Period End → Start Period Close → ยืนยัน
 4. อ่าน dialog → Close
@@ -210,4 +210,4 @@ TC-PE-420003 / 420004 / 420005 รันแล้วในงวดเดีย�
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

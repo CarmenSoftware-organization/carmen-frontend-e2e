@@ -45,4 +45,4 @@ Start ถูกปฏิเสธ 422 และ dialog ลิสต์ SR/SO ท
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

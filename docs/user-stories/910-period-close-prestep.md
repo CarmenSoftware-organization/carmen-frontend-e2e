@@ -82,7 +82,7 @@ TC-PE-400002 ผ่านแล้ว (admin ผูกกับคลัง L �
 
 1. วนเอกสารรับเข้าทุกใบของ scenario (SCN.receipts: 0.2, 0.2b, 0.3, 0.3a, 0.3b, 0.3c ตามที่ scenario มี) — แต่ละใบเป็น test.step ของตัวเอง
 2. GRN: Goods Receive Note → New (Manual) · Vendor C010 · GRN Date ตาม scenario · คลัง L · สินค้า/จำนวน/ราคาตาม scenario → Create → Commit
-3. Stock In: Inventory Adjustment → Add Stock In · Date ตาม scenario · Reason Test stock_in · คลัง L → Commit
+3. Stock In: Inventory Adjustment → Add Stock In · Date ตาม scenario · Reason E2E IA stock in · คลัง L → Commit
 4. เปิดใบ ตรวจว่าแสดงเลขเอกสาร
 5. DB: อ่าน cost layer ของสินค้าแต่ละบรรทัดที่คลัง L
 
@@ -120,4 +120,4 @@ bu_config si.cost-from ของ BU ของ scenario = ค่าที่ scen
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

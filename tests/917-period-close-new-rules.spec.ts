@@ -197,8 +197,6 @@ test(
   async () => {
     // The backend now deliberately allows line edits on a saved GRN and locks only vendor and date
     // (GRN_SAVED_IDENTITY_LOCKED); the old assertion here was GRN_SAVED_HEADER_ONLY (user-approved change).
-    // The backend now deliberately allows line edits on a saved GRN and locks only vendor and date
-    // (GRN_SAVED_IDENTITY_LOCKED); the old assertion here was GRN_SAVED_HEADER_ONLY (user-approved change).
     const grn = getDoc(SCN.keys.nextGrn)!;
     const [detail] = sql<{ id: string; doc_version: string }>(`select id, doc_version from ${SCHEMA}.tb_good_received_note_detail
       where good_received_note_id = '${grn.id}' and deleted_at is null limit 1`);

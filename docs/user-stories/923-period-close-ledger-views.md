@@ -91,4 +91,4 @@ HTTP 200 · ไม่มีแถวที่ lot_no ตรงกับล็อ
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

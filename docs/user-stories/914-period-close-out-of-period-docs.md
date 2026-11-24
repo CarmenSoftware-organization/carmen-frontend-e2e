@@ -196,4 +196,4 @@ can_start_counting = true และ start_blocking.total = 0; ปุ่ม Start
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>

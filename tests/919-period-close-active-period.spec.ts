@@ -22,11 +22,10 @@ import { L, P as PROD, PX, SCN } from "./helpers/period-close/scenarios";
  * own evidence folder (active-r4-avg / active-r4-fifo), so set E2E_EVIDENCE_DIR.
  * Setup first: phase 910 ran (L holds E2E-PC-1 with stock in the active period — GRN "grnA").
  *
- * Four cases pin known bugs with `test.fail()` (evidence 2026-10-02 r4). Method-gated since the TEST BU runs of 2026-11-24:
- * A5c is pinned on average and average_per_location (passed on FIFO); A8 is no longer pinned (passed on all three);
- * A10 is pinned everywhere except average (passed on the average TEST BU, fails on FIFO and average_per_location):
+ * Three cases pin known bugs with `test.fail()` (evidence 2026-10-02 r4). Method-gated since the TEST BU runs of 2026-11-24:
+ * A5c is pinned on average and average_per_location (passed on FIFO); A8 (TC-PE-490008, SO / SI without a date) is no longer pinned (passed on all three);
+ * A10 (TC-PE-490011) is pinned on every method except average (passed on the average TEST BU, fails on FIFO and average_per_location):
  *   TC-PE-490005  A5c  — CN dated the 1st of the active period (Thai time) refused (#724 boundary)
- *   TC-PE-490008  A8   — SO / SI created without a date get no date at all (#724 follow-up)
  *   TC-PE-490009  A9ab — reports lookups current/previous period follow the newest period
  *   TC-PE-490011  A10  — v_inventory_eop_checklist.period follows the newest period
  * Once one turns red ("unexpectedly passed"), drop its marker.
@@ -433,7 +432,7 @@ test(
     ],
   },
   async ({ page }) => {
-    // known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD — not pinned on FIFO or average (passed there 2026-11-24)
+    // known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD — pinned on average and average_per_location, not on FIFO (passed there 2026-11-24)
     test.fail(SCN.method !== "fifo", "known bug A5c (#724 boundary): a CN dated the 1st of the active period (Thai time) is refused 422 CREDIT_NOTE_DATE_NOT_CURRENT_PERIOD");
     test.skip(!todayOutsideActive(), "ต้องการ BU ที่วันนี้อยู่นอกงวด active");
     test.setTimeout(5 * 60_000);

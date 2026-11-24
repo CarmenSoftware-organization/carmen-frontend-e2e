@@ -303,4 +303,4 @@ view คืนอย่างน้อย 1 แถว และทุกแถ�
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>
+<sub>Last regenerated: 2026-11-24 · git 60aa365</sub>
