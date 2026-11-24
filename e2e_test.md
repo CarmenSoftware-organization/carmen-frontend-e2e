@@ -220,9 +220,9 @@ bun run report                                    # เปิด HTML report
 | ชุด | Spec | TC | คำสั่ง |
 |-----|------|----|--------|
 | วงจรเอกสารตามบทบาท | `312-pr`, `404-po`, `502-grn`, `603-cn`, `702-sr`, `721-sr-issue`, `730-inventory-adjustment` (`*-doc-flow.spec.ts`) | section 70–71 ของ prefix โมดูล | `bun run test:movement` |
-| ปิดงวด (ทีละ phase) | `910`–`924-period-close-*.spec.ts` | TC-PE section 40–54 | `E2E_PERIOD_SCENARIO=<scenario> bun run test:period-close -- tests/<phase>.spec.ts` หรือ `./tests/scripts/run-period-close.sh <scenario>` |
+| ปิดงวด (ทีละ phase) | `910`–`924-period-close-*.spec.ts` | TC-PE section 40–54 | `bun run data:reset --yes --bu <BU> --with-history` แล้ว `E2E_PERIOD_BU=<BU> bun run test:period-close -- tests/<phase>.spec.ts` หรือ `./tests/scripts/run-period-close.sh <BU>` (จบแล้ว `data:reset --yes --bu <BU>` ปกติก่อนรันชุดหลัก) |
 
-ต้องตั้ง `E2E_DB_URL` ใน `.env.local` ก่อน (ดู `.env.example`) · ครั้งแรกของแต่ละ environment รัน `bun run movement:setup-workflows` · ขั้นที่ย้อนไม่ได้ของปิดงวด (Start / ส่งใบนับ / Close) ต้องตั้ง `E2E_ALLOW_IRREVERSIBLE=<BU>:<งวด>` · ผลแต่ละ spec ขึ้นชีตของตัวเอง (`*_Doc_Flow`, `Period_Close_*`) ตาม `SYNC_TARGETS`
+ต้องตั้ง `E2E_DB_URL` ใน `.env.local` ก่อน (ดู `.env.example`) · ครั้งแรกของแต่ละ environment รัน `bun run movement:setup-workflows` · ปิดงวดรันบน TEST BU เท่านั้น (`E2E_PERIOD_BU`, บัญชี gmail `TEST_USERS`) — ขั้นที่ย้อนไม่ได้ (Start / ส่งใบนับ / Close) รันเมื่อ BU อยู่ใน TEST_BUS และงวด active ตรงกับงวดของ scenario ไม่มี env gate · รันก่อนวันที่ 3 ของเดือน (เวลาไทย) ถูกปฏิเสธ · ผลแต่ละ spec ขึ้นชีตของตัวเอง (`*_Doc_Flow`, `Period_Close_*`) ตาม `SYNC_TARGETS`
 
 ---
 

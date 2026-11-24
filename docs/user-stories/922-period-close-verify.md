@@ -26,7 +26,7 @@ _Generated from `tests/922-period-close-verify.spec.ts` annotations. Edit annota
 
 **Preconditions**
 
-Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCENARIO และ E2E_DB_URL ตั้งไว้; TC-PE-510001 นับครบทุกคลังแล้ว (คลัง 1AG01 มีทั้งนับเกินและนับขาด); งวดที่ทดสอบยังเป็นงวดปัจจุบัน
+Login เป็น Admin (gmail) บน BU ของ scenario; E2E_PERIOD_BU และ E2E_DB_URL ตั้งไว้; TC-PE-510001 นับครบทุกคลังแล้ว (คลัง L มีทั้งนับเกินและนับขาด); งวดที่ทดสอบยังเป็นงวดปัจจุบัน
 
 **Steps**
 
@@ -51,7 +51,7 @@ Login เป็น admin@carmen.com บน BU ของ scenario; E2E_PERIOD_SCE
 
 **Preconditions**
 
-TC-PE-520001 รันแล้ว (ภาพใบชดเชย); ใบชดเชยของคลัง 1AG01 มีบรรทัดของสินค้าทุกตัวใน costCases ของ scenario; เอกสารรับเข้า/กับดักราคาของ pre-step และ TC-PE-500001 ยังอยู่; E2E_DB_URL ตั้งไว้
+TC-PE-520001 รันแล้ว (ภาพใบชดเชย); ใบชดเชยของคลัง L มีบรรทัดของสินค้าทุกตัวใน costCases ของ scenario; เอกสารรับเข้า/กับดักราคาของ pre-step และ TC-PE-500001 ยังอยู่; E2E_DB_URL ตั้งไว้
 
 **Steps**
 
@@ -117,4 +117,4 @@ close_blocking ทุกตัวเป็น 0 · can_close = true · ปุ่
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>

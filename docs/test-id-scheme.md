@@ -70,7 +70,7 @@ Strict regex: `^TC-[A-Z]{2,5}-\d{6}$`
 | `701-sr.spec.ts` | `SR` | 01–12, 70, 90 | CRUD + sub-journeys + security + edge cases; 70 = doc flow on TEST BU (`702-sr-lifecycle.spec.ts`) |
 | `720-stock-issue.spec.ts` | `SI` | 01–06, 70–72, 90 | CRUD + sub-journeys + edge cases; 70–72 = SR → Issue flow with issue cost, one chain per TEST BU: AVG / FIFO / AVG-LOCATION (`721-sr-issue.spec.ts`) |
 | `731-inventory-adjustment.spec.ts` | `IADJ` | 01–06, 10, 20, 30, 70–71, 80–82, 90 | Inventory Adjustment on TEST BU (main suite). 731: 70 = Stock In, 71 = Stock Out doc flow (draft, view, edit, delete, Commit); 732 (`732-inventory-adjustment-stock.spec.ts`): 80 = Stock In stock, 81 = Stock Out stock, 82 = void outcome; the rest are open cases in `test-cases/gaps/730-inventory-adjustment-gap.md` |
-| `900-period-end.spec.ts` | `PE` | 01–04, 31–34, 40–42, 44, 46–54, 90 | CRUD + integration + edge cases; 40–54 = movement period-close phases (`910`–`924-period-close-*.spec.ts`, one section per phase; 43 and 45 were p03-only regressions, dropped) |
+| `900-period-end.spec.ts` | `PE` | 01–04, 31–34, 40–42, 44, 46–54, 90 | CRUD + integration + edge cases; 40–54 = period-close phases (`910`–`924-period-close-*.spec.ts`, run on a TEST BU via `E2E_PERIOD_BU` with the gmail `TEST_USERS`, one section per phase; 43 and 45 were p03-only regressions, dropped) |
 | `1001-campaign.spec.ts` | `CAM` | 01–10, 90 | CRUD + sub-journeys + edge cases |
 | `710-wastage-reporting.spec.ts` | `WAST` | 01–05, 10, 20, 90 | Lot-based wastage read-only |
 | `711-stock-replenishment.spec.ts` | `SRPL` | 01–02, 06, 10, 30, 90 | Replenishment + PR/SR wizard |

@@ -26,7 +26,7 @@ _Generated from `tests/910-period-close-prestep.spec.ts` annotations. Edit annot
 
 **Preconditions**
 
-Login เป็น admin@carmen.com (movement-setup); BU และงวดของ scenario (E2E_PERIOD_SCENARIO) เป็นงวดปัจจุบัน; scenario มีรายการ preClean หรือเปิด preCleanAuto (ไม่งั้น skip); E2E_DB_URL ตั้งไว้
+Login เป็น Admin (gmail, project setup); BU และงวดของ scenario (E2E_PERIOD_BU) เป็นงวดปัจจุบัน; scenario มีรายการ preClean หรือเปิด preCleanAuto (TEST BU ว่างจากเอกสาร ทั้งสองค่าจึงปิดไว้ = เคสนี้ skip); E2E_DB_URL ตั้งไว้
 
 **Steps**
 
@@ -51,11 +51,11 @@ Login เป็น admin@carmen.com (movement-setup); BU และงวดข�
 
 **Preconditions**
 
-Login เป็น admin@carmen.com (movement-setup); BU ของ scenario; คลัง L ของ scenario (1AG01) มีอยู่ใน BU
+Login เป็น Admin (gmail, project setup); BU ของ scenario; คลัง L (คลัง inventory แรกของ BU ที่ data:reset ผูก E2E-PC-* ไว้) มีอยู่ใน BU
 
 **Steps**
 
-1. เปิด /system-admin/user → กด Admin CARMEN
+1. เปิด /system-admin/user → กดชื่อ Admin (gmail)
 2. ถ้ายังไม่ผูกคลัง L: Edit → ติ๊กแถวคลัง L → Save
 3. GET /user-locations ของ BU
 4. เปิดผู้ใช้อีกครั้ง ดูส่วน Locations (โหมด view)
@@ -102,7 +102,7 @@ GRN มีสถานะ committed / Stock In มีสถานะ completed �
 
 **Preconditions**
 
-Login เป็น admin@carmen.com (movement-setup); ถ้าต้องเปลี่ยนค่า BU ตั้งต้นของบัญชี admin ต้องเป็น BU ของ scenario (PATCH api/business-units ไม่มี bu_code — เขียนลง BU ตั้งต้นของบัญชี)
+Login เป็น Admin (gmail, project setup); ถ้าต้องเปลี่ยนค่า BU ตั้งต้นของบัญชี admin ต้องเป็น BU ของ scenario (PATCH api/business-units ไม่มี bu_code — เขียนลง BU ตั้งต้นของบัญชี)
 
 **Steps**
 
@@ -115,9 +115,9 @@ Login เป็น admin@carmen.com (movement-setup); ถ้าต้องเ�
 
 bu_config si.cost-from ของ BU ของ scenario = ค่าที่ scenario กำหนด (เช่น last_cost); request บันทึกตอบ 2xx; หน้า view แสดง label ของค่านั้น
 
-> _Note: เดิม 0.4 (_movement_play specs/00-prestep) · เคยเขียนผิด BU (period04 ข้อ 0.4-F: PATCH 200 แต่ค่าไปลง CARMEN-AVG) จึงมีด่านเช็ค BU ตั้งต้นก่อนกด Save · พอร์ตเพิ่ม assert ว่า request บันทึกตอบ ok และอ่าน toast แบบไม่รอ (เดิม lastToast().catch)_
+> _Note: เดิม 0.4 (_movement_play specs/00-prestep) · เคยเขียนผิด BU (period04 ข้อ 0.4-F: PATCH 200 แต่ค่าไปลง BU ตั้งต้นของบัญชีแทน) จึงมีด่านเช็ค BU ตั้งต้นก่อนกด Save · พอร์ตเพิ่ม assert ว่า request บันทึกตอบ ok และอ่าน toast แบบไม่รอ (เดิม lastToast().catch)_
 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>

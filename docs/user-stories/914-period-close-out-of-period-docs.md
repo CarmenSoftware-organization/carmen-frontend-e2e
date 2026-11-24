@@ -29,7 +29,7 @@ _Generated from `tests/914-period-close-out-of-period-docs.spec.ts` annotations.
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม; admin ผูกกับคลัง L (910)
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม; admin ผูกกับคลัง L (910)
 
 **Steps**
 
@@ -54,12 +54,12 @@ GRN มีสถานะ saved (งวดถัดไปเปิดอยู�
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม
 
 **Steps**
 
 1. Goods Receive Note → New (Manual) · Vendor C010 · GRN Date = วันที่ในงวดถัดไปตาม scenario (nextGrnDraftDate)
-2. คลัง L · Chicken frame qty 1 @10
+2. คลัง L · E2E-PC-X qty 1 @10
 3. กด Save Draft
 4. อ่านสถานะใบสดจาก API แล้วเปิดใบ
 
@@ -79,7 +79,7 @@ GRN มีสถานะ draft (เลข draft-…) — ใบนี้ต้�
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario
 
 **Steps**
 
@@ -103,7 +103,7 @@ Login เป็น admin@carmen.com; งวดปัจจุบันของ 
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario
 
 **Steps**
 
@@ -128,7 +128,7 @@ Login เป็น admin@carmen.com; งวดปัจจุบันของ 
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; มี GRN ฐานที่ commit แล้ว (grnA จาก 910 หรือเลข GRN ที่ scenario ระบุ)
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; มี GRN ฐานที่ commit แล้ว (grnA จาก 910 หรือเลข GRN ที่ scenario ระบุ)
 
 **Steps**
 
@@ -153,7 +153,7 @@ Login เป็น admin@carmen.com; งวดปัจจุบันของ 
 
 **Preconditions**
 
-Login เป็น admin@carmen.com; งวดปัจจุบันของ BU = งวดของ scenario; มี GRN ฐาน grnA ที่ commit แล้ว (910); รอบนับยังไม่เริ่ม
+Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; มี GRN ฐาน grnA ที่ commit แล้ว (910); รอบนับยังไม่เริ่ม
 
 **Steps**
 
@@ -191,9 +191,9 @@ TC-PE-440001 / 440002 / 440006 ผ่านแล้ว (serial) — มี GRN 
 
 can_start_counting = true และ start_blocking.total = 0; ปุ่ม Start Period Close กดได้ (enabled)
 
-> _Note: เดิม 2.6-ready (_movement_play specs/20-case2) · หยุดก่อนกด Start — การกด Start จริง (ย้อนกลับไม่ได้) อยู่ใน phase ถัดไปและต้องตั้ง E2E_ALLOW_IRREVERSIBLE · ทับซ้อน TC-PE-310001 (ทุก transaction post แล้ว → ผ่านด่าน)_
+> _Note: เดิม 2.6-ready (_movement_play specs/20-case2) · หยุดก่อนกด Start — การกด Start จริง (ย้อนกลับไม่ได้) อยู่ใน phase ถัดไป (918) และรันเฉพาะเมื่อ BU ยังอยู่ที่งวดของ scenario · ทับซ้อน TC-PE-310001 (ทุก transaction post แล้ว → ผ่านด่าน)_
 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>

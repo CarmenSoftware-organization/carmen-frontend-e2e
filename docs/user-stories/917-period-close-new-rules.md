@@ -26,7 +26,7 @@ _Generated from `tests/917-period-close-new-rules.spec.ts` annotations. Edit ann
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); งวดปัจจุบันของ BU = งวดของ scenario; phase 914 (เดิม 20-case2) TC-PE-440001 (ข้อ 2.1) สร้างใบรับงวดหน้า (saved) ไว้ใน state.json แล้ว
+E2E_PERIOD_BU เป็น TEST BU แบบ average; งวดปัจจุบันของ BU = งวดของ scenario; phase 914 (เดิม 20-case2) TC-PE-440001 (ข้อ 2.1) สร้างใบรับงวดหน้า (saved) ไว้ใน state.json แล้ว
 
 **Steps**
 
@@ -50,11 +50,11 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN-AVG); งวดปัจจุบันของ BU = งวดของ scenario; มีงวดหน้าเปิดไว้แล้ว; ประเภทปรับปรุง "Test stock_in" และคลัง 1AG01 มีอยู่
+E2E_PERIOD_BU เป็น TEST BU แบบ average; งวดปัจจุบันของ BU = งวดของ scenario; มีงวดหน้าเปิดไว้แล้ว; BU มีประเภทปรับปรุง stock_in ที่ใช้งานได้ (E2E-IA-IN จาก data:reset) และคลังแรก L มีสินค้า E2E-PC-X
 
 **Steps**
 
-1. ถ้ายังไม่มี siNextHeld ใน state: POST /stock-ins ลงวันที่วันที่ 11 ของงวดหน้า ที่ 1AG01: Chicken frame 2 หน่วย @20 (หน้าจอเลือกวันนอกงวดปัจจุบันไม่ได้)
+1. ถ้ายังไม่มี siNextHeld ใน state: POST /stock-ins ลงวันที่วันที่ 11 ของงวดหน้า ที่คลัง L: E2E-PC-X 2 หน่วย @20 (หน้าจอเลือกวันนอกงวดปัจจุบันไม่ได้)
 2. GET ใบเพื่ออ่าน doc_version แล้ว PATCH /stock-ins/:id/commit
 3. อ่าน doc_status ของใบจาก tb_stock_in
 4. นับ cost layer ที่ยังไม่ถูกลบของใบนี้
@@ -75,7 +75,7 @@ E2E_PERIOD_SCENARIO เป็น scenario ของ BU แบบ average (CARMEN
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO=<scenario> (AVG หรือ FIFO); งวดปัจจุบันของ BU = งวดของ scenario; phase 914 (เดิม 20-case2) TC-PE-440001 (ข้อ 2.1) สร้างใบรับงวดหน้า (saved) ไว้ใน state.json แล้ว
+E2E_PERIOD_BU=<BU> (TEST BU ใดก็ได้); งวดปัจจุบันของ BU = งวดของ scenario; phase 914 (เดิม 20-case2) TC-PE-440001 (ข้อ 2.1) สร้างใบรับงวดหน้า (saved) ไว้ใน state.json แล้ว
 
 **Steps**
 
@@ -102,13 +102,13 @@ E2E_PERIOD_SCENARIO=<scenario> (AVG หรือ FIFO); งวดปัจจุ
 
 **Preconditions**
 
-E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = งวดของ scenario และวันนี้อยู่ในงวด open/locked อื่นที่ใหม่กว่า (ไม่งั้นข้าม); workflow SR ที่ขั้น create>approve>issue>approve (หาจาก stage ด้วย srIssueWorkflowName — เดิมชื่อ 'SR Test Flow v2 (with Issue)' แต่ถูกเปลี่ยนชื่อบน dev); คลัง TEST-MOVE / TEST-CONSUME ผูกสินค้า T-01-A (AVG) หรือ T-01-F (FIFO); บัญชี requestor@carmen.com และ hod@carmen.com มีอยู่
+E2E_PERIOD_BU=<BU>; งวดปัจจุบันของ BU = งวดของ scenario และวันนี้อยู่ในงวด open/locked อื่นที่ใหม่กว่า (ไม่งั้นข้าม); workflow SR ที่มีขั้น Issue (หาจาก stage ด้วย srIssueWorkflow ของ context.ts ไม่อิงชื่อ); คลัง inventory 2 คลังแรกของ BU (L เป็นต้นทาง คลังที่สองเป็นปลายทาง) สินค้า E2E-PC-X อยู่ที่ L; บัญชี Requestor และ HOD (gmail) มีอยู่และอยู่ใน workflow
 
 **Steps**
 
-1. admin POST /store-requisitions (requestor = requestor@carmen.com): T-01-A/T-01-F 1 หน่วย จาก TEST-MOVE ไป TEST-CONSUME
+1. admin POST /store-requisitions (requestor = Requestor gmail): E2E-PC-X 1 หน่วย จากคลัง L ไปคลังที่สองของ BU
 2. admin PATCH …/submit พร้อม sr_date_pattern = today (ผู้ใช้เลือกลงวันที่วันนี้)
-3. hod@carmen.com PATCH …/approve ขั้น HOD (approved_qty 1)
+3. HOD (gmail) PATCH …/approve ขั้น HOD (approved_qty 1)
 4. admin PATCH …/approve stage_role = issue (issued_qty 1)
 5. อ่านใบและนับ cost layer ของใบ
 6. เก็บกวาด: reject ใบที่ค้างขั้น Issue
@@ -122,4 +122,4 @@ E2E_PERIOD_SCENARIO=<scenario>; งวดปัจจุบันของ BU = 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-24 · git 13584e4</sub>

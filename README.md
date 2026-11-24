@@ -49,7 +49,7 @@ bun run report                  # open last HTML report
 | `bun run data:reset --yes --bu <code\|all>` | Rebuild the standard dataset on one TEST BU or all three (`TEST_BUS`). Run `--bu all` before the first doc-flow run; the cost cases read live state, so re-runs need no reset. See `scripts/data-reset/README.md` |
 | `bun run test:uat` / `e2e:uat` | Run against `.env.uat` via `scripts/run-env.ts` |
 | `bun run test:prod` / `e2e:prod` | Run against `.env.prod` via `scripts/run-env.ts` |
-| `bun run test:period-close` | Opt-in period-close phases (`9xx-period-close-*.spec.ts`) — needs `E2E_PERIOD_SCENARIO` |
+| `bun run test:period-close` | Opt-in period-close phases (`9xx-period-close-*.spec.ts`) on a TEST BU — needs `E2E_PERIOD_BU` + `E2E_DB_URL` (run order: `scripts/data-reset/README.md`) |
 | `bun run test:unit` | Vitest unit tests (`unit/`) |
 | `bun run test:unit:coverage` | Vitest with coverage |
 | `bun run report` / `e2e:report` | Open the last HTML report |
@@ -100,13 +100,12 @@ bun run report                  # open last HTML report
 | `WIKI_SITEMAP_PATH` | No | Wiki sitemap output | `../carmen-wiki/sitemap.html` |
 | `WIKI_SPECS_DIR` | No | Wiki specs dir for `wiki:coverage` | `../carmen-wiki/.specs` |
 | `E2E_PERIOD_CLOSE` | No | `1` = register the opt-in movement-setup / period-close projects | — |
-| `E2E_DB_URL` | For movement | Postgres URL of the tenant DB (read-only role is enough) — `.env.local` only | — |
+| `E2E_DB_URL` | For period-close | Postgres URL (read-only role is enough) — `.env.local` only. The tenant schema is resolved from `CARMEN_SYSTEM.tb_business_unit.db_schema`, not from the BU code | — |
 | `E2E_API_URL` / `E2E_X_APP_ID` | No | Backend for the movement API checks; falls back to the frontend's `/config.json` | — |
 | `E2E_MOVEMENT_DATE` | No | Date for the movement helpers' stock-posting documents (period-close) | today / 15th of the current period |
 | `E2E_SRI_BU` / `E2E_SRI_PHASE` | No | SR → Issue flow: `FIFO` variant; AVG phase `pre` / `post` / `all` | AVG / `all` |
-| `E2E_PERIOD_SCENARIO` | For period-close | Scenario key in `tests/helpers/period-close/scenarios.ts` | `avg2607` |
-| `E2E_ALLOW_IRREVERSIBLE` | For Start / count / Close | `<BU>:<period>` gate for the irreversible period-close steps | `CARMEN-AVG:2607` |
-| `E2E_EVIDENCE_DIR` | No | Period-close evidence folder | `runs/period-close/<scenario>` |
+| `E2E_PERIOD_BU` | For period-close | TEST BU code (`tests/test-users.ts` `TEST_BUS`) the period-close run targets; reset it first with `data:reset --with-history`. Start / Close run only when the BU is a TEST BU and its active period is the scenario period; a run before the 3rd of the month (Bangkok) is refused | — |
+| `E2E_EVIDENCE_DIR` | No | Period-close evidence folder | `runs/period-close/<BU>/<period>` |
 <!-- /AUTO-GENERATED -->
 
 Named targets: `.env.<name>` is loaded by `scripts/run-env.ts` and overrides `.env` / `.env.local`.
