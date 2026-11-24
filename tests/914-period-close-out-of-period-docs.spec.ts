@@ -110,7 +110,7 @@ test(
     annotation: [
       { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario และงวดถัดไปเปิดอยู่; รอบนับยังไม่เริ่ม" },
       { type: "steps", description: "1. Goods Receive Note → New (Manual) · Vendor C010 · GRN Date = วันที่ในงวดถัดไปตาม scenario (nextGrnDraftDate)\n2. คลัง L · E2E-PC-X qty 1 @10\n3. กด Save Draft\n4. อ่านสถานะใบสดจาก API แล้วเปิดใบ" },
-      { type: "expected", description: "GRN มีสถานะ draft (เลข draft-…) — ใบนี้ต้องไม่ขวาง Start ของงวดนี้ (ตรวจใน TC-PE-440007)" },
+      { type: "expected", description: "GRN มีสถานะ draft (เลข DRAFT-…) — ใบนี้ต้องไม่ขวาง Start ของงวดนี้ (ตรวจใน TC-PE-440007)" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
       { type: "note", description: "เดิม 2.1b (_movement_play specs/20-case2) · ชนิดเดียวกับ 1.1 แต่อยู่งวดหน้า · ต้นฉบับบันทึก PASS/FAIL โดยไม่ assert — พอร์ต assert สถานะ draft · รอบถัดไป 910 (preCleanAuto) จะลบใบนี้ทิ้ง" },

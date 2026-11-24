@@ -13,7 +13,7 @@ import { ensureActiveBu } from "./helpers/bu";
 // holding only `view` to `requestor_id = caller`), so it is the "no access to other people's SR" role.
 // requestor declared LAST so doc default role reads "Purchase".
 // Seed (data:reset STD): SR261100001/2 in_progress at Store Approval, SR261100003 at Issue,
-// SR261100004 voided, SR261100005 completed, draft-1/draft-2 — expected values are read from the API.
+// SR261100004 voided, SR261100005 completed, DRAFT-00000001/DRAFT-00000002 — expected values are read from the API.
 // ─────────────────────────────────────────────────────────────────────────
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");

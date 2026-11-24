@@ -44,7 +44,7 @@ const today = () => new Date().toLocaleDateString("sv");
 const LIST = "/procurement/goods-receive-note";
 /** Every data:reset GRN has an invoice no. starting with this; counts are scoped to it so GRNs other specs commit (805) do not change them. */
 const SEED_SEARCH = "STD-grn";
-const SEED_ROWS = /GRN26|draft-/;
+const SEED_ROWS = /GRN26|DRAFT-/;
 const goto = async (page: Page, id: string) => {
   await page.goto(`${LIST}/${id}`);
   await expect(page.getByRole("button", { name: "Edit", exact: true })).toBeVisible({ timeout: 20_000 });
@@ -134,10 +134,10 @@ purchaseTest.describe("GRN — List", () => {
     async ({ page }) => {
       const grn = new GRNPage(page);
       await grn.gotoList();
-      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "draft-4"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1);
+      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "DRAFT-00000004"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1);
       await expect(page.getByRole("row").filter({ hasText: "GRN261100001" })).toContainText(/committed/i);
       await expect(page.getByRole("row").filter({ hasText: "GRN261100003" })).toContainText(/saved/i);
-      await expect(page.getByRole("row").filter({ hasText: "draft-4" })).toContainText(/draft/i);
+      await expect(page.getByRole("row").filter({ hasText: "DRAFT-00000004" })).toContainText(/draft/i);
       const committed = await seededGrn("committed");
       await page.getByRole("row").filter({ hasText: "GRN261100001" }).getByText("GRN261100001").click();
       await expect(page).toHaveURL(new RegExp(`goods-receive-note/${committed.id}$`));
@@ -179,11 +179,11 @@ purchaseTest.describe("GRN — List", () => {
       await page.goto(`${LIST}?perpage=2&search=${SEED_SEARCH}`);
       await expect(page.getByText(/Showing 1–2 of 4/)).toBeVisible({ timeout: 15_000 });
       await expect(page.getByText(/Page 1 of 2/)).toBeVisible();
-      const first = await page.getByRole("row").filter({ hasText: /GRN26|draft-/ }).allInnerTexts();
+      const first = await page.getByRole("row").filter({ hasText: /GRN26|DRAFT-/ }).allInnerTexts();
       expect(first).toHaveLength(2);
       await page.getByRole("button", { name: "Go to next page" }).click();
       await expect(page.getByText(/Showing 3–4 of 4/)).toBeVisible({ timeout: 10_000 });
-      const second = await page.getByRole("row").filter({ hasText: /GRN26|draft-/ }).allInnerTexts();
+      const second = await page.getByRole("row").filter({ hasText: /GRN26|DRAFT-/ }).allInnerTexts();
       expect(second).toHaveLength(2);
       for (const r of second) expect(first).not.toContain(r);
     },
@@ -229,7 +229,7 @@ purchaseTest.describe("GRN — Filter / Search", () => {
       await page.goto(LIST);
       await search(page, "GRN261100001");
       await expect(page.getByRole("row").filter({ hasText: "GRN261100001" })).toHaveCount(1);
-      await expect(page.getByRole("row").filter({ hasText: /GRN261100002|GRN261100003|draft-4/ })).toHaveCount(0);
+      await expect(page.getByRole("row").filter({ hasText: /GRN261100002|GRN261100003|DRAFT-00000004/ })).toHaveCount(0);
     },
   );
 
@@ -247,10 +247,10 @@ purchaseTest.describe("GRN — Filter / Search", () => {
     async ({ page }) => {
       await page.goto(LIST);
       await search(page, "GRN261100001");
-      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(1);
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|DRAFT-/ })).toHaveCount(1);
       await page.getByRole("button", { name: /clear search/i }).click();
       // the cleared list holds every GRN in the BU; the seeded four must all be among it (other specs may add committed ones)
-      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "draft-4"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
+      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "DRAFT-00000004"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
       await expect(page.getByPlaceholder("Search...")).toHaveValue("");
     },
   );
@@ -270,7 +270,7 @@ purchaseTest.describe("GRN — Filter / Search", () => {
       await page.goto(LIST);
       await search(page, `zz-invalid-${uid}`);
       await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(0);
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|DRAFT-/ })).toHaveCount(0);
     },
   );
 
@@ -292,7 +292,7 @@ purchaseTest.describe("GRN — Filter / Search", () => {
       await search(page, SEED_SEARCH);
       await expect(page.getByRole("row").filter({ hasText: SEED_ROWS })).toHaveCount(4, { timeout: 10_000 });
       await search(page, "");
-      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "draft-4"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
+      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "DRAFT-00000004"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
       await expect(page.getByText("No data found")).toHaveCount(0);
     },
   );
@@ -301,9 +301,9 @@ purchaseTest.describe("GRN — Filter / Search", () => {
     "TC-GRN-020005 Filter by Vendor Name and Invoice Number",
     {
       annotation: [
-        { type: "preconditions", description: "GRN draft-4 มี invoice 'STD-grn.draft'" },
+        { type: "preconditions", description: "GRN DRAFT-00000004 มี invoice 'STD-grn.draft'" },
         { type: "steps", description: "1. ค้นหา 'STD-grn.draft' (invoice no.)\n2. ค้นหาชื่อ vendor 'เอบีโอ'" },
-        { type: "expected", description: "ค้นหา invoice no. เหลือเฉพาะ draft-4; ค้นหาชื่อ vendor แสดงทั้ง 4 ใบ (ทุกใบเป็นของ vendor นี้)" },
+        { type: "expected", description: "ค้นหา invoice no. เหลือเฉพาะ DRAFT-00000004; ค้นหาชื่อ vendor แสดงทั้ง 4 ใบ (ทุกใบเป็นของ vendor นี้)" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -311,10 +311,10 @@ purchaseTest.describe("GRN — Filter / Search", () => {
     async ({ page }) => {
       await page.goto(LIST);
       await search(page, "STD-grn.draft");
-      await expect(page.getByRole("row").filter({ hasText: /GRN26|draft-/ })).toHaveCount(1);
-      await expect(page.getByRole("row").filter({ hasText: "draft-4" })).toHaveCount(1);
+      await expect(page.getByRole("row").filter({ hasText: /GRN26|DRAFT-/ })).toHaveCount(1);
+      await expect(page.getByRole("row").filter({ hasText: "DRAFT-00000004" })).toHaveCount(1);
       await search(page, "เอบีโอ");
-      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "draft-4"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
+      for (const no of ["GRN261100001", "GRN261100002", "GRN261100003", "DRAFT-00000004"]) await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
     },
   );
 
@@ -620,8 +620,8 @@ fcTest.describe("GRN — Edit Header — Permission denial", () => {
     "TC-GRN-060003 Edit GRN Header - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); มี GRN draft-4" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. ดูปุ่ม Edit" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); มี GRN DRAFT-00000004" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ DRAFT-00000004\n2. ดูปุ่ม Edit" },
         { type: "expected", description: "ปุ่ม Edit ถูกปิดใช้งาน (aria-disabled) กดแล้วไม่เข้าโหมดแก้ไข (ไม่มีช่อง Invoice No.)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -702,8 +702,8 @@ fcTest.describe("GRN — Add Line Item — Permission denial", () => {
     "TC-GRN-070003 No Permission - User Tries to Add Item",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); มี GRN draft-4" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. มองหาปุ่ม Add Item" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); มี GRN DRAFT-00000004" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ DRAFT-00000004\n2. มองหาปุ่ม Add Item" },
         { type: "expected", description: "ไม่มีปุ่ม Add Item ในโหมดดู และ Edit ถูกปิดใช้งาน" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -820,8 +820,8 @@ fcTest.describe("GRN — Edit Line Item — Permission denial", () => {
     "TC-GRN-080003 Edit Line Item - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4 มี 2 บรรทัด" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. มองหาช่อง Received qty" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN DRAFT-00000004 มี 2 บรรทัด" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ DRAFT-00000004\n2. มองหาช่อง Received qty" },
         { type: "expected", description: "รายการเป็นข้อความอ่านอย่างเดียว ไม่มี input ของ qty และ Edit ถูกปิดใช้งาน" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -894,8 +894,8 @@ fcTest.describe("GRN — Delete Line Item — Permission denial", () => {
     "TC-GRN-090002 Attempt to delete a line item without edit permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. มองหาปุ่ม Remove this line" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN DRAFT-00000004" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ DRAFT-00000004\n2. มองหาปุ่ม Remove this line" },
         { type: "expected", description: "ไม่มีปุ่ม Remove this line ในโหมดดู และเข้าโหมดแก้ไขไม่ได้ (Edit ปิดใช้งาน)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -984,8 +984,8 @@ fcTest.describe("GRN — Extra Costs — Permission denial", () => {
     "TC-GRN-100002 Negative - No Permission to Add Costs",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4 → แท็บ Extra Cost\n2. มองหาปุ่ม Add Cost" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN DRAFT-00000004" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ DRAFT-00000004 → แท็บ Extra Cost\n2. มองหาปุ่ม Add Cost" },
         { type: "expected", description: "ไม่มีปุ่ม Add Cost (โหมดดู) และ Edit ถูกปิดใช้งาน" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -1064,8 +1064,8 @@ fcTest.describe("GRN — Commit — Permission denial", () => {
     "TC-GRN-110002 Negative - No Permission to Commit GRN",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. ดูปุ่ม Commit ที่ footer" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN DRAFT-00000004" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ DRAFT-00000004\n2. ดูปุ่ม Commit ที่ footer" },
         { type: "expected", description: "ปุ่ม Commit ถูกปิดใช้งาน (aria-disabled) — ผู้ไม่มีสิทธิ์ commit ไม่ควรกดได้" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -1137,8 +1137,8 @@ fcTest.describe("GRN — Void — Permission denial", () => {
     "TC-GRN-120002 Void GRN - No Permission",
     {
       annotation: [
-        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN draft-4" },
-        { type: "steps", description: "1. เปิดหน้า detail ของ draft-4\n2. ดูปุ่ม Void ที่ footer" },
+        { type: "preconditions", description: "Login เป็น FC (view อย่างเดียว); GRN DRAFT-00000004" },
+        { type: "steps", description: "1. เปิดหน้า detail ของ DRAFT-00000004\n2. ดูปุ่ม Void ที่ footer" },
         { type: "expected", description: "ปุ่ม Void ถูกปิดใช้งาน (aria-disabled) — ผู้ไม่มีสิทธิ์ไม่ควร void ได้" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -1228,8 +1228,8 @@ purchaseTest.describe("GRN — Stock Movements", () => {
     "TC-GRN-140003 No stock movements when GRN is not committed",
     {
       annotation: [
-        { type: "preconditions", description: "มี GRN draft-4" },
-        { type: "steps", description: "1. เปิดหน้า draft-4\n2. คลิกแท็บ Stock Movement" },
+        { type: "preconditions", description: "มี GRN DRAFT-00000004" },
+        { type: "steps", description: "1. เปิดหน้า DRAFT-00000004\n2. คลิกแท็บ Stock Movement" },
         { type: "expected", description: "แท็บแสดงข้อความ 'Stock movement shows after this receipt is committed' ไม่มีแถวสินค้า" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Negative" },

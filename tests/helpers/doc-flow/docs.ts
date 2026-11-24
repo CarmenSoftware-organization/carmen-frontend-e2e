@@ -54,7 +54,7 @@ export async function grnById(id: string, bu: string): Promise<CreatedDoc> {
 
 /**
  * Manual GRN through the screen:
- *   draft     = Save Draft (number draft-…)
+ *   draft     = Save Draft (number DRAFT-NNNNNNNN)
  *   saved     = Create (real number; AVG posts stock here, FIFO waits for commit)
  *   committed = Create, then Commit in the footer + confirm
  * dryRun = fill everything, then stop without saving (selector checks, no junk documents).
@@ -122,7 +122,7 @@ export async function createGrn(
 
   opts.onCreated?.(await grnById(id, bu));
   // Create = POST, then the frontend fires save (the stock posting) — a passing POST does not mean save passed
-  // (AVG 2609 case 1.5: save hit a unique lot_no and the document stayed draft-7 while the case passed silently).
+  // (AVG 2609 case 1.5: save hit a unique lot_no and the document stayed DRAFT-00000007 while the case passed silently).
   if (opts.status !== "draft") {
     await expect
       .poll(async () => (await grnById(id, bu)).status, { timeout: 30_000, message: `GRN ${id} must be saved after Create` })

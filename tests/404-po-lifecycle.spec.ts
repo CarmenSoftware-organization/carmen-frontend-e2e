@@ -262,7 +262,7 @@ test(
     annotation: [
       { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; BU BU-GR2VYNKQ; workflow \"General PO\" ขั้นแรก Create Request แล้วต่อด้วย FC Approval" },
       { type: "steps", description: "1. สร้าง PO ใหม่ 1 รายการ E2E-DF-4 × 4 @10 แล้วกด Save\n2. กด Submit ที่หน้าใบ\n3. ยืนยันใน dialog (ถ้ามี)" },
-      { type: "expected", description: "คำขอ submit ตอบ < 300; หลังบ้าน po_status = in_progress, po_no ไม่ขึ้นต้นด้วย draft และ workflow_current_stage = FC Approval" },
+      { type: "expected", description: "คำขอ submit ตอบ < 300; หลังบ้าน po_status = in_progress, po_no เปลี่ยนจาก DRAFT-xxxxxxxx เป็นเลข PO จริง (ไม่ขึ้นต้นด้วย draft) และ workflow_current_stage = FC Approval" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
       { type: "note", description: "เดิม PO.5 · TC-PO-060405/060901 ตรวจแค่ URL" },
@@ -277,6 +277,7 @@ test(
     expect(r.status, JSON.stringify(r.body).slice(0, 400)).toBeLessThan(300);
     const id = r.body.data.id;
     await expect(page).toHaveURL(new RegExp(id));
+    expect((await poById(id)).no, "manual PO shows a draft number until first submit").toMatch(/^DRAFT-\d{8}$/);
     const submitted = page.waitForResponse((x) => /\/purchase-orders\/.+\/submit/.test(x.url()), { timeout: 60_000 });
     await button(page, "Submit").first().click();
     if (await page.locator("[role=alertdialog]:visible, [role=dialog]:visible").count()) {
@@ -286,7 +287,8 @@ test(
     expect(s.status(), (await s.text()).slice(0, 300)).toBeLessThan(300);
     await expect.poll(async () => (await poById(id)).status, { timeout: 30_000 }).toBe("in_progress");
     const po = await poById(id);
-    expect(po.no).not.toMatch(/^draft/);
+    expect(po.no).not.toMatch(/^draft/i);
+    expect(po.no).toMatch(/^PO/);
     expect(po.stage).toBe("FC Approval");
     await observed(`${po.no} · ${po.status} · stage ${po.stage} · ${fmt(po.lines)} · toast: ${(await toasts(page)).join(" / ") || "-"}`);
   },

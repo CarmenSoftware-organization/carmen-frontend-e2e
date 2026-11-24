@@ -384,7 +384,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       annotation: [
         { type: "preconditions", description: "กรอก header และมีรายการสินค้า ≥1 รายการ" },
         { type: "steps", description: "1. คลิก Save as Draft\n2. รอ redirect ไปยังหน้ารายละเอียด" },
-        { type: "expected", description: "URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่ /new) และหน้ารายละเอียดแสดงเลขเอกสารร่างที่ระบบออกให้ (รูปแบบ draft-N) พร้อมสถานะ DRAFT" },
+        { type: "expected", description: "URL เปลี่ยนเป็น /purchase-request/<id> (ไม่ใช่ /new) และหน้ารายละเอียดแสดงเลขเอกสารร่างที่ระบบออกให้ (รูปแบบ DRAFT-NNNNNNNN) พร้อมสถานะ DRAFT" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -400,7 +400,7 @@ requestorTest.describe("Step 2 — Create PR (Blank)", () => {
       await pr.addLineItem({ product: "Save Item", quantity: 1, uom: "ea", unitPrice: 100 });
       await pr.saveDraftButton().click({ timeout: 5_000 });
       await expect(page).toHaveURL(/purchase-request\/(?!new$)[^\/?#]+$/, { timeout: 15_000 });
-      await expect(page.locator("main"), "detail page does not show the generated draft number (draft-N)").toContainText(/draft-\d+/i, { timeout: 15_000 });
+      await expect(page.locator("main"), "detail page does not show the generated draft number (DRAFT-NNNNNNNN)").toContainText(/DRAFT-\d{8}/, { timeout: 15_000 });
     },
   );
 

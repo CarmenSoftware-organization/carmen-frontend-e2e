@@ -174,19 +174,19 @@ test.beforeAll(async () => {
 });
 
 test(
-  "TC-PE-420001 GRN ร่าง (เลข draft-…) ลงวันที่ในงวดขวาง Start Period Close แล้ว Void ได้",
+  "TC-PE-420001 GRN ร่าง (เลข DRAFT-…) ลงวันที่ในงวดขวาง Start Period Close แล้ว Void ได้",
   {
     annotation: [
       { type: "preconditions", description: "Login เป็น Admin (gmail); งวดปัจจุบันของ BU = งวดของ scenario; รอบนับยังไม่เริ่ม; ไม่มีเอกสารค้างอื่นในงวด (start_blocking.total = 0); 910 ผ่านแล้ว (admin ผูกกับคลัง L)" },
       { type: "steps", description: "1. สร้าง GRN manual ลงวันที่ case1Date ของ scenario (E2E-PC-X qty 1 @10 ที่คลัง L) → Save Draft\n2. GET period-ends/review\n3. Period End → Start Period Close → ยืนยัน\n4. อ่าน dialog \"Finish these documents first\" → Close\n5. เปิด GRN → Void (กรอกเหตุผล)\n6. GET period-ends/review" },
-      { type: "expected", description: "start_blocking.grn = 1 ก่อนกด; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลข draft-… ของใบนั้น; หลัง Void start_blocking.total = 0" },
+      { type: "expected", description: "start_blocking.grn = 1 ก่อนกด; Start ถูกปฏิเสธ 422 และ dialog ลิสต์เลข DRAFT-… ของใบนั้น; หลัง Void start_blocking.total = 0" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Negative" },
       { type: "note", description: "เดิม 1.1 (_movement_play specs/10-case1-start) · ทับซ้อน TC-PE-310002 (GRN ที่ยังไม่ post ขวางการปิด — ข้อนั้น skip เพราะเป็น backend only) · ผ่านแล้วในรอบก่อน → test.skip ไม่สร้างใบซ้ำ" },
     ],
   },
   async ({ page }) => {
-    const pass = await runBlockerCase(page, "1.1", "GRN ร่าง (เลข draft-…) ในงวดขวางการเริ่มนับ", [
+    const pass = await runBlockerCase(page, "1.1", "GRN ร่าง (เลข DRAFT-…) ในงวดขวางการเริ่มนับ", [
       { ...grnDraft("c1.1-grn", `E2E-${PERIOD}-1.1`), clearLabel: "Void", clear: (p, d) => voidGrn(p, d.id, reason("1.1")) },
     ]);
     expect(pass, "ดู actual ใน results.json").toBe(true);

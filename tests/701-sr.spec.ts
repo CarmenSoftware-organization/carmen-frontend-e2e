@@ -111,7 +111,7 @@ purchaseTest.describe("Store Requisition — Create", () => {
         await addItem(sr, c.products[0].code, "3");
         await sr.saveAsDraftButton().click();
         id = await idFromUrl(page);
-        await expect(page.getByRole("heading", { level: 1 })).toContainText(/draft-\d+/i);
+        await expect(page.getByRole("heading", { level: 1 })).toContainText(/DRAFT-\d{8}/);
         await expect(page.getByText("Draft", { exact: true }).first()).toBeVisible();
         const doc = await getSr(id);
         expect(doc.doc_status).toBe("draft");
