@@ -83,7 +83,7 @@ interface Scenario {
   cnNext: { grnKey?: string; grnNo?: string; product: ProductRef; date: string };
   cnDraftIn: { grnKey: string; product: ProductRef; date: string };
   /** (เลิกใช้ — ว่างเสมอ) */
-  preClean?: { key: string; grnNo: string; action: "commit" | "delete" }[];
+  preClean: { key: string; grnNo: string; action: "commit" | "delete" }[];
   /** หา GRN saved/draft ที่ลงวันที่ในงวดนี้เอง (ของค้างจากรอบก่อน) แล้ว commit/ลบ — ใช้แทน preClean ที่ต้องรู้เลขล่วงหน้า */
   preCleanAuto?: boolean;
   receipts: Receipt[];
@@ -137,6 +137,7 @@ export function scenarioFor(bu: TestBuCode, today: string, loc: { code: string; 
     nextGrnDraftDate: d(nextYm, 2),
     cnNext: { grnKey: "grnA", product: P.P3, date: d(nextYm, 3) },
     cnDraftIn: { grnKey: "grnA", product: P.P1, date: d(ym, 20) },
+    preClean: [],
     preCleanAuto: false,
     receipts: [
       {
