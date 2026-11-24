@@ -4,7 +4,7 @@
 
 **Goal:** Run the 13 period-close phases (910–924) on the three TEST BUs from a `data:reset --with-history` start, repeatable with no hand-written scenario.
 
-**Architecture:** `data:reset --bu <BU> --with-history` opens last month as the first (active) period, tops up the open periods, seeds dedicated `E2E-PC-*` master data and dates the normal seed in the period that covers today. The period-close helpers build their scenario from `E2E_PERIOD_BU` + today (period = last month, next = this month). The phases then run as gmail `TEST_USERS` and close last month, after which a normal reset readies the BU for the main suite.
+**Architecture:** `data:reset --bu <BU> --with-history` opens last month as the first (active) period, tops up the open periods, seeds dedicated `E2E-PC-*` master data and no documents. The period-close helpers build their scenario from `E2E_PERIOD_BU` + today (period = last month, next = this month). The phases then run as gmail `TEST_USERS` and close last month, after which a normal reset readies the BU for the main suite.
 
 **Tech Stack:** Bun (data:reset scripts), Playwright + TypeScript (specs), dev backend REST, read-only Postgres via `scripts/db-query.ts`.
 
