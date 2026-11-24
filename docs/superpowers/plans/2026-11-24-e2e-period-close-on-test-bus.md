@@ -4,7 +4,7 @@
 
 **Goal:** Run the 13 period-close phases (910–924) on the three TEST BUs from a `data:reset --with-history` start, repeatable with no hand-written scenario.
 
-**Architecture:** `data:reset --bu <BU> --with-history` opens last month as the first (active) period, tops up the open periods, seeds dedicated `E2E-PC-*` master data and dates the normal seed in the period that covers today. The period-close helpers build their scenario from `E2E_PERIOD_BU` + today (period = last month, next = this month). The phases then run as gmail `TEST_USERS` and close last month, which leaves the BU in its normal shape.
+**Architecture:** `data:reset --bu <BU> --with-history` opens last month as the first (active) period, tops up the open periods, seeds dedicated `E2E-PC-*` master data and dates the normal seed in the period that covers today. The period-close helpers build their scenario from `E2E_PERIOD_BU` + today (period = last month, next = this month). The phases then run as gmail `TEST_USERS` and close last month, after which a normal reset readies the BU for the main suite.
 
 **Tech Stack:** Bun (data:reset scripts), Playwright + TypeScript (specs), dev backend REST, read-only Postgres via `scripts/db-query.ts`.
 
@@ -58,26 +58,26 @@
 - [ ] **Step 7: STOP.** Report the probe output to the user. If check 1 or 2 fails, stop the plan: the design does not hold. If 3 or 4 fails, say which piece must be seeded or granted, and wait for the user.
 - [ ] **Step 8:** Commit: `git add scripts/data-reset/cli.ts scripts/data-reset/period.ts scripts/data-reset/index.ts scripts/movement/probe-period-history.ts && git commit -m "feat(data-reset): --with-history เปิดงวดเดือนก่อนเป็นงวดแรก + สคริปต์ probe ของชุดปิดงวด"`
 
-### Task 2: Seed dates, period-close master data, evidence reset
+### Task 2: `--with-history` skips document seeds, period-close master data, evidence reset
+
+User ruling 2026-11-24 (after the Task 1 probe): `--with-history` seeds **no documents** of the normal dataset. CN can only be dated in the active period, and open seeded documents in last month would block the suite's own Start / Close. A normal reset follows before the main suite.
 
 **Files:**
-- Modify: `scripts/data-reset/docs/stock.ts:44`, `scripts/data-reset/docs/pos.ts:74` (date by the open period covering today, not `current`)
+- Modify: `scripts/data-reset/index.ts` (with `withHistory`: skip every document seed step of `docs/seed-all.ts` and the doc-flow seed, run `seedPeriodClose`; keep reset, roles, master, accounting, period)
 - Create: `scripts/data-reset/docs/period-close.ts`
-- Modify: `scripts/data-reset/index.ts` (run `seedPeriodClose` only with `withHistory`, and clear evidence)
-- Modify: `scripts/data-reset/verify-dataset.ts` (verify `E2E-PC-*` when `withHistory`)
+- Modify: `scripts/data-reset/verify-dataset.ts` (with `withHistory`: skip document counts, verify `E2E-PC-*` instead)
 
 **Interfaces:**
 - Consumes: `ResetArgs.withHistory` (Task 1)
-- Produces: `openPeriodCovering(admin, buCode, day: string): Promise<{ start_at: string; end_at: string } | null>` in `period.ts`. It replaces the two `current` reads.
 - Produces: `PC_PRODUCTS = ["E2E-PC-1","E2E-PC-2","E2E-PC-3","E2E-PC-4"] as const`, `PC_SPARE = "E2E-PC-X"`, `seedPeriodClose(ctx): Promise<StepResult>`. It copies the products from the template product the way `doc-flow.ts` does, links them to the **first** inventory location only, and creates no stock.
 - Produces: the evidence path `runs/period-close/<BU>/<period>/`. On a `--with-history` reset, `seedPeriodClose` deletes `runs/period-close/<BU>/` (local files only).
 
-- [ ] **Step 1:** Implement `openPeriodCovering` and switch stock.ts / pos.ts to it. In normal mode it returns the same period as `current`.
-- [ ] **Step 2:** Implement `period-close.ts`, modelled on `docs/doc-flow.ts` (template copy, location link, skip if it exists).
-- [ ] **Step 3:** Wire into `index.ts` after the doc-flow seed and add the verify rows.
-- [ ] **Step 4:** Run `bunx tsc --noEmit` (expected: clean) and `bun run data:reset --dry-run --bu BU-96EAT3GX --with-history` (expected: prints the period-close seed step, and writes nothing).
-- [ ] **Step 5:** Live: `bun run data:reset --yes --bu BU-96EAT3GX --with-history`. Expected: exit 0, verify-dataset lists `E2E-PC-1..4`, `E2E-PC-X` at the first location, and the seeded stock documents are dated in this month.
-- [ ] **Step 6:** Commit: `git commit -m "feat(data-reset): seed สินค้า E2E-PC ของชุดปิดงวด และลงวันที่เอกสาร seed ในงวดที่ครอบวันนี้"`
+- [ ] **Step 1:** Implement `period-close.ts`, modelled on `docs/doc-flow.ts` (template copy, location link, skip if it exists).
+- [ ] **Step 2:** Wire into `index.ts`: with history, skip the document seeds and run `seedPeriodClose`. Without history, change nothing. Add the verify rows.
+- [ ] **Step 3:** Run `bunx tsc --noEmit` (expected: no new errors over the 17 pre-existing) and `bun run data:reset --dry-run --bu BU-96EAT3GX --with-history` (expected: lists the period-close seed, says documents are skipped, and writes nothing).
+- [ ] **Step 4:** Live: `bun run data:reset --yes --bu BU-96EAT3GX --with-history`. Expected: exit 0, verify-dataset lists `E2E-PC-1..4` and `E2E-PC-X` at the first location, no seeded documents, `inventory-periods/current` = last month.
+- [ ] **Step 5:** Update `scripts/data-reset/README.md` (`--with-history` seeds no documents. Run a normal reset after the period-close run, before the main suite).
+- [ ] **Step 6:** Commit: `git commit -m "feat(data-reset): --with-history ไม่ seed เอกสาร seed สินค้า E2E-PC ของชุดปิดงวดแทน"`
 
 ### Task 3: Scenario from BU + date
 
@@ -158,5 +158,5 @@
 ### Task 8: Live run on AVG and AVG-LOCATION + main-suite spot check
 
 - [ ] **Step 1:** Repeat Task 7 steps 1–4 for `BU-GR2VYNKQ`, then for `BU-0706T34Y`.
-- [ ] **Step 2:** On `BU-GR2VYNKQ` after its 924: `bunx playwright test --project=chromium tests/900-period-end.spec.ts tests/750-physical-count.spec.ts tests/201-*.spec.ts`. Expected: pass with no extra reset. If 750 has another file name, use `ls tests | grep 750`.
+- [ ] **Step 2:** On `BU-GR2VYNKQ` after its 924, run a normal `bun run data:reset --yes --bu BU-GR2VYNKQ`, then: `bunx playwright test --project=chromium tests/900-period-end.spec.ts tests/750-physical-count.spec.ts tests/201-*.spec.ts`. Expected: pass. If 750 has another file name, use `ls tests | grep 750`.
 - [ ] **Step 3:** Commit fixes: `git commit -m "test(period-close): แก้ตามผลรันจริงบน TEST BU (AVG / AVG-LOCATION)"`. Report to the user the pass counts per BU, the bug list, and that the branch is unpushed.

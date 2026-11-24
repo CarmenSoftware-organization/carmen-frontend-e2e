@@ -20,8 +20,9 @@ reset again gives the same starting state every time.
   TEST BU (AVG) `BU-GR2VYNKQ` · TEST BU (FIFO) `BU-96EAT3GX` · TEST BU (AVG-LOCATION) `BU-0706T34Y`.
 - The run is repeatable: `data:reset --bu <BU> --with-history` → the 13 phases in order → done, with
   no hand-written scenario per round.
-- After a full run the BU ends in the same state as a normal reset (current period = this month)
-  plus one closed period, so the main `chromium` suite can run on it without another reset.
+- After a full run the active period is this month again. The main `chromium` suite needs a normal
+  `data:reset` of that BU first, because `--with-history` seeds no documents (user ruling 2026-11-24,
+  below).
 - Gmail `TEST_USERS` replace the movement accounts.
 
 ## Non-goals
@@ -92,9 +93,11 @@ next = this month), not hand-written per round. Builder's call (see below), prop
   tops up to 12 after a close anyway). Verify: the active period is last month, and an open period
   covers today.
 - Without the flag: unchanged.
-- Seeded stock documents of the normal dataset are dated on the first day of **the period that covers
-  today**, not the active period, so that after the close they sit in an open period, as after a
-  normal reset. In normal mode both are the same period, so nothing changes there.
+- **Seeds no documents of the normal dataset** (PR/PO/GRN/CN/SR/stock/POS/IA/AP …): master data,
+  accounting setup and roles only, plus §3. User ruling 2026-11-24 after the Task 1 probe: CN can
+  only be dated inside the active period (422 "dated inside the current period (2610)"), the UI date
+  picker offers only the active period's days, and seeded open documents in last month would block
+  Start / Close of the suite itself. Cost: a normal reset before the main suite.
 - Seeds the period-close master data (§3).
 
 ### 2. Scenario from date + BU
@@ -216,7 +219,7 @@ playwright config comment loses the CARMEN-AVG / CARMEN-FIFO wording.
 - All three BUs, one at a time. AVG-LOCATION reuses the AVG layout with method-aware oracles.
 - Irreversible gate auto-passes on `TEST_BUS` only when the active period matches the scenario.
 - `--bu all --with-history` refused.
-- Seeded documents dated in the period covering today.
+- (replaced by user ruling) `--with-history` seeds no documents. A normal reset follows before the main suite.
 - 911 creates its own blockers instead of `preBlockers`.
 - Live probe (§0) on the FIFO BU as a STOP gate before anything else.
 - Next-period documents on days 1/2/3 of this month, and a run is refused before the 3rd.
