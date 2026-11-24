@@ -502,4 +502,4 @@ backend ปฏิเสธ 409 รหัส AP_INVOICE_HAS_PAYMENT มี toast 
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git ef6c86e</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

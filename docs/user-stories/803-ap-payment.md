@@ -249,4 +249,4 @@ Admin login; ใบ 1 x 1,000.00 + VAT (รวม 1,070.00) ที่บรร�
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 8d980fa</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

@@ -1,17 +1,20 @@
 # data:reset
 
-ล้าง TEST BU (`BU-GR2VYNKQ`) บน dev แล้วสร้างชุดข้อมูลมาตรฐานใหม่ — สั่งเองก่อนรันเทส ไม่ผูกกับ `bun run test`
+ล้าง TEST BU (ค่าตั้งต้น `BU-GR2VYNKQ`, หรือเลือกด้วย `--bu`) บน dev แล้วสร้างชุดข้อมูลมาตรฐานใหม่ — สั่งเองก่อนรันเทส ไม่ผูกกับ `bun run test`
 
 ```bash
 bun run data:reset --dry-run   # อ่านอย่างเดียว: ตรวจขั้น 0 แล้วพิมพ์สิ่งที่จะเขียน
 bun run data:reset --yes       # ของจริง (backend ไม่ใช่ localhost ต้องมี --yes)
 bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล้ว — ปฏิเสธถ้ายังมี PR อยู่
+bun run data:reset --yes --bu BU-96EAT3GX   # BU เดียวจาก TEST_BUS (AVG BU-GR2VYNKQ · FIFO BU-96EAT3GX · AVG-LOCATION BU-0706T34Y)
+bun run data:reset --yes --bu all          # ทั้งสาม BU ตามลำดับ — สั่งก่อนรันเทส doc-flow ครั้งแรก
 ```
 
 ## ต้องมี
 
 - backend dev ที่ deploy endpoint `POST /api-system/tenant/resets/:bu_id` แล้ว (backend PR #1004) และตั้ง
-  `TENANT_RESET_ALLOWED_BU_CODES=BU-GR2VYNKQ`, `TENANT_MIGRATION_API_ENABLED=true`
+  `TENANT_RESET_ALLOWED_BU_CODES=BU-GR2VYNKQ,BU-96EAT3GX,BU-0706T34Y` (ใน micro-business แล้ว restart; ไม่อยู่ในรายการ = reset ตอบ 403), `TENANT_MIGRATION_API_ENABLED=true`
+- บัญชี gmail ทั้ง 9 เป็นสมาชิกทั้งสาม BU และ **default BU ยังเป็น `BU-GR2VYNKQ`** ทุกบัญชี (ขั้น 0 ปฏิเสธถ้าไม่ใช่) · BU ใหม่ต้องมี license เท่ากับ `BU-GR2VYNKQ`
 - `.env.local`: `DATA_RESET_DEPLOY_TOKEN` (= `TENANT_DEPLOY_TOKEN` ของ gateway) และ `SEED_BACKEND_URL` /
   `SEED_X_APP_ID` หรือ `SEED_CONFIG_PATH` ชี้ `config.json` ของ frontend
 - สิทธิ์ของ role purchase ใน TEST BU: `vendor_management.vendor.view`, `product_management.category.view`,
@@ -82,6 +85,11 @@ bun run data:reset --yes --skip-reset   # seed ลง BU ที่ reset แล�
    - ผูกกับ location แรก (1AG01) **ที่เดียว** และ **ไม่สร้างใบรับเข้า** — สต๊อกเริ่มที่ 0 ให้ spec ทดสอบต้นทุนของ adjustment
    - ประเภทปรับปรุง active 2 ตัว (ซ้ำได้ ใช้ code เป็นกุญแจ): `E2E-IA-IN` (stock_in) / `E2E-IA-OUT` (stock_out) — spec เลือกด้วย code ไม่พึ่ง EOP-* / SALE
    - verify: `ia.adjustment-types` (มีทั้งสองตัวและ active) · `ia.products` (มีทั้งสองรหัส) · `ia.no-stock` (`inventory-info` on-hand ของทั้งสองที่ location นั้น = 0)
+7d. ฐาน doc-flow (`docs/doc-flow.ts`, ขั้น `doc-flow` ต่อจาก `ia`):
+   - สินค้า `E2E-DF-1..4` (สร้างถ้ายังไม่มี — ใช้ code เป็นกุญแจ) คัดลอก item group / หน่วยคลังจากสินค้าตัวแรก **ไม่สร้างใบรับเข้า** สต๊อกเป็น 0
+   - คู่ location: เริ่มจาก inventory 2 ตัวแรกของ context แล้วตรวจกับ workflow Store Requisition ที่ seed จริง — ต้องเป็น location ที่ active และผู้ใช้ **ทุกคนที่อยู่ใน stage ของ SR** ใช้ได้ (`locations-users`) ถ้าไม่ผ่านจะใช้ inventory 2 ตัวแรกที่ผ่าน (ตามรหัส) หาไม่ครบ 2 = ขั้นล้ม ไม่ fallback · บันทึกเป็น `doc-flow.locations`
+   - เพิ่มสินค้าทั้ง 4 เข้า `data.products` ของ **ทุก workflow** ที่มีรายการสินค้า (PUT ทั้งก้อนพร้อม `doc_version`, ข้ามถ้ามีครบแล้ว) แล้วเรียก `products-location-workflow/<จาก>/<ถึง>/<SR>` ยืนยันว่าตัวเลือก SR เห็นครบ 4
+   - verify: `doc-flow.products` · `doc-flow.locations` · `doc-flow.sr-products` (อยู่ในรายการของ SR) · `doc-flow.links-no-stock` (ผูกครบทั้งสอง location และ on-hand = 0)
 8. ตรวจนับทั้ง BU เทียบตาราง (`verify-dataset.ts`) — แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้ แล้วจบด้วย exit 1
 
 ## ถ้า reset ตอบ 504 / timeout

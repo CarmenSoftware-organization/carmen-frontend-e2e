@@ -100,7 +100,7 @@ URL นำทางไปยัง /procurement/purchase-request/<ref>
 
 **Expected**
 
-ค่า badge Total Pending เท่ากับยอดรวมใน label 'Showing 1–N of TOTAL' ของ pagination
+ค่า badge Total Pending เท่ากับยอดรอนุมัติรวมทุก BU ที่ผู้ใช้สังกัด และยอดรวมใน label 'Showing 1–N of TOTAL' ของ pagination เท่ากับยอดของ BU ที่เลือกอยู่
 
 ---
 
@@ -646,4 +646,4 @@ Approved Qty แก้เป็น 2 ได้; bulk approve สำเร็จ 
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 9d79c62</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

@@ -813,4 +813,4 @@ wizard บอก '2 purchase requests will be created'; หลังกด Creat
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 2b5d5dd</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

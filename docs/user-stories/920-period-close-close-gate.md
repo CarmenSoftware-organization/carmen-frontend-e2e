@@ -41,4 +41,4 @@ Login เป็น admin@carmen.com (movement-setup) บน BU ของ scenari
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

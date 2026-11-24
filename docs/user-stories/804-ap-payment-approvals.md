@@ -175,4 +175,4 @@ Approve ถูกปฏิเสธ 403 และใบยัง in_review ไ�
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 8d980fa</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

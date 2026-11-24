@@ -285,7 +285,7 @@ URL เป็น view=my-pending โดยไม่มี search และช่
 
 **Expected**
 
-ไม่มีแถว SR (BU มี SR 7 ใบที่คนอื่นสร้าง) และแสดง 'No data found'
+ไม่มีแถว SR ที่คนอื่นสร้าง (SR ของ data:reset ทุกใบไม่ขึ้น); ถ้า Requestor ไม่มี SR ของตัวเองเลย แสดง 'No data found'
 
 ---
 
@@ -458,4 +458,4 @@ header แสดงสถานะ Voided และไม่มีปุ่ม E
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 9f77b28</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

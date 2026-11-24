@@ -411,4 +411,4 @@ URL ยังคงเป็น /store-operation/wastage-reporting
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git 262f332</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

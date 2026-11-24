@@ -87,6 +87,7 @@ describe("verifyEnvironment", () => {
       if (url.includes("/application-roles/r1")) {
         return jsonResponse(200, { data: { permissions: granted } });
       }
+      if (url.endsWith("/inventory-transactions/calculation-method")) return jsonResponse(200, { data: { calculation_method: "average" } });
       return jsonResponse(404, {});
     }) as unknown as typeof fetch;
 
@@ -106,6 +107,7 @@ describe("verifyEnvironment", () => {
       if (url.endsWith("/api/user/profile")) return jsonResponse(200, profile([{ id: "bu-1", code: "BU-GR2VYNKQ", is_default: true }]));
       if (url.includes("/user-application-roles/")) return jsonResponse(200, { data: { application_roles: [{ application_role_id: "r1" }] } });
       if (url.includes("/application-roles/r1")) return jsonResponse(200, { data: { permissions: [] } });
+      if (url.endsWith("/inventory-transactions/calculation-method")) return jsonResponse(200, { data: { calculation_method: "average" } });
       return jsonResponse(404, {});
     }) as unknown as typeof fetch;
     const result = await verifyEnvironment(createSessions(cfg, fakeFetch), cfg);

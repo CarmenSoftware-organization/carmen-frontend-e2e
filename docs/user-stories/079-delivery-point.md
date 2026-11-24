@@ -1215,4 +1215,4 @@ name input ตัดข้อความให้ยาวไม่เกิน
 ---
 
 
-<sub>Last regenerated: 2026-11-21 · git a410f72</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

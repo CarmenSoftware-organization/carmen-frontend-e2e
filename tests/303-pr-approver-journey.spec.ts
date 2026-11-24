@@ -12,6 +12,7 @@ import {
 } from "./pages/pr-approver.helpers";
 import { openRecordFromRow } from "./helpers/list-row";
 import { BU_CODE } from "./test-users";
+import { pendingTotals } from "./helpers/my-pending";
 import { ensureActiveBu, getBusinessUnits, defaultBu } from "./helpers/bu";
 import { BuSwitcherPage } from "./pages/bu-switcher.page";
 
@@ -103,7 +104,7 @@ hodTest.describe("Step 1 — My Approval Dashboard", () => {
       annotation: [
         { type: "preconditions", description: "อยู่ใน My Approvals dashboard" },
         { type: "steps", description: "1. อ่านค่า badge pending\n2. อ่านยอดรวมจาก label pagination" },
-        { type: "expected", description: "ค่า badge Total Pending เท่ากับยอดรวมใน label 'Showing 1–N of TOTAL' ของ pagination" },
+        { type: "expected", description: "ค่า badge Total Pending เท่ากับยอดรอนุมัติรวมทุก BU ที่ผู้ใช้สังกัด และยอดรวมใน label 'Showing 1–N of TOTAL' ของ pagination เท่ากับยอดของ BU ที่เลือกอยู่" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
@@ -121,7 +122,10 @@ hodTest.describe("Step 1 — My Approval Dashboard", () => {
       const totalText = (await ma.paginationTotal().textContent()) ?? "";
       const totalMatch = totalText.match(/of\s+(\d+)/i);
       expect(totalMatch, `pagination label has no total: "${totalText}"`).not.toBeNull();
-      expect(badgeNum).toBe(parseInt(totalMatch![1], 10));
+      // The badge counts every BU the user is in; the pagination total is the active BU only.
+      const totals = await pendingTotals("HOD");
+      expect(badgeNum, `badge = sum over TEST BUs ${JSON.stringify(totals.perBu)}`).toBe(totals.all);
+      expect(parseInt(totalMatch![1], 10)).toBe(totals.perBu[BU_CODE]);
     },
   );
 

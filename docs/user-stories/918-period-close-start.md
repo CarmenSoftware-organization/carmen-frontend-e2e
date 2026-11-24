@@ -44,4 +44,4 @@ POST start-counting ตอบ 2xx, toast "Counting started.", หน้าพา
 ---
 
 
-<sub>Last regenerated: 2026-10-05 · git 246df31</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

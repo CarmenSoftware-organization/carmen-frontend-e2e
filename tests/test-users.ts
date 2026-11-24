@@ -17,4 +17,12 @@ export const TEST_PASSWORD = "12345678";
 export function getPasswordFor(email: string): string {
   return TEST_USERS.find((u) => u.email === email)?.password ?? TEST_PASSWORD;
 }
-export const BU_CODE = "BU-GR2VYNKQ";
+/** The three TEST business units, one per inventory cost method. */
+export const TEST_BUS = [
+  { code: "BU-GR2VYNKQ", method: "average" },
+  { code: "BU-96EAT3GX", method: "fifo" },
+  { code: "BU-0706T34Y", method: "average_per_location" },
+] as const;
+export type TestBuCode = (typeof TEST_BUS)[number]["code"];
+export type CostMethod = (typeof TEST_BUS)[number]["method"];
+export const BU_CODE: TestBuCode = TEST_BUS[0].code;

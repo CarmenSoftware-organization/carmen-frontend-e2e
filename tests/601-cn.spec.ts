@@ -68,6 +68,13 @@ async function search(page: Page, text: string) {
   await box.press("Enter");
 }
 
+/** The two data:reset notes are listed (one row each); other CNs on the BU do not matter. */
+async function expectSeededCnRows(page: Page) {
+  for (const no of ["CN26110001", "CN26110002"]) {
+    await expect(page.getByRole("row").filter({ hasText: no })).toHaveCount(1, { timeout: 10_000 });
+  }
+}
+
 /** Edit -> Save, wait for the success toast. */
 async function save(page: Page) {
   await button(page, "Save").click();
@@ -169,7 +176,7 @@ purchaseTest.describe("CN — List", () => {
       annotation: [
         { type: "preconditions", description: "CN ทั้ง 2 ใบเป็นของ vendor เอบีโอ โฟกัส ดีไซน์" },
         { type: "steps", description: "1. ค้นหา 'เอบีโอ' แล้วกด Enter\n2. ค้นหาชื่อ vendor ที่ไม่มี" },
-        { type: "expected", description: "ค้นด้วย 'เอบีโอ' แสดงทั้ง 2 ใบ; ค้นด้วยชื่อที่ไม่มีแสดง 'No data found'" },
+        { type: "expected", description: "ค้นด้วย 'เอบีโอ' แสดง CN26110001 และ CN26110002 (ใบที่ spec 603 สร้างไว้อาจขึ้นด้วย); ค้นด้วยชื่อที่ไม่มีแสดง 'No data found'" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -177,7 +184,9 @@ purchaseTest.describe("CN — List", () => {
     async ({ page }) => {
       await new CreditNotePage(page).gotoList();
       await search(page, "เอบีโอ");
-      await expect(page.getByRole("row").filter({ hasText: /CN2611/ })).toHaveCount(2, { timeout: 10_000 });
+      // Both seeded notes match; CNs that the doc-flow spec 603 leaves on this BU may match too,
+      // so the check names the seeded two rather than counting rows.
+      await expectSeededCnRows(page);
       await search(page, `zz-vendor-${uid}`);
       await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
     },
@@ -189,7 +198,7 @@ purchaseTest.describe("CN — List", () => {
       annotation: [
         { type: "preconditions", description: "มี CN ใน TEST BU" },
         { type: "steps", description: "1. ค้นหาข้อความอักขระพิเศษ ';--%\"\n2. ล้างช่องค้นหา" },
-        { type: "expected", description: "ไม่เกิด error: แสดง 'No data found' แล้วกลับมาแสดง CN ทั้ง 2 ใบเมื่อล้างช่อง" },
+        { type: "expected", description: "ไม่เกิด error: แสดง 'No data found' แล้วกลับมาแสดง CN26110001 และ CN26110002 เมื่อล้างช่อง" },
         { type: "priority", description: "Low" },
         { type: "testType", description: "Negative" },
       ],
@@ -200,7 +209,7 @@ purchaseTest.describe("CN — List", () => {
       await expect(page.getByText("No data found")).toBeVisible({ timeout: 10_000 });
       await expect(page.getByText("Something went wrong")).toHaveCount(0);
       await search(page, "");
-      await expect(page.getByRole("row").filter({ hasText: /CN2611/ })).toHaveCount(2, { timeout: 10_000 });
+      await expectSeededCnRows(page);
     },
   );
 

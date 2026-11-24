@@ -1,6 +1,9 @@
 import type { Page } from "@playwright/test";
-import { test, gotoBu, expect, observed } from "./fixtures/movement.fixture";
-import { apiGet } from "./helpers/movement/api";
+import { test, gotoBu, expect, observed } from "./fixtures/doc-flow.fixture";
+import { BU_CODE } from "./test-users";
+import { buSend } from "./helpers/bu-api";
+import { dfGet } from "./helpers/doc-flow/api";
+import { DF, firstVendor, itemRow, srLocations, stamp } from "./helpers/doc-flow/data";
 import {
   addRow,
   button,
@@ -14,23 +17,53 @@ import {
   toasts,
   typeInto,
 } from "./helpers/movement/ui";
-import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, itemRow, nameOf, stamp } from "./helpers/movement/doc-flow";
 
 /**
- * PO doc flow — movement suite (opt-in: `bun run test:movement`).
- * CARMEN-AVG · requestor · workflow "PO inherit-sig test" · vendor C010 · location LCX013.
+ * PO lifecycle — doc-flow suite on the TEST BU (AVG), gmail accounts.
+ * BU-GR2VYNKQ · Purchase · workflow "General PO" · first vendor · products E2E-DF-1..4 · location read at run time.
  * draft → view → edit (header + qty/price + remove line + add line) → delete → new + Submit.
  *
- * Requestor creating a PO depends on the workflow's "Create Request" stage: on
- * CARMEN-AVG requestor is in it, while on BLAVG TC-PO-010002/020002 assert the
- * opposite for the gmail requestor — both are true for their own tenant.
+ * The creator is Purchase because the seeded "General PO" workflow's "Create Request" stage
+ * assigns only purchase (TC-PO-010002/020002 assert the requestor cannot create a PO).
  * Origin: `_movement_play/eop_bf/e2e/fe/02-po.spec.ts` (PO.1–PO.5).
  */
-const { user: USER, loc: LOC } = DOC_FLOW_ROLE.po;
-const WF = "PO inherit-sig test";
+const BU = BU_CODE;
+const WF = "General PO";
 const DELIVERY = "2026-10-20";
-test.use({ user: USER, bu: BU });
-test.describe.configure({ mode: "serial" });
+let LOC = "";
+let VENDOR = "";
+test.use({ role: "Purchase", bu: BU_CODE });
+test.describe.configure({ mode: "serial", retries: 0 });
+test.setTimeout(300_000);
+
+test.beforeAll(async () => {
+  LOC = (await srLocations(BU)).from;
+  VENDOR = (await firstVendor(BU)).code;
+});
+
+/**
+ * Cleanup by description stamp, read from the API (not from in-memory ids) so a failed case is
+ * still cleaned. Only drafts can be deleted; the submitted PO is left in progress
+ * (warned) until the next data:reset. Failures throw so the hook fails visibly.
+ */
+test.afterAll(async () => {
+  test.setTimeout(180_000);
+  const { status, body } = await dfGet(`/purchase-orders?search=${encodeURIComponent(DESC)}&perpage=100`, "Admin", BU);
+  if (status !== 200) throw new Error(`cleanup: list purchase-orders HTTP ${status} ${JSON.stringify(body).slice(0, 300)}`);
+  const failures: string[] = [];
+  for (const d of (body?.data ?? []) as any[]) {
+    if (!String(d.description ?? "").startsWith(DESC)) continue;
+    if (d.po_status !== "draft") {
+      // only drafts can be deleted (no cancel endpoint) — submitted docs wait for the next data:reset
+      console.warn(`cleanup: left ${d.po_no} in ${d.po_status} until next data:reset`);
+      continue;
+    }
+    const r = await buSend("Admin", "DELETE", `/purchase-orders/${d.id}`, undefined, BU);
+    if (r.status >= 300) failures.push(`${d.po_no ?? d.id} HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
+  }
+  if (failures.length) throw new Error(`cleanup: PO draft(s) not deleted: ${failures.join(" | ")}`);
+});
+
 // Finding FE-1: the PO page calls previous-stages even for a draft (no stage yet) → certain 404.
 // pr-form.tsx guards it with `enabled`; po-form.tsx calls usePoPreviousStages unguarded.
 test.beforeEach(({ signals }) => signals.minor(/previous-stages → 404/, "FE-1 PO draft calls previous-stages before it has a stage"));
@@ -42,7 +75,7 @@ interface PoLine {
 }
 
 async function poById(id: string) {
-  const { status, body } = await apiGet(`/api/${BU}/purchase-orders/${id}`);
+  const { status, body } = await dfGet(`/purchase-orders/${id}`, "Admin", BU);
   if (status !== 200) return { status: "deleted", no: "", desc: "", stage: "", lines: [] as PoLine[] };
   const d = body.data;
   return {
@@ -87,33 +120,33 @@ async function saveAndWait(page: Page) {
 
 async function fillHeader(page: Page, desc: string) {
   await pickSelectIn(page, "Workflow", WF);
-  await pickLookup(page, field(page, "Vendor").locator("button").first(), "C010");
+  await pickLookup(page, field(page, "Vendor").locator("button").first(), VENDOR);
   expect(await pickDate(page, field(page, "Delivery Date").locator("button").first(), DELIVERY), `Delivery Date ${DELIVERY}`).toBe(true);
   await page.locator("#po-description").fill(desc);
 }
 
 let draftId = "";
 const LINES: PoLine[] = [
-  { product: PROD.P1.code, qty: 3, price: 12.5 },
-  { product: PROD.P2.code, qty: 5, price: 20 },
+  { product: DF.P1.code, qty: 3, price: 12.5 },
+  { product: DF.P2.code, qty: 5, price: 20 },
 ];
 const DESC = `FE-CRUD PO ${stamp}`;
 const EDITED_DESC = `${DESC} (แก้)`;
 const EDITED: PoLine[] = [
-  { product: PROD.P1.code, qty: 7, price: 15 },
-  { product: PROD.P3.code, qty: 2, price: 30 },
+  { product: DF.P1.code, qty: 7, price: 15 },
+  { product: DF.P3.code, qty: 2, price: 30 },
 ];
 
 test(
-  "TC-PO-700001 Requestor สร้าง PO draft แล้วหลังบ้านเก็บจำนวนและราคาครบ",
+  "TC-PO-700001 Purchase สร้าง PO draft แล้วหลังบ้านเก็บจำนวนและราคาครบ",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG; workflow \"PO inherit-sig test\" มีสินค้าแล้ว (bun run movement:setup-workflows) และ requestor อยู่ใน stage Create Request; ผู้ขาย C010 มีอยู่" },
-      { type: "steps", description: "1. เปิด /procurement/purchase-order/new\n2. เลือก workflow \"PO inherit-sig test\", ผู้ขาย C010, Delivery Date 2026-10-20, ใส่คำอธิบาย\n3. Add Item 2 รายการที่ LCX013: 11110001 × 3 @12.5, 11110003 × 5 @20\n4. กด Save" },
-      { type: "expected", description: "Save ตอบ < 300 และ URL เปลี่ยนเป็นหน้าใบ; หลังบ้าน po_status = draft, description ตรง, รายการ 11110001×3@12.5 และ 11110003×5@20" },
+      { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; BU TEST (AVG) BU-GR2VYNKQ; workflow \"General PO\" ขั้น Create Request มี purchase; มีผู้ขายที่ active (ใช้ตัวแรกตาม code); สินค้า E2E-DF-1..4 มาจาก data:reset" },
+      { type: "steps", description: "1. เปิด /procurement/purchase-order/new\n2. เลือก workflow \"General PO\", ผู้ขายตัวแรก, Delivery Date 2026-10-20, ใส่คำอธิบาย\n3. Add Item 2 รายการที่คลังแรกของคู่ doc-flow: E2E-DF-1 × 3 @12.5, E2E-DF-2 × 5 @20\n4. กด Save" },
+      { type: "expected", description: "Save ตอบ < 300 และ URL เปลี่ยนเป็นหน้าใบ; หลังบ้าน po_status = draft, description ตรง, รายการ E2E-DF-1×3@12.5 และ E2E-DF-2×5@20" },
       { type: "priority", description: "High" },
       { type: "testType", description: "CRUD" },
-      { type: "note", description: "เดิม PO.1 (_movement_play fe/02-po) · ซ้อนกับ TC-PO-060203 ที่ตรวจแค่ URL/toast บน BLAVG · ราคากรอกด้วย typeInto (fill() ทำให้ \"18.00\" กลายเป็น \"1821\")" },
+      { type: "note", description: "เดิม PO.1 (_movement_play fe/02-po) · ซ้อนกับ TC-PO-060203 ที่ตรวจแค่ URL/toast · ราคากรอกด้วย typeInto (fill() ทำให้ \"18.00\" กลายเป็น \"1821\")" },
     ],
   },
   async ({ page }) => {
@@ -133,12 +166,12 @@ test(
 );
 
 test(
-  "TC-PO-700002 Requestor เปิด PO draft แล้วเห็นจำนวนและราคาตามที่บันทึก",
+  "TC-PO-700002 Purchase เปิด PO draft แล้วเห็นจำนวนและราคาตามที่บันทึก",
   {
     annotation: [
-      { type: "preconditions", description: "TC-PO-700001 ผ่านแล้วในรอบเดียวกัน (serial) — มี PO draft บน CARMEN-AVG" },
+      { type: "preconditions", description: "TC-PO-700001 ผ่านแล้วในรอบเดียวกัน (serial) — มี PO draft บน BU-GR2VYNKQ" },
       { type: "steps", description: "1. เปิด /procurement/purchase-order/<id> จากลิงก์ตรง\n2. อ่านช่องคำอธิบาย และข้อความ/ค่าในแถวของแต่ละสินค้า" },
-      { type: "expected", description: "ช่องคำอธิบายมีค่า FE-CRUD PO <stamp>; แถว 11110001 มีจำนวน 3 และราคา 12.5; แถว 11110003 มีจำนวน 5 และราคา 20" },
+      { type: "expected", description: "ช่องคำอธิบายมีค่า FE-CRUD PO <stamp>; แถว E2E-DF-1 มีจำนวน 3 และราคา 12.5; แถว E2E-DF-2 มีจำนวน 5 และราคา 20" },
       { type: "priority", description: "Medium" },
       { type: "testType", description: "CRUD" },
       { type: "note", description: "เดิม PO.2 · TC-PO-060301 ตรวจแค่ URL" },
@@ -163,12 +196,12 @@ test(
 );
 
 test(
-  "TC-PO-700003 Requestor แก้ PO draft (หัว + จำนวน/ราคา + ลบรายการ + เพิ่มรายการ)",
+  "TC-PO-700003 Purchase แก้ PO draft (หัว + จำนวน/ราคา + ลบรายการ + เพิ่มรายการ)",
   {
     annotation: [
-      { type: "preconditions", description: "TC-PO-700001 ผ่านแล้วในรอบเดียวกัน (serial) — PO draft มี 11110001×3@12.5, 11110003×5@20" },
-      { type: "steps", description: "1. เปิดใบ แล้วกด Edit\n2. แก้คำอธิบายเป็น \"... (แก้)\"\n3. Ground Beef 3@12.5 → 7@15\n4. ลบ Australian Sirloin ด้วยปุ่ม \"Remove this product\" ในแถวคอมเมนต์ใต้รายการ\n5. Add Item: Pork neck tenderloin (11110009) 2@30\n6. กด Save" },
-      { type: "expected", description: "Save ตอบ < 300; หลังบ้านเก็บคำอธิบายใหม่ และรายการเหลือ 11110001×7@15, 11110009×2@30" },
+      { type: "preconditions", description: "TC-PO-700001 ผ่านแล้วในรอบเดียวกัน (serial) — PO draft มี E2E-DF-1×3@12.5, E2E-DF-2×5@20" },
+      { type: "steps", description: "1. เปิดใบ แล้วกด Edit\n2. แก้คำอธิบายเป็น \"... (แก้)\"\n3. E2E-DF-1 3@12.5 → 7@15\n4. ลบ E2E-DF-2 ด้วยปุ่ม \"Remove this product\" ในแถวคอมเมนต์ใต้รายการ\n5. Add Item: E2E-DF-3 2@30\n6. กด Save" },
+      { type: "expected", description: "Save ตอบ < 300; หลังบ้านเก็บคำอธิบายใหม่ และรายการเหลือ E2E-DF-1×7@15, E2E-DF-3×2@30" },
       { type: "priority", description: "High" },
       { type: "testType", description: "CRUD" },
       { type: "note", description: "เดิม PO.3 · TC-PO-060402/060403 หาช่องจำนวนจาก label (ถ้าไม่เจอก็ผ่านเงียบ) และตรวจแค่ URL" },
@@ -185,11 +218,11 @@ test(
       .evaluateAll(
         (trs, [code, name]) =>
           trs.findIndex((tr) => (tr.textContent ?? "").includes(code) || (tr.textContent ?? "").replace(/\s/g, " ").includes(name)),
-        [PROD.P2.code, nameOf(PROD.P2.code)],
+        [DF.P2.code, DF.P2.name],
       );
     await page.locator("table tbody tr").nth(idx + 1).getByRole("button", { name: /Remove this product/ }).click();
     if (await page.locator("[role=alertdialog]:visible").count()) await confirmDialog(page, /remove|delete|confirm|ลบ/i);
-    await expect(itemRow(page, PROD.P2.code)).toHaveCount(0);
+    await expect(itemRow(page, DF.P2.code)).toHaveCount(0);
     await addLine(page, EDITED[1]);
     const r = await saveAndWait(page);
     expect(r.status, JSON.stringify(r.body).slice(0, 400)).toBeLessThan(300);
@@ -201,7 +234,7 @@ test(
 );
 
 test(
-  "TC-PO-700004 Requestor ลบ PO draft จากโหมดดูแล้วใบหายจากหลังบ้าน",
+  "TC-PO-700004 Purchase ลบ PO draft จากโหมดดูแล้วใบหายจากหลังบ้าน",
   {
     annotation: [
       { type: "preconditions", description: "TC-PO-700001 ผ่านแล้วในรอบเดียวกัน (serial) — PO draft ยังอยู่" },
@@ -224,19 +257,19 @@ test(
 );
 
 test(
-  "TC-PO-700005 Requestor สร้าง PO แล้ว Submit ได้เลขจริงและไปขั้น HOD",
+  "TC-PO-700005 Purchase สร้าง PO แล้ว Submit ได้เลขจริงและไปขั้น FC Approval",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น requestor@carmen.com; BU CARMEN-AVG; workflow \"PO inherit-sig test\" ขั้นแรกคือ HOD" },
-      { type: "steps", description: "1. สร้าง PO ใหม่ 1 รายการ 11110012 × 4 @10 แล้วกด Save\n2. กด Submit ที่หน้าใบ\n3. ยืนยันใน dialog (ถ้ามี)" },
-      { type: "expected", description: "คำขอ submit ตอบ < 300; หลังบ้าน po_status = in_progress, po_no ไม่ขึ้นต้นด้วย draft และ workflow_current_stage = HOD" },
+      { type: "preconditions", description: "Login เป็น carmensoftware.dev+purchase@gmail.com; BU BU-GR2VYNKQ; workflow \"General PO\" ขั้นแรก Create Request แล้วต่อด้วย FC Approval" },
+      { type: "steps", description: "1. สร้าง PO ใหม่ 1 รายการ E2E-DF-4 × 4 @10 แล้วกด Save\n2. กด Submit ที่หน้าใบ\n3. ยืนยันใน dialog (ถ้ามี)" },
+      { type: "expected", description: "คำขอ submit ตอบ < 300; หลังบ้าน po_status = in_progress, po_no ไม่ขึ้นต้นด้วย draft และ workflow_current_stage = FC Approval" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
       { type: "note", description: "เดิม PO.5 · TC-PO-060405/060901 ตรวจแค่ URL" },
     ],
   },
   async ({ page }) => {
-    const line: PoLine = { product: PROD.P4.code, qty: 4, price: 10 };
+    const line: PoLine = { product: DF.P4.code, qty: 4, price: 10 };
     await gotoBu(page, "/procurement/purchase-order/new", BU);
     await fillHeader(page, `${DESC} submit`);
     await addLine(page, line);
@@ -254,7 +287,7 @@ test(
     await expect.poll(async () => (await poById(id)).status, { timeout: 30_000 }).toBe("in_progress");
     const po = await poById(id);
     expect(po.no).not.toMatch(/^draft/);
-    expect(po.stage).toBe("HOD");
+    expect(po.stage).toBe("FC Approval");
     await observed(`${po.no} · ${po.status} · stage ${po.stage} · ${fmt(po.lines)} · toast: ${(await toasts(page)).join(" / ") || "-"}`);
   },
 );

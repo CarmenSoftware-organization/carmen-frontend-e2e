@@ -18,18 +18,30 @@ import { ensureActiveBu } from "./helpers/bu";
 const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 const purchaseTest = createAuthTest("carmensoftware.dev+purchase@gmail.com");
 
-interface Sr { id: string; description?: string | null; sr_no: string; doc_status: string; workflow_current_stage: string | null; department_name?: string | null; from_location_name?: string; to_location_name?: string; store_requisition_detail: { product: { name: string } }[] }
+interface Sr { id: string; description?: string | null; sr_no: string; doc_status: string; workflow_current_stage: string | null; department_name?: string | null; requestor_name?: string | null; from_location_name?: string; to_location_name?: string; store_requisition_detail: { product: { name: string } }[] }
 async function loadAllSrs(): Promise<Sr[]> {
-  const r = await rootGet("Purchase", `/store-requisitions?perpage=50&bu_code=${BU_CODE}`);
-  expect(r.status, "store-requisitions list").toBe(200);
-  return r.body.data.find((b: { bu_code: string }) => b.bu_code === BU_CODE).data as Sr[];
+  const all: Sr[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const r = await rootGet("Purchase", `/store-requisitions?perpage=100&page=${page}&bu_code=${BU_CODE}`);
+    expect(r.status, "store-requisitions list").toBe(200);
+    const rows = r.body.data.find((b: { bu_code: string }) => b.bu_code === BU_CODE).data as Sr[];
+    all.push(...rows);
+    if (rows.length < 100) break;
+  }
+  return all;
 }
-/** The data:reset SRs only - 701-sr.spec.ts leaves finished/voided SRs ("E2E 701 ..." / SRs it seeded) behind. */
+
+/**
+ * The data:reset SRs only (description "STD <row>"). 701, 702 and 721 leave SRs behind that the
+ * Requestor raised itself, so "someone else's SR" must come from the seed, not the first match.
+ * ใช้เฉพาะ SR ของ data:reset — ใบที่ spec อื่นทิ้งไว้บางใบ Requestor เป็นคนสร้างเอง
+ */
 async function loadSrs(): Promise<Sr[]> {
-  const seed = (await loadAllSrs()).filter((s) => !/^E2E 701/.test(s.description ?? ""));
-  expect(seed.length, "data:reset SRs are in the first 50 rows (run data:reset if 701 left many SRs behind)").toBeGreaterThan(0);
+  const seed = (await loadAllSrs()).filter((s) => /^STD /.test(s.description ?? ""));
+  expect(seed.length, "data:reset SRs (description 'STD …') are on the BU — run data:reset").toBeGreaterThan(0);
   return seed;
 }
+
 /** An SR still waiting at the Issue stage (a voided SR keeps its last stage name). */
 const atIssue = (s: Sr) => s.workflow_current_stage === "Issue" && s.doc_status === "in_progress";
 /** Data precondition (API-checked): the SR the case needs exists. */
@@ -367,7 +379,7 @@ requestorTest.describe("Stock Issue — View Full SR — Permission denial", () 
       annotation: [
         { type: "preconditions", description: "เข้าสู่ระบบเป็น Requestor (เห็นเฉพาะ SR ที่ตัวเองสร้าง); TEST BU มี SR ที่สร้างโดย Purchase" },
         { type: "steps", description: "1. เปิด All Documents" },
-        { type: "expected", description: "ไม่มีแถว SR (BU มี SR 7 ใบที่คนอื่นสร้าง) และแสดง 'No data found'" },
+        { type: "expected", description: "ไม่มีแถว SR ที่คนอื่นสร้าง (SR ของ data:reset ทุกใบไม่ขึ้น); ถ้า Requestor ไม่มี SR ของตัวเองเลย แสดง 'No data found'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
@@ -375,10 +387,18 @@ requestorTest.describe("Stock Issue — View Full SR — Permission denial", () 
     async ({ page }) => {
       const srs = await loadSrs();
       expect(srs.length, "SRs exist in the BU for other users").toBeGreaterThan(0);
+      // 702 / 721 leave SRs the Requestor raised itself on this BU, so the list need not be empty:
+      // it must hold none of the data:reset SRs (raised by others) and only the Requestor's own.
+      const own = (await loadAllSrs()).filter((s) => /^requestor\b/i.test(s.requestor_name ?? ""));
       const si = new StockIssuePage(page);
       await si.gotoAllDocuments();
-      await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
-      await expect(recordRows(page)).toHaveCount(0);
+      if (own.length === 0) {
+        await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 15_000 });
+        await expect(recordRows(page)).toHaveCount(0);
+      } else {
+        await expect(recordRows(page).first()).toBeVisible({ timeout: 15_000 });
+      }
+      for (const s of srs) await expect(page.getByText(s.sr_no, { exact: true })).toHaveCount(0);
     },
   );
 });

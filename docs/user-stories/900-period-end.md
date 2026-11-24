@@ -456,4 +456,4 @@ request ส่ง entity_type=period ตอบ 200 ทุกแถวที่�
 ---
 
 
-<sub>Last regenerated: 2026-11-22 · git 0f6affd</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

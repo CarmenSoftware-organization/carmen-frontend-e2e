@@ -515,4 +515,4 @@ Admin login บน TEST BU; ร้าน E2E-141: ใช้ pastDays 5 วัน
 ---
 
 
-<sub>Last regenerated: 2026-11-23 · git bd69f29</sub>
+<sub>Last regenerated: 2026-11-24 · git f462816</sub>

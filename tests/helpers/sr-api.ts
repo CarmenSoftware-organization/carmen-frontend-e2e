@@ -27,11 +27,19 @@ let ctx: Promise<SrSeedContext> | null = null;
 
 export function srSeedContext(): Promise<SrSeedContext> {
   return (ctx ??= (async () => {
-    const r = await rootGet("Purchase", `/store-requisitions?perpage=50&bu_code=${BU_CODE}`);
-    expect(r.status, "store-requisitions list").toBe(200);
-    const rows: { id: string; doc_status: string }[] = r.body.data.find((b: { bu_code: string }) => b.bu_code === BU_CODE).data;
-    const sample = rows.find((s) => s.doc_status !== "draft");
-    if (!sample) throw new Error("sr-api: no submitted SR in the TEST BU - run `bun run data:reset --yes`");
+    // Only a data:reset SR (description "STD <row>") is a sample: the newest SRs may be ones 702 / 721
+    // left behind on the doc-flow location pair with E2E-DF products, which the 701 cases cannot use.
+    // ต้นแบบต้องเป็น SR ของ data:reset — ใบล่าสุดอาจเป็นของ 702/721 ที่ใช้คู่คลัง doc-flow
+    let sample: { id: string; doc_status: string; description?: string | null } | undefined;
+    for (let page = 1; page <= 20 && !sample; page++) {
+      const r = await rootGet("Purchase", `/store-requisitions?perpage=100&page=${page}&bu_code=${BU_CODE}`);
+      expect(r.status, "store-requisitions list").toBe(200);
+      const rows: { id: string; doc_status: string; description?: string | null }[] =
+        r.body.data.find((b: { bu_code: string }) => b.bu_code === BU_CODE).data;
+      sample = rows.find((s) => s.doc_status !== "draft" && /^STD /.test(s.description ?? ""));
+      if (rows.length < 100) break;
+    }
+    if (!sample) throw new Error("sr-api: no submitted data:reset SR (description 'STD …') in the TEST BU - run `bun run data:reset --yes`");
     const d = (await buGet("Purchase", `/store-requisitions/${sample.id}`)).body.data;
     return {
       workflow_id: d.workflow.id,

@@ -8,12 +8,13 @@ import { parseArgs as parseSeedArgs, printSummary, resolveEnabled, resolveWorkbo
 import { runSeed } from "../seed-master/orchestrator";
 import { extractRows, readWorkbookFile } from "../seed-master/parser";
 import type { SeedResult } from "../seed-master/types";
-import { getPasswordFor } from "../../tests/test-users";
+import { BU_CODE, TEST_BUS, getPasswordFor } from "../../tests/test-users";
 import { parseResetArgs, resetHelpText, type ResetArgs } from "./cli";
 import { resolveResetConfig, type ResetConfig } from "./config";
 import { DEFAULT_CURRENCY_CODE, loadCoaFixture, seedBuCurrency, seedChartOfAccounts } from "./bu-base";
 import { seedAccountingBase } from "./accounting";
 import { seedMappings } from "./mappings";
+import { countRolesToCopy } from "./roles";
 import { seedAccess, seedAccountingRoles } from "./access";
 import { seedPeriod, planPeriod, planNextPeriod } from "./period";
 import { callReset } from "./reset";
@@ -100,7 +101,8 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     env.problems.forEach((p) => log(`  ✗ ${p}`));
     return 1;
   }
-  log("step 0: 9 accounts in the BU, purchase permissions present");
+  log(`step 0: 9 accounts in ${cfg.buCode}, default ${BU_CODE}, cost method ${TEST_BUS.find((b) => b.code === cfg.buCode)?.method}${env.notes.length === 0 ? ", purchase permissions present" : ""}`);
+  env.notes.forEach((n) => log(`  note: ${n}`));
   const admin = await sessions.client(cfg.adminEmail);
 
   if (args.dryRun) {
@@ -111,11 +113,13 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log(`coa: would POST ${loadCoaFixture().length} accounts unless their codes exist`);
     log("accounting: would PUT gl_setting (AP / VAT / WHT / deposit / FX accounts, ap_auto_from_grn off), POST a GL fiscal year unless an open period covers today, POST bank account E2E-BANK, map the Vat 7% profile and POST WHT 3%, and PUT the AP control account on every vendor — each skipped when already set");
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
+    const toCopy = await countRolesToCopy(sessions, cfg);
+    if (cfg.buCode !== BU_CODE) log(`copy-roles: would copy ${toCopy} roles from ${BU_CODE} (name + granted permissions, mapped by resource.action) before assigning them`);
     log("access: would POST each account's missing role (requestor, hod, purchase, fc/gm/owner/storemanager → Approval, budget → Accounting) and set THB as the BU's default currency if none is set");
     log("accounting-roles: would create \"Accounting Approver\" (budget: AP void, JV void / post / reverse) and \"Accounting Viewer\" (requestor: view only) from the BU's permission catalog, unless they exist");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
     log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today, then ensure ${JSON.stringify(planNextPeriod(now))} exists via POST /next`);
-    log("documents: would create 5 stock-ins, 1 PR template, 41 PRs, 7 POs, 4 GRNs, 2 CNs, 7 SRs, 3 price lists, 3 campaigns, the accounting read set (8 AP documents incl. payments, 1 JV, 1 JV template), then verify the counts");
+    log("documents: would create 5 stock-ins, 4 doc-flow products, 1 PR template, 41 PRs, 7 POs, 4 GRNs, 2 CNs, 7 SRs, 3 price lists, 3 campaigns, the accounting read set (8 AP documents incl. payments, 1 JV, 1 JV template), then verify the counts");
     return 0;
   }
 
@@ -190,7 +194,13 @@ async function main(): Promise<void> {
     console.log(resetHelpText());
     process.exit(0);
   }
-  process.exit(await runDataReset(args, resolveResetConfig()));
+  const targets = args.bu === "all" ? TEST_BUS.map((b) => b.code) : [args.bu];
+  for (const [i, code] of targets.entries()) {
+    if (targets.length > 1) console.log(`\n=== BU ${i + 1}/${targets.length} ===`);
+    const exit = await runDataReset(args, resolveResetConfig(process.env, code));
+    if (exit !== 0) process.exit(exit);
+  }
+  process.exit(0);
 }
 
 if (import.meta.main) {

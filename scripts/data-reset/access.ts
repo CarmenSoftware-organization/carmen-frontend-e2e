@@ -4,10 +4,13 @@
 // "Permission Denied" on the PR pages) and the BU had no default currency (amounts fell back to THB
 // with a warning banner on every page).
 // สิทธิ์ของบัญชีเทสใน TEST BU (application role) และสกุลเงินหลักของ BU — ไม่มีใครตั้งให้เอง
-import { TEST_USERS } from "../../tests/test-users";
+import { BU_CODE, TEST_USERS } from "../../tests/test-users";
 import type { ResetConfig } from "./config";
 import type { Sessions } from "./sessions";
 import { rowsOf, type StepResult } from "./step-result";
+import { withAdminDefaultBu } from "./bu-base";
+import { copyRolesFromSource } from "./roles";
+import { PURCHASE_EMAIL, purchaseProblems } from "./verify-env";
 
 const email = (local: string) => `carmensoftware.dev+${local}@gmail.com`;
 const localPart = (account: string) => account.split("+")[1].split("@")[0];
@@ -92,6 +95,13 @@ export async function seedAccess(
   const result: StepResult = { step: "access", created: 0, skipped: 0, failed: [] };
   const nameOf = new Map(Object.entries(userIds).map(([account, id]) => [id, localPart(account)]));
 
+  if (cfg.buCode !== BU_CODE) {
+    const copied = await copyRolesFromSource(sessions, cfg);
+    result.created += copied.created;
+    result.skipped += copied.skipped;
+    result.failed.push(...copied.failed);
+    if (copied.failed.length > 0) return result;
+  }
   const roles = rowsOf<Role>((await admin.get(`${base}/application-roles?perpage=100`)).body);
   const current = rowsOf<UserRoles>((await admin.get(`${base}/user-application-roles?perpage=100`)).body);
   const { plans, problems } = planRoleAssignments(roles, current, userIds);
@@ -104,16 +114,21 @@ export async function seedAccess(
     else result.failed.push(`${nameOf.get(plan.user_id)}: POST ${path} → ${res.status}`);
   }
 
-  const bu = ((await admin.get("/api/business-units")).body as { data?: BusinessUnit })?.data;
-  const currencies = rowsOf<{ id: string; code: string }>((await admin.get(`${base}/currencies?perpage=100`)).body);
-  const currency = bu ? planDefaultCurrency(bu, currencies, cfg.buCode) : { problem: "cannot read admin's default BU" };
-  if ("problem" in currency) result.failed.push(currency.problem);
-  else if (currency.body) {
-    const res = await admin.patch("/api/business-units", currency.body);
-    if (res.ok) result.created += 1;
-    else result.failed.push(`PATCH /api/business-units → ${res.status}`);
-  } else result.skipped += 1;
-  return result;
+  if (cfg.buCode !== BU_CODE && userIds[PURCHASE_EMAIL]) {
+    result.failed.push(...(await purchaseProblems(sessions, cfg, userIds[PURCHASE_EMAIL])));
+  }
+  return withAdminDefaultBu(sessions, cfg, result, async () => {
+    const bu = ((await admin.get("/api/business-units")).body as { data?: BusinessUnit })?.data;
+    const currencies = rowsOf<{ id: string; code: string }>((await admin.get(`${base}/currencies?perpage=100`)).body);
+    const currency = bu ? planDefaultCurrency(bu, currencies, cfg.buCode) : { problem: "cannot read admin's default BU" };
+    if ("problem" in currency) result.failed.push(currency.problem);
+    else if (currency.body) {
+      const res = await admin.patch("/api/business-units", currency.body);
+      if (res.ok) result.created += 1;
+      else result.failed.push(`PATCH /api/business-units → ${res.status}`);
+    } else result.skipped += 1;
+    return result;
+  });
 }
 
 /**

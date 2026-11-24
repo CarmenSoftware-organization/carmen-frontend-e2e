@@ -1,6 +1,9 @@
 import type { Page } from "@playwright/test";
-import { test, gotoBu, expect, observed } from "./fixtures/movement.fixture";
-import { apiGet } from "./helpers/movement/api";
+import { test, gotoBu, expect, observed } from "./fixtures/doc-flow.fixture";
+import { BU_CODE } from "./test-users";
+import { buSend } from "./helpers/bu-api";
+import { dfGet, multiBuRows } from "./helpers/doc-flow/api";
+import { DF as P, itemRow, srLocations, srWorkflowName, stamp } from "./helpers/doc-flow/data";
 import {
   addRow,
   answerSrDateQuestion,
@@ -14,26 +17,56 @@ import {
   toasts,
   typeInto,
 } from "./helpers/movement/ui";
-import { DOC_FLOW_BU as BU, DOC_FLOW_ROLE, PROD, SR_TO, itemRow, srIssueWorkflowName, stamp } from "./helpers/movement/doc-flow";
 
 /**
- * SR doc flow — movement suite (opt-in: `bun run test:movement`).
- * CARMEN-AVG · requestor · workflow SR workflow (Create→HOD→Issue) · LCX013 → 1FO02.
- * draft → view → edit (header + qty) → delete → new + Submit.
+ * SR doc flow — doc-flow suite on the TEST BU (AVG), gmail accounts.
+ * BU-GR2VYNKQ · Requestor ("Create Request" of the Store Requisition workflow: Create -> Store Approval -> Issue) ·
+ * product E2E-DF-1 · workflow and from/to locations read at run time.
+ * draft -> view -> edit (header + qty) -> delete -> new + Submit.
  *
- * The SR product lookup = products stocked at BOTH locations ∩ the workflow's
- * products, and requestor's only shared product is A — so line add/remove is not
- * exercised here (it passed in the admin round on TEST-MOVE → TEST-CONSUME).
- * Origin: `_movement_play/eop_bf/e2e/fe/03-sr.spec.ts` (SR.1–SR.5).
+ * Needs the doc-flow step of `bun run data:reset`.
+ * Origin: `_movement_play/eop_bf/e2e/fe/03-sr.spec.ts` (SR.1-SR.5).
  */
-const { user: USER, loc: FROM } = DOC_FLOW_ROLE.sr;
-const TO = SR_TO;
-test.use({ user: USER, bu: BU });
-test.describe.configure({ mode: "serial" });
+const BU = BU_CODE;
+test.use({ role: "Requestor", bu: BU_CODE });
+test.describe.configure({ mode: "serial", retries: 0 });
+test.setTimeout(300_000);
 // The source location may hold no stock: the cost estimator answers 422 and the screen shows Total 0.00 with no warning.
 test.beforeEach(({ signals }) =>
   signals.minor(/\/cost\/products\/.+ → 422/, "no stock at the source location: cost estimator 422, screen shows Total 0.00 without a warning"),
 );
+
+let FROM = "";
+let TO = "";
+let WORKFLOW = "";
+const DESC = `FE-CRUD SR ${stamp}`;
+
+test.beforeAll(async () => {
+  ({ from: FROM, to: TO } = await srLocations(BU));
+  WORKFLOW = await srWorkflowName(BU);
+});
+
+/**
+ * Cleanup by description stamp, read from the API (not from in-memory ids) so a failed case is
+ * still cleaned. Only drafts can be deleted; the submitted SR is left in progress (warned) until
+ * the next data:reset. Failures throw so the hook fails visibly.
+ */
+test.afterAll(async () => {
+  test.setTimeout(180_000);
+  const rows = await multiBuRows(`/store-requisitions?perpage=100&search=${encodeURIComponent(DESC)}`, BU);
+  const failures: string[] = [];
+  for (const d of rows) {
+    if (!String(d.description ?? "").startsWith(DESC)) continue;
+    if (d.doc_status !== "draft") {
+      // only drafts can be deleted — submitted docs wait for the next data:reset
+      console.warn(`cleanup: left ${d.sr_no} in ${d.doc_status} until next data:reset`);
+      continue;
+    }
+    const r = await buSend("Admin", "DELETE", `/store-requisitions/${d.id}`, undefined, BU);
+    if (r.status >= 300) failures.push(`${d.sr_no ?? d.id} HTTP ${r.status} ${JSON.stringify(r.body).slice(0, 200)}`);
+  }
+  if (failures.length) throw new Error(`cleanup: SR draft(s) not deleted: ${failures.join(" | ")}`);
+});
 
 interface SrLine {
   product: string;
@@ -41,8 +74,8 @@ interface SrLine {
 }
 
 async function srById(id: string) {
-  const { status, body } = await apiGet(`/api/${BU}/store-requisitions/${id}`);
-  if (status !== 200) return { status: "deleted", no: "", desc: "", stage: "", lines: [] as SrLine[] };
+  const { status, body } = await dfGet(`/store-requisitions/${id}`, "Admin", BU);
+  if (status !== 200 || !body?.data) return { status: "deleted", no: "", desc: "", stage: "", lines: [] as SrLine[] };
   const d = body.data;
   const details = d.store_requisition_detail ?? d.details ?? [];
   return {
@@ -75,25 +108,24 @@ async function saveAndWait(page: Page) {
 }
 
 async function fillHeader(page: Page, desc: string) {
-  await pickSelectIn(page, "Workflow", await srIssueWorkflowName(BU));
+  await pickSelectIn(page, "Workflow", WORKFLOW);
   await pickLookup(page, field(page, "Request From").locator("button").first(), FROM);
   await pickLookup(page, field(page, "Deliver To (Destination)").locator("button").first(), TO);
   await page.locator("#sr-description").fill(desc);
 }
 
 let draftId = "";
-const LINES: SrLine[] = [{ product: PROD.A.code, qty: 3 }];
-const DESC = `FE-CRUD SR ${stamp}`;
+const LINES: SrLine[] = [{ product: P.P1.code, qty: 3 }];
 const EDITED_DESC = `${DESC} (แก้)`;
-const EDITED: SrLine[] = [{ product: PROD.A.code, qty: 7 }];
+const EDITED: SrLine[] = [{ product: P.P1.code, qty: 7 }];
 
 test(
   "TC-SR-700001 Requestor สร้าง SR draft แล้วหลังบ้านเก็บคำอธิบายและรายการครบ",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น requestor@carmen.com (movement-setup); BU CARMEN-AVG; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) มีสินค้าแล้ว (bun run movement:setup-workflows); requestor มีคลัง LCX013 และ 1FO02" },
-      { type: "steps", description: "1. เปิด /store-operation/store-requisition/new\n2. เลือก workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev), Request From LCX013, Deliver To 1FO02, ใส่คำอธิบาย\n3. Add Item: กร๊อบกรอบ รสสาหร่าย (11020001) × 3\n4. กด Save" },
-      { type: "expected", description: "Save ตอบ < 300 และ URL เปลี่ยนเป็นหน้าใบ; หลังบ้าน doc_status = draft, description ตรง และรายการ 11020001×3" },
+      { type: "preconditions", description: "Login เป็น บัญชี Requestor (gmail); BU TEST (AVG); workflow Store Requisition ขั้น Create→Store Approval→Issue; E2E-DF-1 อยู่ทั้งสองคลังของคู่ doc-flow (data:reset)" },
+      { type: "steps", description: "1. เปิด /store-operation/store-requisition/new\n2. เลือก workflow Store Requisition, Request From = คลังแรกของคู่ doc-flow, Deliver To = คลังที่สอง, ใส่คำอธิบาย\n3. Add Item: E2E-DF-1 × 3\n4. กด Save" },
+      { type: "expected", description: "Save ตอบ < 300 และ URL เปลี่ยนเป็นหน้าใบ; หลังบ้าน doc_status = draft, description ตรง และรายการ E2E-DF-1×3" },
       { type: "priority", description: "High" },
       { type: "testType", description: "CRUD" },
       { type: "note", description: "เดิม SR.1 (_movement_play fe/03-sr) · TC-SR-010001/040001 ไม่ได้ assert อะไร · ครอบบางส่วนของ gap TC-SR-040101" },
@@ -119,9 +151,9 @@ test(
   "TC-SR-700002 Requestor เปิด SR draft แล้วเห็นคลังต้นทาง/ปลายทางและจำนวนตามที่บันทึก",
   {
     annotation: [
-      { type: "preconditions", description: "TC-SR-700001 ผ่านแล้วในรอบเดียวกัน (serial) — มี SR draft บน CARMEN-AVG" },
+      { type: "preconditions", description: "TC-SR-700001 ผ่านแล้วในรอบเดียวกัน (serial) — มี SR draft บน TEST BU (AVG)" },
       { type: "steps", description: "1. เปิด /store-operation/store-requisition/<id> จากลิงก์ตรง\n2. อ่านช่องคำอธิบาย คลังต้นทาง/ปลายทาง และแถวรายการ" },
-      { type: "expected", description: "ช่องคำอธิบายมีค่า FE-CRUD SR <stamp>; หน้าแสดง LCX013 และ 1FO02; แถว 11020001 มีจำนวน 3" },
+      { type: "expected", description: "ช่องคำอธิบายมีค่า FE-CRUD SR <stamp>; หน้าแสดงคลังต้นทาง/ปลายทางของคู่ doc-flow; แถว E2E-DF-1 มีจำนวน 3" },
       { type: "priority", description: "Medium" },
       { type: "testType", description: "CRUD" },
       { type: "note", description: "เดิม SR.2 · main ไม่มีเคสเปิดดู SR draft ที่ตรวจค่า" },
@@ -149,19 +181,19 @@ test(
   "TC-SR-700003 Requestor แก้ SR draft (คำอธิบาย + จำนวน)",
   {
     annotation: [
-      { type: "preconditions", description: "TC-SR-700001 ผ่านแล้วในรอบเดียวกัน (serial) — SR draft มี 11020001×3" },
-      { type: "steps", description: "1. เปิดใบ แล้วกด Edit\n2. แก้คำอธิบายเป็น \"... (แก้)\"\n3. แก้จำนวน 11020001 3 → 7\n4. กด Save" },
-      { type: "expected", description: "Save ตอบ < 300; หลังบ้านเก็บคำอธิบายใหม่ และรายการเป็น 11020001×7" },
+      { type: "preconditions", description: "TC-SR-700001 ผ่านแล้วในรอบเดียวกัน (serial) — SR draft มี E2E-DF-1×3" },
+      { type: "steps", description: "1. เปิดใบ แล้วกด Edit\n2. แก้คำอธิบายเป็น \"... (แก้)\"\n3. แก้จำนวน E2E-DF-1 3 → 7\n4. กด Save" },
+      { type: "expected", description: "Save ตอบ < 300; หลังบ้านเก็บคำอธิบายใหม่ และรายการเป็น E2E-DF-1×7" },
       { type: "priority", description: "Medium" },
       { type: "testType", description: "CRUD" },
-      { type: "note", description: "เดิม SR.3 · ครอบบางส่วนของ gap TC-SR-040103 · ไม่ได้ทดสอบลบ/เพิ่มรายการ เพราะ requestor มีสินค้าร่วมสองคลังแค่ตัวเดียว" },
+      { type: "note", description: "เดิม SR.3 · ครอบบางส่วนของ gap TC-SR-040103 · ยังไม่ทดสอบลบ/เพิ่มรายการ" },
     ],
   },
   async ({ page }) => {
     await gotoBu(page, `/store-operation/store-requisition/${draftId}`, BU);
     await button(page, "Edit").click();
     await page.locator("#sr-description").fill(EDITED_DESC);
-    await typeInto(itemRow(page, PROD.A.code).locator('input[name$=".requested_qty"]'), 7);
+    await typeInto(itemRow(page, P.P1.code).locator('input[name$=".requested_qty"]'), 7);
     const r = await saveAndWait(page);
     expect(r.status, JSON.stringify(r.body).slice(0, 400)).toBeLessThan(300);
     await expect.poll(async () => fmt((await srById(draftId)).lines), { timeout: 15_000 }).toBe(fmt(EDITED));
@@ -198,12 +230,12 @@ test(
 );
 
 test(
-  "TC-SR-700005 Requestor สร้าง SR แล้ว Submit ได้เลขจริงและไปขั้น HOD",
+  "TC-SR-700005 Requestor สร้าง SR แล้ว Submit ได้เลขจริงและไปขั้น Store Approval",
   {
     annotation: [
-      { type: "preconditions", description: "Login เป็น requestor@carmen.com; BU CARMEN-AVG; workflow SR workflow ขั้น Create→HOD→Issue (หาจาก stage ไม่ใช้ชื่อ — ชื่อถูกเปลี่ยนบน dev) ขั้นแรกคือ HOD" },
-      { type: "steps", description: "1. สร้าง SR ใหม่ 1 รายการ 11020001 × 1 แล้วกด Save\n2. กด Submit ที่หน้าใบ\n3. ยืนยันใน dialog\n4. ถ้าระบบถาม \"Which date should this carry?\" (วันนี้อยู่นอกงวด active) เลือก \"inside the open period\"" },
-      { type: "expected", description: "คำตอบสุดท้ายของ submit < 300; หลังบ้าน doc_status = in_progress, sr_no ไม่ขึ้นต้นด้วย draft และ workflow_current_stage = HOD" },
+      { type: "preconditions", description: "Login เป็นบัญชี Requestor (gmail); BU TEST (AVG); workflow Store Requisition ขั้น Create→Store Approval→Issue ขั้นแรกคือ Store Approval (ไม่มีขั้น HOD)" },
+      { type: "steps", description: "1. สร้าง SR ใหม่ 1 รายการ E2E-DF-1 × 1 แล้วกด Save\n2. กด Submit ที่หน้าใบ\n3. ยืนยันใน dialog\n4. ถ้าระบบถาม \"Which date should this carry?\" (วันนี้อยู่นอกงวด active) เลือก \"inside the open period\"" },
+      { type: "expected", description: "คำตอบสุดท้ายของ submit < 300; หลังบ้าน doc_status = in_progress, sr_no ไม่ขึ้นต้นด้วย draft และ workflow_current_stage = Store Approval" },
       { type: "priority", description: "High" },
       { type: "testType", description: "Functional" },
       { type: "note", description: "เดิม SR.5 · TC-SR-050001 หาปุ่ม \"submit for approval\" ซึ่งไม่มีแล้ว จึง skip ทุกรอบ — ปุ่มจริงชื่อ Submit · 422 *_DATE_PATTERN_REQUIRED รอบแรกเป็นพฤติกรรมที่ตั้งใจ" },
@@ -211,7 +243,7 @@ test(
   },
   async ({ page, signals }) => {
     signals.expectApiError(/\/store-requisitions\/.+\/submit → 422/);
-    const line: SrLine = { product: PROD.A.code, qty: 1 };
+    const line: SrLine = { product: P.P1.code, qty: 1 };
     await gotoBu(page, "/store-operation/store-requisition/new", BU);
     await fillHeader(page, `${DESC} submit`);
     await addLine(page, line);
@@ -232,7 +264,7 @@ test(
     await expect.poll(async () => (await srById(id)).status, { timeout: 30_000 }).toBe("in_progress");
     const sr = await srById(id);
     expect(sr.no).not.toMatch(/^draft/);
-    expect(sr.stage).toBe("HOD");
+    expect(sr.stage).toBe("Store Approval");
     await observed(
       `${sr.no} · ${sr.status} · stage ${sr.stage} · date question: ${askedInDialog ? "asked in the dialog" : q.asked ? `asked (${q.code})` : "not asked"} · ${fmt(sr.lines)} · dialog: "${dialogText.slice(0, 160)}"`,
     );
