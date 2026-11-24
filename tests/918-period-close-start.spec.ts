@@ -71,7 +71,7 @@ test(
     ],
   },
   async ({ page }) => {
-    test.skip(!irreversibleAllowed(PERIOD), irreversibleSkip("Start Period Close opens the count round"));
+    test.skip(!(await irreversibleAllowed(PERIOD)), irreversibleSkip("Start Period Close opens the count round"));
     expect(await currentPeriod(BU)).toBe(PERIOD);
     const before = await review(BU);
     if (before.physical_count_period?.status === "counting") {

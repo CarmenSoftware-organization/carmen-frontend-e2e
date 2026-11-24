@@ -79,7 +79,7 @@ test(
     ],
   },
   async ({ page }) => {
-    test.skip(!irreversibleAllowed(PERIOD), irreversibleSkip("a submitted count sheet cannot be reopened"));
+    test.skip(!(await irreversibleAllowed(PERIOD)), irreversibleSkip("a submitted count sheet cannot be reopened"));
     const LOCATIONS = await countTargets();
     expect(LOCATIONS.length, `ไม่มีคลังให้นับ${ONLY ? ` (E2E_PERIOD_LOC=${ONLY.join(",")} ไม่ตรงคลังไหนเลย)` : ""}`).toBeGreaterThan(0);
     if (!ONLY) expect(LOCATIONS, "คลังทดสอบราคาต้องอยู่ในรอบนับ").toContain(L.code);

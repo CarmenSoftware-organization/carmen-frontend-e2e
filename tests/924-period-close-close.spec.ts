@@ -127,7 +127,7 @@ test(
     ],
   },
   async ({ page }) => {
-    test.skip(!irreversibleAllowed(PERIOD), irreversibleSkip("Close Period locks the period"));
+    test.skip(!(await irreversibleAllowed(PERIOD)), irreversibleSkip("Close Period locks the period"));
     const images: string[] = [];
     let closeStatus = "(ปิดไว้แล้วจากรอบก่อน)";
 

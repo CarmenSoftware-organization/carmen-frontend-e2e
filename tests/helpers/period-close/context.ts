@@ -2,17 +2,19 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Locator, Page } from "@playwright/test";
 import { test as movementTest, expect, gotoBu, pinBusinessUnit } from "../../fixtures/movement.fixture";
-import { apiGet } from "../movement/api";
+import { authFile } from "../../fixtures/auth.paths";
+import { TEST_USERS, TEST_BUS, type TestBuCode } from "../../test-users";
+import { buConfigSend, buSend, rawSend, type Role } from "../bu-api";
 import { hasDb, sql as rawSql } from "../movement/db";
 import { DocState, type DocRef } from "../movement/state";
-import { SCENARIO, SCENARIO_SET, SCN } from "./scenarios";
+import { SCENARIO_SET, SCN, bangkokToday, scenarioTooEarly } from "./scenarios";
 
 /**
  * Shared context of the period-close phases (`tests/9xx-period-close-*.spec.ts`,
  * project `period-close`, opt-in with E2E_PERIOD_CLOSE=1).
  *
- * Everything is keyed by the scenario in E2E_PERIOD_SCENARIO (see scenarios.ts):
- * the BU, the period under test, the documents to create. Phases run one at a time
+ * Everything is derived from E2E_PERIOD_BU (one of the TEST BUs) and today's date (see
+ * scenarios.ts): the BU, the period under test, the documents to create. Phases run one at a time
  * (`bun run test:period-close -- tests/910-…`), hand documents to each other through
  * state.json, and keep per-sub-case evidence (results.json + screenshots) — a rerun
  * reads it to skip steps that already ran (prevRecord).
@@ -22,16 +24,46 @@ import { SCENARIO, SCENARIO_SET, SCN } from "./scenarios";
 
 /** BU of the scenario under test. */
 export const BU = SCN.bu;
-/** Tenant schema, quoted — CARMEN_FIFO, not CARMEN-FIFO (a wrong name returns zero rows silently). */
-export const SCHEMA = `"${SCN.schema}"`;
+/**
+ * Tenant schema, quoted — opaque (e.g. bu_tcczafackj4us7i6), looked up by requireScenario() from
+ * CARMEN_SYSTEM.tb_business_unit. Interpolate it in a template string (`${SCHEMA}.tb_x`): it is read
+ * at that moment, so it reflects the value resolved at runtime. Before requireScenario() it is "".
+ */
+export const SCHEMA = { toString: (): string => (SCN.schema ? `"${SCN.schema}"` : "") };
+
+/** Period-close accounts: the gmail TEST_USERS (same ones the `setup` project signs in), by short key. */
+const PC_ROLES = { admin: "Admin", requestor: "Requestor", hod: "HOD", fc: "FC" } as const satisfies Record<string, Role>;
+export type PcUser = keyof typeof PC_ROLES;
+export const PC_USERS = Object.fromEntries(
+  (Object.keys(PC_ROLES) as PcUser[]).map((k) => {
+    const u = TEST_USERS.find((x) => x.role === PC_ROLES[k])!;
+    return [k, { email: u.email as string, password: u.password as string }];
+  }),
+) as Record<PcUser, { email: string; password: string }>;
+const pcRole = (user: string): Role => {
+  const r = PC_ROLES[user as PcUser];
+  if (!r) throw new Error(`period-close: no account for "${user}" (have ${Object.keys(PC_ROLES).join(", ")})`);
+  return r;
+};
+
+/** Direct backend call as a period-close account (admin by default); `path` is the full gateway path from `/api`. */
+export async function apiSend<T = any>(method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE", path: string, body?: unknown, user: PcUser = "admin") {
+  const r = await rawSend<T>(pcRole(user), method, path, body);
+  return { ...r, appCode: ((r.body as any)?.error?.code ?? "") as string };
+}
+export const apiGet = <T = any>(path: string, user: PcUser = "admin") => apiSend<T>("GET", path, undefined, user);
 
 /**
- * Admin on the scenario's BU by default — period close runs as admin (role accounts
- * have no FIFO permission). Front-end signals are recorded (attached to the report)
+ * Admin on the scenario's BU by default — period close runs as admin. Front-end signals are recorded (attached to the report)
  * but do not fail the case: the phases provoke refusals on purpose and assert the
  * backend's answers themselves.
  */
-export const test = movementTest.extend({ bu: BU, failOnSignals: false });
+export const test = movementTest.extend({
+  bu: BU,
+  failOnSignals: false,
+  // gmail accounts signed in by the normal `setup` project (the base fixture points at the legacy movement accounts)
+  storageState: async ({ user }, use) => use(authFile(PC_USERS[user as PcUser]?.email ?? pcRole(user))),
+});
 
 /** Navigate and confirm the header shows the intended BU — never post a document into the wrong BU. */
 export const gotoInBu = (page: Page, path: string, bu: string = BU) => gotoBu(page, path, bu);
@@ -39,29 +71,79 @@ export const gotoInBu = (page: Page, path: string, bu: string = BU) => gotoBu(pa
 export { expect, pinBusinessUnit };
 
 /**
- * Call from each phase's beforeAll: stops a run that did not name its scenario
- * (the default exists only so `--list` works) — running a stale scenario against a
- * BU that has moved on would create documents in the wrong period.
+ * Call from each phase's beforeAll (return its promise): stops a run that cannot be trusted —
+ * no/unknown E2E_PERIOD_BU, today too early for the scenario, or a BU whose cost method is not
+ * the TEST BU's. Then fills the runtime parts of SCN in place (SCN.location is aliased by `L`,
+ * so it is mutated, never reassigned): tenant schema, first inventory location, CN reason.
+ * Location is also written to runs/period-close/<BU>/location.json for later workers.
  */
-export function requireScenario(): void {
+export async function requireScenario(): Promise<void> {
   if (!SCENARIO_SET) {
-    throw new Error("set E2E_PERIOD_SCENARIO (e.g. avg2607) — see tests/helpers/period-close/scenarios.ts");
+    throw new Error(`set E2E_PERIOD_BU to one of ${TEST_BUS.map((b) => b.code).join(", ")} — see tests/helpers/period-close/scenarios.ts`);
+  }
+  if (!TEST_BUS.some((b) => b.code === process.env.E2E_PERIOD_BU)) {
+    throw new Error(`E2E_PERIOD_BU=${process.env.E2E_PERIOD_BU} is not a TEST BU (${TEST_BUS.map((b) => b.code).join(", ")})`);
+  }
+  const early = scenarioTooEarly(bangkokToday());
+  if (early) throw new Error(early);
+
+  const want = TEST_BUS.find((b) => b.code === BU)!.method;
+  const got = (await buSend("Admin", "GET", "/inventory-transactions/calculation-method", undefined, BU)).body?.data?.calculation_method;
+  if (got !== want) throw new Error(`${BU}: calculation-method is ${JSON.stringify(got)}, expected ${want} (TEST_BUS)`);
+
+  // Tenant schema is opaque — read it from the system schema.
+  if (!hasDb()) {
+    if (process.env.E2E_MOVEMENT_STRICT === "1") throw new Error("period-close needs E2E_DB_URL (read-only SQL) — set it in .env.local");
+  } else if (!SCN.schema) {
+    const rows = rawSql<{ db_schema: string }>(`select db_schema from "CARMEN_SYSTEM".tb_business_unit where code = '${BU}'`);
+    const schema = rows[0]?.db_schema;
+    if (!schema || !/^[a-z0-9_]+$/i.test(schema)) throw new Error(`${BU}: tenant schema not found in CARMEN_SYSTEM.tb_business_unit (got ${JSON.stringify(schema)})`);
+    SCN.schema = schema;
+  }
+
+  // First active inventory location by code — the one data:reset seeds the E2E-PC products into.
+  if (SCN.location.code === "?") {
+    const r = await buConfigSend("Admin", "GET", "/locations?perpage=100", undefined, BU);
+    if (r.status !== 200) throw new Error(`${BU}: locations HTTP ${r.status}`);
+    const first = ((r.body?.data ?? []) as any[])
+      .filter((l) => (l.location_type ?? "inventory") === "inventory" && l.is_active !== false)
+      .sort((x, y) => String(x.code).localeCompare(String(y.code)))[0];
+    if (!first) throw new Error(`${BU}: no active inventory location`);
+    SCN.location.code = String(first.code);
+    SCN.location.name = String(first.name ?? first.code);
+    const dir = join("runs", "period-close", BU);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "location.json"), JSON.stringify(SCN.location, null, 2));
+  }
+
+  if (!SCN.cnReason) {
+    const r = await buConfigSend("Admin", "GET", "/credit-note-reasons?perpage=100", undefined, BU);
+    if (r.status !== 200) throw new Error(`${BU}: credit-note-reasons HTTP ${r.status}`);
+    const row = ((r.body?.data ?? []) as any[]).find((x) => x.is_active !== false);
+    if (!row) throw new Error(`${BU}: no active credit-note reason`);
+    SCN.cnReason = String(row.name);
   }
 }
 
-/** Gate for the irreversible steps (Start Period Close, Close Period): E2E_ALLOW_IRREVERSIBLE=<BU>:<period>. */
-export const irreversibleAllowed = (period: string): boolean => process.env.E2E_ALLOW_IRREVERSIBLE === `${BU}:${period}`;
+/**
+ * Gate for the irreversible steps (Start Period Close, count submit, Close Period): they run only on a
+ * TEST BU whose active period is the scenario's — `data:reset --bu <BU> --with-history` puts it there.
+ * `period` is the one the step expects to still be active.
+ */
+export async function irreversibleAllowed(period: string): Promise<boolean> {
+  return TEST_BUS.some((b) => b.code === (BU as TestBuCode)) && (await currentPeriod(BU)) === period;
+}
 
-/** Skip reason of a step that cannot be undone — the catch-up rounds never set the gate (user decision 2026-11-22). */
+/** Skip reason of a step that cannot be undone. */
 export const irreversibleSkip = (what: string): string =>
-  `irreversible: ${what} — needs E2E_ALLOW_IRREVERSIBLE=${BU}:<period>, not run in catch-up per user 2026-11-22`;
+  `irreversible: ${what} — BU active period is not ${SCN.period}; run data:reset --bu ${BU} --with-history first`;
 
 /**
  * Environment gates of a phase, checked before every case (beforeEach) so a gap is a skip with the reason on the report
  * instead of a failure deep inside a step — E2E_MOVEMENT_STRICT=1 turns the gap into a failure for a CI that must not lose cases.
- *  - db: the phase verifies through SQL (E2E_DB_URL) — the catch-up environment has none.
+ *  - db: the phase verifies through SQL (E2E_DB_URL).
  *  - dates: the phase fills a document date inside the scenario's period through the UI; the FE caps it at min(period end, today)
- *    (FE 90018c6d), so it needs a period that already contains today.
+ *    (FE 90018c6d), so it skips only when today is before the period's start.
  *  - counting: the phase works on an open count round, which only the irreversible Start Period Close opens.
  * `only` narrows the gate to cases whose title matches.
  */
@@ -72,14 +154,14 @@ export function gatePhase(needs: { db?: boolean; dates?: boolean; counting?: boo
       if (needs.db && !hasDb()) return "needs E2E_DB_URL (read-only SQL against the tenant DB) — not set in this environment, so this phase is not verified here";
       const r = needs.dates || needs.counting ? await review(BU) : null;
       if (needs.dates && r) {
-        const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
-        const [a, b] = [r.start_date, r.end_date].map((d) => String(d).slice(0, 10));
-        if (today < a || today > b) {
-          return `period ${SCN.period} (${a}..${b}) does not contain today ${today} — the FE caps document dates at min(period end, today) (FE 90018c6d), so nothing can be dated inside it through the UI`;
+        const today = bangkokToday();
+        const a = String(r.start_date).slice(0, 10);
+        if (today < a) {
+          return `today ${today} is before the start of period ${SCN.period} (${a}) — the FE caps document dates at min(period end, today) (FE 90018c6d), so nothing can be dated inside it through the UI`;
         }
       }
       if (needs.counting && r?.physical_count_period?.status !== "counting") {
-        return `count round of ${SCN.period} is ${r?.physical_count_period?.status ?? "absent"}, not counting — opening it is the irreversible Start Period Close (E2E_ALLOW_IRREVERSIBLE=${BU}:${SCN.period}, not run in catch-up per user 2026-11-22)`;
+        return `count round of ${SCN.period} is ${r?.physical_count_period?.status ?? "absent"}, not counting — opening it is the irreversible Start Period Close (phase 918)`;
       }
       return null;
     })());
@@ -141,11 +223,11 @@ export async function buConfig(bu: string, key: string): Promise<unknown> {
 // ── Evidence (per sub-case) ──────────────────────────────────────────────────────
 
 /**
- * Evidence folder of this scenario: runs/period-close/<scenario> (gitignored), or
+ * Evidence folder of this scenario: runs/period-close/<BU>/<period> (gitignored), or
  * E2E_EVIDENCE_DIR. Each phase is a separate command writing into the same folder;
  * rerunning overwrites a row instead of appending.
  */
-export const EVIDENCE_DIR = process.env.E2E_EVIDENCE_DIR ?? join("runs", "period-close", SCENARIO);
+export const EVIDENCE_DIR = process.env.E2E_EVIDENCE_DIR ?? join("runs", "period-close", BU, SCN.period);
 const RESULTS = join(EVIDENCE_DIR, "results.json");
 
 /** FIXED = was a bug (FAIL), fixed and retested — the row stays as history. */

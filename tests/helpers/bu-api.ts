@@ -131,3 +131,7 @@ export async function profilePermissions(role: Role): Promise<unknown> {
 
 /** GET on a gateway path that is not BU-prefixed (`/purchase-requests` -> `/api/purchase-requests`, the cross-BU list). */
 export const rootGet = <T = any>(role: Role, path: string) => send<T>(role, "GET", (u) => `${u}/api${path}`);
+
+/** Any gateway path as `role` (full path from `/api`, e.g. `/api/<BU>/period-ends/review`) — for suites that already build the whole URL. */
+export const rawSend = <T = any>(role: Role, method: Method, fullApiPath: string, body?: unknown) =>
+  send<T>(role, method, (u) => `${u}${fullApiPath}`, body);

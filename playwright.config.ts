@@ -36,9 +36,9 @@ const FRONTEND_DIR =
   process.env.E2E_FRONTEND_DIR ?? "../carmen-frontend";
 const START_FRONTEND = process.env.E2E_NO_WEBSERVER !== "1";
 
-// Period-close suite — opt-in, because it needs the CARMEN-AVG / CARMEN-FIFO tenant,
-// its own accounts (tests/movement-users.ts) and a read-only DB URL, none of
-// which exist on UAT/prod targets, and because its specs post real stock.
+// Period-close suite — opt-in, because it runs on one TEST BU (E2E_PERIOD_BU) with the
+// gmail accounts of the `setup` project, needs a read-only DB URL (E2E_DB_URL) that does
+// not exist on UAT/prod targets, and because its specs post real stock.
 //   E2E_PERIOD_CLOSE=1  period-close phases (`9xx-period-close-*.spec.ts`) — run one phase at a time
 // The doc-flow specs (312 404 502 603 702 721) moved to the TEST BUs and run in `chromium`.
 const PERIOD_CLOSE = process.env.E2E_PERIOD_CLOSE === "1";
@@ -114,20 +114,9 @@ export default defineConfig({
     ...(PERIOD_CLOSE
       ? [
           {
-            name: "movement-setup",
-            testMatch: /movement\.setup\.ts$/,
-            retries: 2,
-            fullyParallel: false,
-            use: movementUse,
-          },
-        ]
-      : []),
-    ...(PERIOD_CLOSE
-      ? [
-          {
             name: "period-close",
             testMatch: PERIOD_CLOSE_SPECS,
-            dependencies: ["movement-setup"],
+            dependencies: ["setup"],
             fullyParallel: false,
             retries: 0,
             timeout: 10 * 60_000,
