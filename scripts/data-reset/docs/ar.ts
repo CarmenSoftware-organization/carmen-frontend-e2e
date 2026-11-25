@@ -43,9 +43,8 @@ interface Plan extends ArReadSetKey {
   total: number;
 }
 
-// VAT is rounded per line (backend): 3 x (333.33 + 23.33) = 1,069.98, not 1,069.99.
 const PLANS: Plan[] = [
-  { ...AR_READ_SET[0], docType: "invoice", customer: "customer1", taxInvoice: true, lines: [{ qty: 1, price: 333.33 }, { qty: 1, price: 333.33 }, { qty: 1, price: 333.33 }], vat: true, total: 1069.98 },
+  { ...AR_READ_SET[0], docType: "invoice", customer: "customer1", taxInvoice: true, lines: [{ qty: 3, price: 333.33 }], vat: true, total: 1069.99 },
   { ...AR_READ_SET[1], docType: "invoice", customer: "customer1", lines: [{ qty: 1, price: 500 }], vat: true, total: 535 },
   { ...AR_READ_SET[2], docType: "credit_note", customer: "customer1", lines: [{ qty: 1, price: 100 }], vat: true, total: 107 },
   { ...AR_READ_SET[3], docType: "debit_note", customer: "customer1", lines: [{ qty: 1, price: 200 }], vat: false, total: 200 },
