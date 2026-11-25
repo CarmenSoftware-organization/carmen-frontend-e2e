@@ -12,7 +12,7 @@ import { rowsOf, type StepResult } from "./step-result";
 export const AR_COST_CENTER_CODE = "E2E-CC-1";
 export const AR_CUSTOMER_CODES = { customer1: "E2E-CUST-1", customer2: "E2E-CUST-2" } as const;
 export const REVENUE_ACCOUNT_CODE = "4100";
-export const NO_VAT_PROFILE_NAME = "None 0%";
+export const NO_VAT_PROFILE_NAME = "None";
 
 /** Ids Task 4's document seeder (and specs) resolve against. */
 export interface ArSetup {

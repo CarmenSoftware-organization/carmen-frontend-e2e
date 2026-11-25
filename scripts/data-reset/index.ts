@@ -116,7 +116,7 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log(`coa: would POST ${loadCoaFixture().length} accounts unless their codes exist`);
     log("accounting: would PUT gl_setting (AP / AR control / input + output VAT / WHT / deposit / FX accounts, ap_auto_from_grn off), POST a GL fiscal year unless an open period covers today, POST bank account E2E-BANK, map the Vat 7% profile and POST WHT 3%, and PUT the AP control account on every vendor — each skipped when already set");
     log(cfg.buCode === BU_CODE
-      ? "ar: would POST cost center E2E-CC-1 and customers E2E-CUST-1 (AR account 1130, tax no, register address) / E2E-CUST-2, unless their codes exist; revenue 4100 and the Vat 7% / None 0% profiles resolved by code / name"
+      ? "ar: would POST cost center E2E-CC-1 and customers E2E-CUST-1 (AR account 1130, tax no, register address) / E2E-CUST-2, unless their codes exist; revenue 4100 and the Vat 7% / None profiles resolved by code / name"
       : "ar: skipped (AR read-set lives on BU-GR2VYNKQ)");
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
     const toCopy = await countRolesToCopy(sessions, cfg);
