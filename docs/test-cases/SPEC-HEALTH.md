@@ -17,7 +17,7 @@ that runs without an `expect(...)`, reports green and checks nothing.
 | **Running cases asserting nothing at all** | **2** |
 | Running cases whose assertions are all trivial | 0 |
 | Running cases behind an in-body skip guard | 26 |
-| Assertions in running cases | 3764 |
+| Assertions in running cases | 3780 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -102,7 +102,7 @@ Sorted by dormant share, then by cases that assert nothing.
 | `803-ap-payment.spec.ts` | 10 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 55 | 0 |
 | `804-ap-payment-approvals.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 37 | 0 |
 | `805-ap-from-grn.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 38 | 0 |
-| `806-ar-invoice.spec.ts` | 39 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 169 | 0 |
+| `806-ar-invoice.spec.ts` | 39 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 185 | 0 |
 | `810-journal-voucher.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 101 | 0 |
 | `811-jv-template.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 35 | 0 |
 | `820-accounting-settings.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |

@@ -23,7 +23,7 @@ import { uid } from "./helpers/test-data";
 // credit-note application, void, viewer. Section 08 (the ar_invoice approval workflow) is a later describe.
 //
 // Roles: Admin creates / edits / deletes / submits / voids (UI + API, a BU admin bypasses the permission keys);
-// Requestor is the viewer (accounting.ar.view only). With no active `ar_invoice` workflow Submit posts, so the
+// Requestor holds accounting.ar.view only (no void). With no active `ar_invoice` workflow Submit posts, so the
 // beforeAll switches the workflow off if a crashed run left it on.
 // Read set (never mutated, seeded by `bun run data:reset --yes`, found by description `STD ar.<row> <KEY>`):
 // E2E-AR-POSTED (one line 3 x 333.33 VAT 7%: net 999.99, VAT 70.00, total 1,069.99, tax invoice TXIV...) ·
@@ -79,14 +79,17 @@ const MIXED: ArLine[] = [
   { qty: 1, price: 999.99 },
 ];
 
+/** beforeAll of every non-workflow describe: accounting ready, and no ar_invoice workflow left active by a crashed run. */
+async function readyWithoutWorkflow() {
+  await assertAccountingReady();
+  if (await arWorkflowActive()) {
+    console.warn("806: ar_invoice workflow was ACTIVE (left by a crashed run); switching it off for the money cases");
+    await setArWorkflowActive(false);
+  }
+}
+
 test.describe("AR invoice (806)", () => {
-  test.beforeAll(async () => {
-    await assertAccountingReady();
-    if (await arWorkflowActive()) {
-      console.warn("806: ar_invoice workflow was ACTIVE (left by a crashed run); switching it off for the money cases");
-      await setArWorkflowActive(false);
-    }
-  });
+  test.beforeAll(readyWithoutWorkflow);
 
   // ── 01 list / detail ──────────────────────────────────────────────────
   test(
@@ -523,10 +526,14 @@ test.describe("AR invoice (806)", () => {
       ],
     },
     async () => {
-      test.fail(true, VAT_PIN);
+      const e = docAmounts([{ qty: 2, price: 100 }]);
       const { id, doc } = await posted("invoice", "vat", [{ qty: 2, price: 100, vat: true }]);
+      expect(doc.status).toBe("posted");
       const jv = await jvOfSource("ar_invoice", id);
-      expect(sum(jv, "2160", "cr"), `${doc.no} JV: ${JSON.stringify(jv.map((l) => [l.account, l.dr, l.cr]))}`).toBe(14);
+      expect(sum(jv, "1130", "dr")).toBe(e.total);
+      expect(sum(jv, "4100", "cr")).toBe(e.net);
+      test.fail(true, VAT_PIN);
+      expect(sum(jv, "2160", "cr"), `${doc.no} JV: ${JSON.stringify(jv.map((l) => [l.account, l.dr, l.cr]))}`).toBe(e.vat);
     },
   );
 
@@ -606,7 +613,6 @@ test.describe("AR invoice (806)", () => {
       ],
     },
     async () => {
-      test.fail(true, "needs product decision: the BE's mixed-rate rule ignores zero-VAT lines, so a tax invoice with a 7% line and a 0% line is posted (200) instead of refused with AR_TAX_INVOICE_MIXED_VAT_RATE; see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
       const created = await createArDoc("invoice", {
         tag: tag("mixed"),
         taxInvoice: true,
@@ -616,6 +622,8 @@ test.describe("AR invoice (806)", () => {
         ],
       });
       const res = await submitArDoc(created.id);
+      expect(created.no).toMatch(/^DRAFT-\d{8}$/);
+      test.fail(true, "needs product decision: the BE's mixed-rate rule ignores zero-VAT lines, so a tax invoice with a 7% line and a 0% line is posted (200) instead of refused with AR_TAX_INVOICE_MIXED_VAT_RATE; see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
       expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(400);
       expect(res.body?.error?.code).toBe("AR_TAX_INVOICE_MIXED_VAT_RATE");
       const doc = await getArDoc(created.id);
@@ -671,10 +679,14 @@ test.describe("AR invoice (806)", () => {
       ],
     },
     async () => {
-      test.fail(true, VAT_PIN);
+      const e = docAmounts([{ qty: 1, price: 200 }]);
       const { id, doc } = await posted("debit_note", "dnvat", [{ qty: 1, price: 200, vat: true }]);
+      expect(doc.status).toBe("posted");
       const jv = await jvOfSource("ar_invoice", id);
-      expect(sum(jv, "2160", "cr"), `${doc.no} JV: ${JSON.stringify(jv.map((l) => [l.account, l.dr, l.cr]))}`).toBe(14);
+      expect(sum(jv, "1130", "dr")).toBe(e.total);
+      expect(sum(jv, "4100", "cr")).toBe(e.net);
+      test.fail(true, VAT_PIN);
+      expect(sum(jv, "2160", "cr"), `${doc.no} JV: ${JSON.stringify(jv.map((l) => [l.account, l.dr, l.cr]))}`).toBe(e.vat);
     },
   );
 
@@ -724,10 +736,14 @@ test.describe("AR invoice (806)", () => {
       ],
     },
     async () => {
-      test.fail(true, VAT_PIN);
+      const e = docAmounts([{ qty: 1, price: 100 }]);
       const { id, doc } = await posted("credit_note", "cnvat", [{ qty: 1, price: 100, vat: true }]);
+      expect(doc.status).toBe("posted");
       const jv = await jvOfSource("ar_invoice", id);
-      expect(sum(jv, "2160", "dr"), `${doc.no} JV: ${JSON.stringify(jv.map((l) => [l.account, l.dr, l.cr]))}`).toBe(7);
+      expect(sum(jv, "1130", "cr")).toBe(e.total);
+      expect(sum(jv, "4100", "dr")).toBe(e.net);
+      test.fail(true, VAT_PIN);
+      expect(sum(jv, "2160", "dr"), `${doc.no} JV: ${JSON.stringify(jv.map((l) => [l.account, l.dr, l.cr]))}`).toBe(e.vat);
     },
   );
 
@@ -911,11 +927,14 @@ test.describe("AR invoice (806)", () => {
       ],
     },
     async () => {
-      test.fail(true, VAT_PIN);
+      const e = docAmounts([{ qty: 3, price: 333.33 }]);
       const { id, doc } = await posted("invoice", "revvat", [{ qty: 3, price: 333.33, vat: true }]);
       expect((await voidArDoc(id, CREATOR, "e2e void")).status).toBe(200);
       const reversing = (await jvOfSource("ar_invoice", id)).filter((l) => l.reversalOfJvId !== null);
-      expect(sum(reversing, "2160", "dr"), `${doc.no} reversal: ${JSON.stringify(reversing.map((l) => [l.account, l.dr, l.cr]))}`).toBe(70);
+      expect(sum(reversing, "1130", "cr")).toBe(e.total);
+      expect(sum(reversing, "4100", "dr")).toBe(e.net);
+      test.fail(true, VAT_PIN);
+      expect(sum(reversing, "2160", "dr"), `${doc.no} reversal: ${JSON.stringify(reversing.map((l) => [l.account, l.dr, l.cr]))}`).toBe(e.vat);
     },
   );
 
@@ -986,12 +1005,14 @@ test.describe("AR invoice (806)", () => {
 });
 
 // ── 10 viewer ───────────────────────────────────────────────────────────
-requestorTest.describe("AR invoice (806) - Requestor (viewer)", () => {
+requestorTest.describe("AR invoice (806) - Requestor (view key only)", () => {
+  requestorTest.beforeAll(readyWithoutWorkflow);
+
   requestorTest(
     "TC-ARINV-100001 Requestor เห็นรายการและรายละเอียดของใบที่ลงบัญชีแล้ว",
     {
       annotation: [
-        { type: "preconditions", description: "Requestor login (accounting viewer: accounting.ar.view เท่านั้น); data:reset --yes แล้ว" },
+        { type: "preconditions", description: "Requestor login (ถือสิทธิ์ accounting.ar.view เท่านั้น); data:reset --yes แล้ว" },
         { type: "steps", description: "1. เปิดรายการ AR invoice ค้น E2E-AR-\n2. เปิดรายละเอียด E2E-AR-POSTED" },
         { type: "expected", description: "รายการแสดงแถวของ E2E-AR-POSTED; หน้ารายละเอียดแสดงสถานะ Posted และยอดรวม 1,069.99" },
         { type: "priority", description: "High" },
@@ -1026,6 +1047,7 @@ requestorTest.describe("AR invoice (806) - Requestor (viewer)", () => {
       for (const key of ["E2E-AR-POSTED", "E2E-AR-DRAFT"]) {
         const doc = await seededArDoc(key);
         await ar.gotoDetail(doc.id);
+        await expect(ar.statusChip()).toHaveText(key === "E2E-AR-POSTED" ? /posted/i : /draft/i);
         await expect(ar.button("Void")).toHaveCount(0);
         if (key === "E2E-AR-POSTED") await expect(ar.button("Submit")).toHaveCount(0);
       }
@@ -1036,59 +1058,62 @@ requestorTest.describe("AR invoice (806) - Requestor (viewer)", () => {
     "TC-ARINV-100003 Requestor ไม่เห็นปุ่ม New Invoice ที่กดได้บนรายการ",
     {
       annotation: [
-        { type: "preconditions", description: "Requestor login (viewer: accounting.ar.view เท่านั้น)" },
+        { type: "preconditions", description: "Requestor login (ถือสิทธิ์ accounting.ar.view เท่านั้น ไม่มีสิทธิ์ void)" },
         { type: "steps", description: "1. เปิดรายการ AR invoice" },
         { type: "expected", description: "ไม่มีปุ่ม New Invoice ที่กดได้ (ไม่แสดง หรืออย่างน้อย disabled)" },
-        { type: "note", description: "ปักเป็นบั๊ก: ปุ่มเปิดใช้งานสำหรับ viewer เพราะ canWrite ของ FE ไม่ผูกกับสิทธิ์ accounting.ar; ดู bug list" },
+        { type: "note", description: "ปักเป็นบั๊ก: ปุ่มเปิดใช้งานสำหรับผู้ถือสิทธิ์ view อย่างเดียว เพราะ canWrite ของ FE ไม่ผูกกับสิทธิ์ accounting.ar; ดู bug list" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      requestorTest.fail(true, "suspected bug: the view-only Requestor sees an enabled New Invoice button (useCan.canWrite is not tied to an accounting.ar key); see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
       const ar = new ArInvoicePage(page);
       await ar.gotoList();
+      await expect(ar.newInvoiceButton()).toBeVisible();
+      requestorTest.fail(true, "suspected bug: the Requestor (accounting.ar.view only) sees an enabled New Invoice button (useCan.canWrite is not tied to an accounting.ar key); see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
       await expect(ar.newInvoiceButton().and(page.locator(":enabled"))).toHaveCount(0);
     },
   );
 
   requestorTest(
-    "TC-ARINV-100005 Requestor ไม่เห็นปุ่ม Submit บนใบ Draft (Submit ลงบัญชีได้ จึงไม่ควรเปิดให้ viewer)",
+    "TC-ARINV-100005 Requestor (สิทธิ์ view อย่างเดียว) ไม่เห็นปุ่ม Submit บนใบ Draft เมื่อไม่มี workflow",
     {
       annotation: [
         { type: "preconditions", description: "Requestor login (accounting.ar.view เท่านั้น); E2E-AR-DRAFT เป็น Draft" },
         { type: "steps", description: "1. เปิดรายละเอียด E2E-AR-DRAFT" },
-        { type: "expected", description: "ไม่มีปุ่ม Submit (การ Submit ลงบัญชีโดยตรงเมื่อไม่มี workflow). assumption: viewer ลงบัญชีไม่ได้" },
-        { type: "note", description: "ปักเป็นบั๊ก: gateway และ FE ใช้ accounting.ar.view เป็นสิทธิ์ของ Submit จึงเปิดให้ viewer; ดู bug list" },
+        { type: "expected", description: "ไม่มีปุ่ม Submit (เมื่อไม่มี workflow การ Submit ลงบัญชีโดยตรง). assumption: ผู้ถือสิทธิ์ view อย่างเดียวไม่ควรลงบัญชีโดยตรง" },
+        { type: "note", description: "ปักเป็นคำถามเชิงผลิตภัณฑ์: data:reset ให้ Requestor ถือ accounting.ar.view โดยตั้งใจ และ BE/FE ใช้คีย์นี้กับ Submit (การส่งเข้า workflow ของผู้ขอเป็นเรื่องปกติ) แต่เมื่อไม่มี workflow Submit ลงบัญชีทันที; ดู bug list" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
     },
     async ({ page }) => {
-      requestorTest.fail(true, "suspected bug: Submit (which posts the invoice) is gated by accounting.ar.view, so the view-only Requestor gets the button; see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
       const ar = new ArInvoicePage(page);
       const doc = await seededArDoc("E2E-AR-DRAFT");
       await ar.gotoDetail(doc.id);
+      await expect(ar.statusChip()).toHaveText(/draft/i);
+      await expect(ar.button("Edit")).toBeVisible();
+      requestorTest.fail(true, "needs product decision: with no ar_invoice workflow, submit posts directly, so a holder of accounting.ar.view alone (the Requestor) gets the Submit button and can post; see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
       await expect(ar.button("Submit")).toHaveCount(0);
     },
   );
 
   requestorTest(
-    "TC-ARINV-100006 Requestor submit ใบ Draft ผ่าน API: ถูกปฏิเสธ 403 และใบยังคง draft",
+    "TC-ARINV-100006 Requestor (สิทธิ์ view อย่างเดียว) submit ใบ Draft ผ่าน API เมื่อไม่มี workflow: ถูกปฏิเสธ 403 และใบยังคง draft",
     {
       annotation: [
-        { type: "preconditions", description: "ใบ Draft 1 x 100.00 ที่ Admin สร้างผ่าน API; Requestor เป็น viewer (accounting.ar.view เท่านั้น)" },
+        { type: "preconditions", description: "ใบ Draft 1 x 100.00 ที่ Admin สร้างผ่าน API; Requestor ถือ accounting.ar.view เท่านั้น; ไม่มี ar_invoice workflow ที่ active" },
         { type: "steps", description: "1. Requestor เรียก POST /ar-invoice/:id/submit ผ่าน API" },
-        { type: "expected", description: "ตอบ 403; ใบยัง draft เลข DRAFT- ไม่มี JV. assumption: viewer ลงบัญชีไม่ได้" },
-        { type: "note", description: "ปักเป็นบั๊กเดียวกับ 100005: submit ใช้สิทธิ์ accounting.ar.view; ดู bug list" },
+        { type: "expected", description: "ตอบ 403; ใบยัง draft เลข DRAFT- ไม่มี JV. assumption: ผู้ถือสิทธิ์ view อย่างเดียวไม่ควรลงบัญชีโดยตรง" },
+        { type: "note", description: "ปักเป็นคำถามเชิงผลิตภัณฑ์เดียวกับ 100005; ดู bug list" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Security" },
       ],
     },
     async () => {
-      requestorTest.fail(true, "suspected bug: Submit (which posts the invoice) is gated by accounting.ar.view, so the view-only Requestor can post through the API; see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
       const created = await createArDoc("invoice", { tag: tag("reqsubmit"), lines: [{ qty: 1, price: 100, vat: true }] });
       const res = await submitArDoc(created.id, "Requestor");
+      requestorTest.fail(true, "needs product decision: with no ar_invoice workflow, submit posts directly, so a holder of accounting.ar.view alone (the Requestor) can post through the API; see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
       expect(res.status, `${created.no}: ${JSON.stringify(res.body).slice(0, 200)}`).toBe(403);
       const doc = await getArDoc(created.id);
       expect(doc.status).toBe("draft");
