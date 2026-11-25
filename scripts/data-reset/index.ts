@@ -113,12 +113,12 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log(`master: would create ${master.created}, ${master.skipped} already present`);
     log(`bu-currency: would PATCH /api/business-units default_currency_id to the ${DEFAULT_CURRENCY_CODE} row`);
     log(`coa: would POST ${loadCoaFixture().length} accounts unless their codes exist`);
-    log("accounting: would PUT gl_setting (AP / VAT / WHT / deposit / FX accounts, ap_auto_from_grn off), POST a GL fiscal year unless an open period covers today, POST bank account E2E-BANK, map the Vat 7% profile and POST WHT 3%, and PUT the AP control account on every vendor — each skipped when already set");
+    log("accounting: would PUT gl_setting (AP / AR control / input + output VAT / WHT / deposit / FX accounts, ap_auto_from_grn off), POST a GL fiscal year unless an open period covers today, POST bank account E2E-BANK, map the Vat 7% profile and POST WHT 3%, and PUT the AP control account on every vendor — each skipped when already set");
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
     const toCopy = await countRolesToCopy(sessions, cfg);
     if (cfg.buCode !== BU_CODE) log(`copy-roles: would copy ${toCopy} roles from ${BU_CODE} (name + granted permissions, mapped by resource.action) before assigning them`);
     log("access: would POST each account's missing role (requestor, hod, purchase, fc/gm/owner/storemanager → Approval, budget → Accounting) and set THB as the BU's default currency if none is set");
-    log("accounting-roles: would create \"Accounting Approver\" (budget: AP void, JV void / post / reverse) and \"Accounting Viewer\" (requestor: view only) from the BU's permission catalog, unless they exist");
+    log("accounting-roles: would create \"Accounting Approver\" (budget: AP + AR void, JV void / post / reverse) and \"Accounting Viewer\" (requestor: view only, incl. AP / AR view) from the BU's permission catalog, unless they exist");
     log(`workflows: would POST ${fixture.workflows.map((w) => w.name).join(", ")}`);
     if (!args.withHistory) {
       log(`period: would POST ${JSON.stringify(planPeriod(now))} unless an open period covers today, then ensure ${JSON.stringify(planNextPeriod(now))} exists via POST /next`);

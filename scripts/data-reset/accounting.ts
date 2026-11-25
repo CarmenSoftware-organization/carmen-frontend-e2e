@@ -20,6 +20,8 @@ export interface AccountingAccounts {
   bank: string;
   fxGain: string;
   fxLoss: string;
+  arControl: string;
+  outputVat: string;
 }
 
 /** Account code per role, from `fixtures/chart-of-accounts.json`. */
@@ -33,6 +35,8 @@ export const ACCOUNT_CODES: Record<keyof AccountingAccounts, string> = {
   bank: "1110",
   fxGain: "4300",
   fxLoss: "5400",
+  arControl: "1130",
+  outputVat: "2160",
 };
 
 /** GL JV prefixes the AP posting path needs: AP / auto vouchers, and reversal (void / reverse). */
@@ -123,6 +127,8 @@ async function seedGlSetting(admin: ApiClient, base: string, a: AccountingAccoun
     advance_deposit_account_id: a.advanceDeposit,
     realized_fx_gain_account_id: a.fxGain,
     realized_fx_loss_account_id: a.fxLoss,
+    ar_control_account_id: a.arControl,
+    output_vat_account_id: a.outputVat,
     ap_jv_prefix_id: prefixes.ap,
     auto_jv_prefix_id: prefixes.ap,
     reversal_prefix_id: prefixes.reversal,
