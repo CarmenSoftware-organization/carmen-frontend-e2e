@@ -18,7 +18,7 @@ _Generated from `tests/402-po-purchaser-journey.spec.ts` annotations. Edit annot
 | TC-PO-060105 | Sort by Date | Low | Functional |
 | TC-PO-060201 | Open Create dropdown → Blank → form loads | High | Smoke |
 | TC-PO-060202 | Fill header (vendor, delivery date, description) + add 1 line item | High | CRUD |
-| TC-PO-060203 | Save Draft → redirect to detail with PO number | High | CRUD |
+| TC-PO-060203 | Save Draft → redirect to detail with a DRAFT number | High | CRUD |
 | TC-PO-060204 | Save without items → refused, stays on /new | Medium | Validation |
 | TC-PO-060205 | Open Create → From Price List → wizard step 1 (Select Vendors) | Medium | Smoke |
 | TC-PO-060206 | Select vendor → wizard step 2 (Review items) | Medium | Functional |
@@ -193,7 +193,7 @@ Description input คงค่าที่กรอก (marker E2E-POP)
 
 ---
 
-## TC-PO-060203 — Save Draft → redirect to detail with PO number
+## TC-PO-060203 — Save Draft → redirect to detail with a DRAFT number
 
 > **As a** Purchase user, **I want** to manage Po Purchaser Journey records via CRUD, **so that** the data stays correct over time.
 
@@ -210,7 +210,7 @@ Description input คงค่าที่กรอก (marker E2E-POP)
 
 **Expected**
 
-URL เปลี่ยนเป็น /procurement/purchase-order/<id> (ไม่ใช่ /new)
+URL เปลี่ยนเป็น /procurement/purchase-order/<id> (ไม่ใช่ /new) และหน้าใบแสดงเลข draft DRAFT-xxxxxxxx (เลข PO จริงออกตอน Submit ครั้งแรก)
 
 ---
 
@@ -294,7 +294,7 @@ Wizard From Price List step 2 (Review) เปิดอยู่
 
 **Expected**
 
-ยิง POST purchase-orders สำเร็จ แล้ว navigate ไปที่ /procurement/purchase-order/<id> ของ PO ที่สร้าง
+ยิง POST purchase-orders สำเร็จ แล้ว navigate ไปที่ /procurement/purchase-order/<id> ของ PO ที่สร้าง ซึ่งแสดงเลข draft DRAFT-xxxxxxxx
 
 ---
 
@@ -713,4 +713,4 @@ lifecycle ครบ (Create → Draft → Submit → FC → GM → Approved) แ
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-25 · git fe077d4</sub>

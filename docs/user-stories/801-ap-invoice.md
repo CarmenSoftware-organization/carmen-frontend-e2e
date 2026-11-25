@@ -236,6 +236,8 @@ Requestor login (accounting viewer: ดูได้ ไม่มีสิทธ�
 
 เห็นข้อมูลใบและสถานะ Posted แต่ไม่มีปุ่ม Void (ปุ่ม Approve ไม่ปรากฏบนใบ posted อยู่แล้วทุกบทบาท จึงไม่ใช้เป็นหลักฐานสิทธิ์)
 
+> _Note: เดิมปักเป็นบั๊ก (FE แสดง Void ตามสถานะอย่างเดียว) แก้แล้ว 2026-11-25 พร้อม AP invoice workflow ที่ FE ใช้ allowed_actions_
+
 ---
 
 ## TC-APINV-100002 — Requestor void ใบผ่าน API: ถูกปฏิเสธ 4xx และใบยังคง posted
@@ -502,4 +504,4 @@ backend ปฏิเสธ 409 รหัส AP_INVOICE_HAS_PAYMENT มี toast 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-25 · git fe077d4</sub>

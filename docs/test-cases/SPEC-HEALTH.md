@@ -8,16 +8,16 @@ that runs without an `expect(...)`, reports green and checks nothing.
 
 | | Count |
 | --- | --- |
-| Cases declared | 1382 |
-| **Running** | **1229** |
+| Cases declared | 1373 |
+| **Running** | **1220** |
 | Skipped | 153 |
 | Fixme | 0 |
 | **Dormant** (skipped + fixme) | **11%** |
-| Running cases asserting only through a page-object helper | 29 |
-| **Running cases asserting nothing at all** | **1** |
+| Running cases asserting only through a page-object helper | 21 |
+| **Running cases asserting nothing at all** | **2** |
 | Running cases whose assertions are all trivial | 0 |
-| Running cases behind an in-body skip guard | 25 |
-| Assertions in running cases | 3606 |
+| Running cases behind an in-body skip guard | 26 |
+| Assertions in running cases | 3595 |
 
 **Trivial** means the assertion cannot fail — `expect(true).toBe(true)` and friends.
 **Helper** counts calls like `pr.expectSavedToast()`: the page object asserts, so the case is fine —
@@ -44,11 +44,12 @@ Sorted by dormant share, then by cases that assert nothing.
 | Spec | Run | Skip | Fixme | Dormant | Asserts nothing | Helper only | Trivial only | Guarded | Assertions | Catch |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `401-po.spec.ts` | 19 | 32 | 0 | 63% | 0 | 0 | 0 | **1** | 66 | 0 |
-| `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 14 | 0 |
-| `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 145 | 0 |
+| `201-my-approvals.spec.ts` | 8 | 12 | 0 | 60% | 0 | 0 | 0 | 0 | 15 | 0 |
+| `601-cn.spec.ts` | 46 | 61 | 0 | 57% | 0 | 0 | 0 | 0 | 143 | 0 |
 | `301-pr.spec.ts` | 59 | 47 | 0 | 44% | 0 | 0 | 0 | 0 | 120 | 0 |
 | `001-login.spec.ts` | 26 | 1 | 0 | 4% | 0 | 0 | 0 | 0 | 44 | 2 |
 | `141-sales-consumption.spec.ts` | 21 | 0 | 0 | 0% | **1** | 0 | 0 | **2** | 139 | 0 |
+| `721-sr-issue.spec.ts` | 4 | 0 | 0 | 0% | **1** | 1 | 0 | **1** | 3 | 1 |
 | `002-spa-smoke.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
 | `010-department.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 57 | 2 |
 | `020-unit.spec.ts` | 13 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 32 | 0 |
@@ -77,43 +78,42 @@ Sorted by dormant share, then by cases that assert nothing.
 | `159-pl.spec.ts` | 22 | 0 | 0 | 0% | 0 | 1 | 0 | 0 | 52 | 0 |
 | `160-pl-template.spec.ts` | 32 | 0 | 0 | 0% | 0 | 7 | 0 | 0 | 54 | 0 |
 | `302-pr-creator-journey.spec.ts` | 42 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 105 | 0 |
-| `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 79 | 0 |
+| `303-pr-approver-journey.spec.ts` | 28 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 80 | 0 |
 | `304-pr-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 92 | 0 |
 | `310-pr-template.spec.ts` | 32 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 111 | 0 |
 | `311-pr-returned-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 42 | 0 |
-| `312-pr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 16 | 1 |
+| `312-pr-lifecycle.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 15 | 1 |
 | `402-po-purchaser-journey.spec.ts` | 31 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 80 | 0 |
 | `403-po-approver-journey.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 71 | 0 |
-| `404-po-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 17 | 1 |
+| `404-po-lifecycle.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 19 | 1 |
 | `501-grn.spec.ts` | 54 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 180 | 2 |
-| `502-grn-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
+| `502-grn-lifecycle.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 12 | 1 |
 | `602-cn-reason.spec.ts` | 14 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 31 | 0 |
-| `603-cn-doc-flow.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 21 | 0 |
+| `603-cn-lifecycle.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 22 | 0 |
 | `701-sr.spec.ts` | 35 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 160 | 0 |
-| `702-sr-doc-flow.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
+| `702-sr-lifecycle.spec.ts` | 5 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 18 | 1 |
 | `710-wastage-reporting.spec.ts` | 18 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 67 | 0 |
 | `711-stock-replenishment.spec.ts` | 36 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 110 | 0 |
-| `720-stock-issue.spec.ts` | 20 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 53 | 0 |
-| `721-sr-issue-doc-flow.spec.ts` | 12 | 0 | 0 | 0% | 0 | 9 | 0 | 0 | 10 | 1 |
+| `720-stock-issue.spec.ts` | 20 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 55 | 0 |
 | `731-inventory-adjustment.spec.ts` | 12 | 0 | 0 | 0% | 0 | 11 | 0 | 0 | 4 | 0 |
-| `732-inventory-adjustment-stock.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 121 | 0 |
+| `732-inventory-adjustment-stock.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 114 | 0 |
 | `801-ap-invoice.spec.ts` | 21 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 115 | 0 |
 | `802-ap-doc-types.spec.ts` | 10 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 51 | 0 |
 | `803-ap-payment.spec.ts` | 10 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 55 | 0 |
-| `804-ap-payment-approvals.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 36 | 0 |
+| `804-ap-payment-approvals.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 37 | 0 |
 | `805-ap-from-grn.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 38 | 0 |
 | `810-journal-voucher.spec.ts` | 15 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 101 | 0 |
 | `811-jv-template.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 35 | 0 |
 | `820-accounting-settings.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
-| `900-period-end.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 46 | 0 |
+| `900-period-end.spec.ts` | 19 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 48 | 0 |
 | `910-period-close-prestep.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | **2** | 8 | 1 |
-| `911-period-close-blockers.spec.ts` | 1 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 2 | 0 |
+| `911-period-close-blockers.spec.ts` | 1 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 1 | 0 |
 | `912-period-close-start-gate.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 9 | 0 |
 | `914-period-close-out-of-period-docs.spec.ts` | 7 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 14 | 0 |
-| `916-period-close-fix-guards.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 10 | 0 |
-| `917-period-close-new-rules.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | **3** | 11 | 0 |
+| `916-period-close-fix-guards.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 11 | 0 |
+| `917-period-close-new-rules.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | **3** | 12 | 0 |
 | `918-period-close-start.spec.ts` | 1 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 6 | 0 |
-| `919-period-close-active-period.spec.ts` | 11 | 0 | 0 | 0% | 0 | 0 | 0 | **7** | 14 | 0 |
+| `919-period-close-active-period.spec.ts` | 11 | 0 | 0 | 0% | 0 | 0 | 0 | **7** | 15 | 0 |
 | `920-period-close-close-gate.spec.ts` | 1 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 7 | 0 |
 | `921-period-close-count.spec.ts` | 1 | 0 | 0 | 0% | 0 | 0 | 0 | **1** | 3 | 0 |
 | `922-period-close-verify.spec.ts` | 4 | 0 | 0 | 0% | 0 | 0 | 0 | 0 | 9 | 0 |

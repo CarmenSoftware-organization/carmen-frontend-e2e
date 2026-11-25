@@ -684,6 +684,7 @@ requestorTest.describe("AP invoice (801) - Requestor (viewer)", () => {
         { type: "preconditions", description: "Requestor login (accounting viewer: ดูได้ ไม่มีสิทธิ์ void/approve); E2E-AP-POSTED ลงบัญชีแล้ว" },
         { type: "steps", description: "1. เปิดหน้ารายละเอียด E2E-AP-POSTED" },
         { type: "expected", description: "เห็นข้อมูลใบและสถานะ Posted แต่ไม่มีปุ่ม Void (ปุ่ม Approve ไม่ปรากฏบนใบ posted อยู่แล้วทุกบทบาท จึงไม่ใช้เป็นหลักฐานสิทธิ์)" },
+        { type: "note", description: "เดิมปักเป็นบั๊ก (FE แสดง Void ตามสถานะอย่างเดียว) แก้แล้ว 2026-11-25 พร้อม AP invoice workflow ที่ FE ใช้ allowed_actions" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
       ],
@@ -693,10 +694,8 @@ requestorTest.describe("AP invoice (801) - Requestor (viewer)", () => {
       const doc = await seededApDoc("E2E-AP-POSTED");
       await ap.gotoDetail(doc.id);
       await expect(ap.statusChip()).toHaveText(/posted/i);
-      requestorTest.fail(
-        true,
-        "suspected bug: view-only Requestor gets an enabled Void on a posted AP invoice - apActions() (shared/ap-status.ts) offers void on status alone and ap-invoice-detail.tsx has no permission gate; only the gateway refuses (403); owner confirmed 2026-11-23: hide Void without the right (the right will come from the workflow). See docs/superpowers/specs/2026-11-23-e2e-phase-2a-bug-list.md",
-      );
+      // Was pinned as a known bug (Void shown on status alone); fixed 2026-11-25 with the AP invoice workflow
+      // (FE #723 / BE #1109: actions come from allowed_actions).
       await expect(ap.voidButton()).toHaveCount(0);
     },
   );

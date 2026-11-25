@@ -192,14 +192,14 @@ test.describe("AP payment approvals (804)", () => {
   );
 
   budgetTest(
-    "TC-APAPR-020002 Budget Reject ใบ in_review พร้อมเหตุผล: กลับเป็น Draft ไม่มี JV ใบเหลือ 1,000.00 และออกจากคิว",
+    "TC-APAPR-020002 Budget Reject ใบ in_review พร้อมเหตุผล: ใบจ่ายถูก void ทั้งใบ ไม่มี JV ใบแจ้งหนี้กลับมาค้าง 1,000.00 และออกจากคิว",
     {
       annotation: [
         { type: "preconditions", description: "Budget login; ใบจ่ายเต็ม 1,000.00 ที่ Admin Submit แล้ว (in_review)" },
         { type: "steps", description: "1. เปิดหน้ารายละเอียดใบจ่าย\n2. กด Reject ใส่เหตุผลและยืนยัน\n3. อ่านสถานะ JV ยอดค้างของใบ และคิว in_review ผ่าน API" },
         {
           type: "expected",
-          description: "toast 'Payment rejected'; สถานะ Draft; ไม่มี JV ที่มี source = ใบจ่าย; ยอดค้างของใบยัง 1,000.00; ใบจ่ายไม่อยู่ในรายการ in_review. assumption: Reject คืนใบเป็น Draft (BE ตอบ doc_status draft; docs ไม่ระบุสถานะปลายทางของ reject)",
+          description: "toast 'Payment rejected'; สถานะ Void (API doc_status void); ไม่มี JV ที่มี source = ใบจ่าย; ยอดค้างของใบแจ้งหนี้ยัง 1,000.00 (ใบจ่ายที่ void ไม่จองบรรทัดใบแจ้งหนี้); ใบจ่ายไม่อยู่ในรายการ in_review. rule: Reject = void ทั้งใบและต้องมีเหตุผล (BE #1110, 2026-11-25; เดิมคืนเป็น Draft)",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Functional" },
@@ -210,8 +210,9 @@ test.describe("AP payment approvals (804)", () => {
       const pp = new ApPaymentPage(page);
       await pp.gotoDetail(p.id);
       await expectSaved(page, /\/ap-payment\/[0-9a-f-]{36}\/reject$/, () => pp.confirmWithReason("Reject", "e2e reject"), pp.toastWith(/payment rejected/i));
-      await expect(pp.statusChip()).toHaveText(/draft/i);
-      expect(await paymentStatus(p.id)).toBe("draft");
+      // BE #1110: reject voids the whole voucher (was: back to draft).
+      await expect(pp.statusChip()).toHaveText(/void/i);
+      expect(await paymentStatus(p.id)).toBe("void");
       expect(await jvOfSource("ap_payment", p.id)).toEqual([]);
       expect((await getApDoc(p.invoiceId)).open).toBe(1000);
       const queue = await listAllRows(CREATOR, `/ap-payment?filter=${encodeURIComponent("doc_status|string:in_review")}`);
@@ -228,7 +229,7 @@ test.describe("AP payment approvals (804)", () => {
         { type: "steps", description: "1. Budget Submit ใบจ่ายผ่าน API\n2. Budget Approve ใบเดียวกัน\n3. อ่านสถานะใบจ่าย" },
         {
           type: "expected",
-          description: "Approve ถูกปฏิเสธ 403 และใบยัง in_review ไม่มี JV. rule: ผู้สร้างหรือผู้ Submit อนุมัติใบของตัวเองไม่ได้ (pay:194, pay:225, pay:253 'maker-checker violation'). pinned: backend ตอบ 200 และ post",
+          description: "Approve ถูกปฏิเสธ 403 และใบยัง in_review ไม่มี JV. rule: ผู้สร้างหรือผู้ Submit อนุมัติใบของตัวเองไม่ได้ (pay:194, pay:225, pay:253 'maker-checker violation'). pinned: backend ตอบ 200 และ post — กฎ WORKFLOW_CREATOR_CANNOT_APPROVE ของ BE #1110 ห้ามเฉพาะผู้สร้างใบ (ที่นี่คือ Admin) ไม่ครอบคลุมผู้ Submit (ตรวจ 2026-11-25)",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -251,14 +252,14 @@ test.describe("AP payment approvals (804)", () => {
   );
 
   test(
-    "TC-APAPR-030002 Requestor (ไม่ได้อยู่ในขั้นอนุมัติ) Approve ใบ in_review ผ่าน API: ต้องถูกปฏิเสธ 403",
+    "TC-APAPR-030002 Requestor (ไม่ได้อยู่ในขั้นอนุมัติ) Approve ใบ in_review ผ่าน API: ถูกปฏิเสธ 422 WORKFLOW_USER_NOT_STAGE_APPROVER",
     {
       annotation: [
         { type: "preconditions", description: "ใบจ่ายที่ Admin Submit แล้ว รอ Budget (in_review); Requestor ไม่อยู่ในรายชื่อผู้ดำเนินการของขั้น Accounting Approval" },
         { type: "steps", description: "1. Requestor เรียก Approve ผ่าน API\n2. อ่านสถานะใบจ่ายและ JV" },
         {
           type: "expected",
-          description: "ถูกปฏิเสธ 403 ใบยัง in_review ไม่มี JV. rule: 403 เมื่อไม่มีสิทธิ์หรือผิด workflow assignment (pay:194, pay:253). pinned: backend ตอบ 200 และ post ใบ (gateway ไม่มี @Permission บน approve; BE ไม่ตรวจรายชื่อผู้ดำเนินการของขั้น)",
+          description: "ถูกปฏิเสธ 422 รหัส WORKFLOW_USER_NOT_STAGE_APPROVER ใบยัง in_review ไม่มี JV. rule: ผู้ที่ไม่อยู่ในขั้นของ workflow อนุมัติไม่ได้ (pay:194, pay:253; BE #1110 ตรวจผู้ดำเนินการของขั้นแล้ว 2026-11-25). หมายเหตุ: oracle ระบุ 403 แต่ BE ใช้ 422 เหมือนเอกสารอื่นที่ใช้ workflow",
         },
         { type: "priority", description: "High" },
         { type: "testType", description: "Authorization" },
@@ -269,11 +270,8 @@ test.describe("AP payment approvals (804)", () => {
       const r = await approvePayment(p.id, "Requestor");
       expect(r.status, "approve call did not get a real answer from the BE").not.toBe(401);
       expect(r.status).toBeLessThan(500);
-      test.fail(
-        true,
-        `suspected bug: a user who is not assigned to the Accounting Approval stage (view-only Requestor) can approve and post a payment voucher through the API (200) - the oracle requires 403 for a wrong workflow assignment (pay:194, pay:253; owner confirmed 2026-11-23: only the workflow's assigned user may approve). See ${BUG_LIST}`,
-      );
-      expect(r.status).toBe(403);
+      expect(r.status).toBe(422);
+      expect(r.body?.error?.code).toBe("WORKFLOW_USER_NOT_STAGE_APPROVER");
       expect(await paymentStatus(p.id)).toBe("in_review");
       expect(await jvOfSource("ap_payment", p.id)).toEqual([]);
     },

@@ -15,9 +15,9 @@ _Generated from `tests/804-ap-payment-approvals.spec.ts` annotations. Edit annot
 | TC-APAPR-010002 | Requestor (accounting viewer) เปิดคิว Payment Approvals: ใบที่ Submit รอ Budget ต้องไม่อยู่ในคิวของ Requestor | Medium | Authorization |
 | TC-APAPR-010003 | Requestor เปิดรายละเอียดใบ in_review: ไม่เห็นปุ่ม Approve และ Reject (FE ซ่อนตามรายชื่อ user_action.execute) | Medium | Authorization |
 | TC-APAPR-020001 | Budget อนุมัติจากหน้ารายละเอียดใบ in_review: posted พร้อม JV Dr เจ้าหนี้ / Cr ธนาคาร | Critical | Functional |
-| TC-APAPR-020002 | Budget Reject ใบ in_review พร้อมเหตุผล: กลับเป็น Draft ไม่มี JV ใบเหลือ 1,000.00 และออกจากคิว | High | Functional |
+| TC-APAPR-020002 | Budget Reject ใบ in_review พร้อมเหตุผล: ใบจ่ายถูก void ทั้งใบ ไม่มี JV ใบแจ้งหนี้กลับมาค้าง 1,000.00 และออกจากคิว | High | Functional |
 | TC-APAPR-030001 | Budget Submit ใบจ่ายเองแล้ว Approve เอง: ต้องถูกปฏิเสธ 403 (maker-checker) | High | Authorization |
-| TC-APAPR-030002 | Requestor (ไม่ได้อยู่ในขั้นอนุมัติ) Approve ใบ in_review ผ่าน API: ต้องถูกปฏิเสธ 403 | High | Authorization |
+| TC-APAPR-030002 | Requestor (ไม่ได้อยู่ในขั้นอนุมัติ) Approve ใบ in_review ผ่าน API: ถูกปฏิเสธ 422 WORKFLOW_USER_NOT_STAGE_APPROVER | High | Authorization |
 
 ---
 
@@ -109,7 +109,7 @@ Budget login; ใบจ่ายเต็ม 1,000.00 ที่ Admin Submit แ
 
 ---
 
-## TC-APAPR-020002 — Budget Reject ใบ in_review พร้อมเหตุผล: กลับเป็น Draft ไม่มี JV ใบเหลือ 1,000.00 และออกจากคิว
+## TC-APAPR-020002 — Budget Reject ใบ in_review พร้อมเหตุผล: ใบจ่ายถูก void ทั้งใบ ไม่มี JV ใบแจ้งหนี้กลับมาค้าง 1,000.00 และออกจากคิว
 
 > **As a** Requestor user, **I want** a clear empty-state when no Ap Payment Approvals records match my search, **so that** I know nothing was found.
 
@@ -127,7 +127,7 @@ Budget login; ใบจ่ายเต็ม 1,000.00 ที่ Admin Submit แ
 
 **Expected**
 
-toast 'Payment rejected'; สถานะ Draft; ไม่มี JV ที่มี source = ใบจ่าย; ยอดค้างของใบยัง 1,000.00; ใบจ่ายไม่อยู่ในรายการ in_review. assumption: Reject คืนใบเป็น Draft (BE ตอบ doc_status draft; docs ไม่ระบุสถานะปลายทางของ reject)
+toast 'Payment rejected'; สถานะ Void (API doc_status void); ไม่มี JV ที่มี source = ใบจ่าย; ยอดค้างของใบแจ้งหนี้ยัง 1,000.00 (ใบจ่ายที่ void ไม่จองบรรทัดใบแจ้งหนี้); ใบจ่ายไม่อยู่ในรายการ in_review. rule: Reject = void ทั้งใบและต้องมีเหตุผล (BE #1110, 2026-11-25; เดิมคืนเป็น Draft)
 
 ---
 
@@ -149,11 +149,11 @@ toast 'Payment rejected'; สถานะ Draft; ไม่มี JV ที่ม
 
 **Expected**
 
-Approve ถูกปฏิเสธ 403 และใบยัง in_review ไม่มี JV. rule: ผู้สร้างหรือผู้ Submit อนุมัติใบของตัวเองไม่ได้ (pay:194, pay:225, pay:253 'maker-checker violation'). pinned: backend ตอบ 200 และ post
+Approve ถูกปฏิเสธ 403 และใบยัง in_review ไม่มี JV. rule: ผู้สร้างหรือผู้ Submit อนุมัติใบของตัวเองไม่ได้ (pay:194, pay:225, pay:253 'maker-checker violation'). pinned: backend ตอบ 200 และ post — กฎ WORKFLOW_CREATOR_CANNOT_APPROVE ของ BE #1110 ห้ามเฉพาะผู้สร้างใบ (ที่นี่คือ Admin) ไม่ครอบคลุมผู้ Submit (ตรวจ 2026-11-25)
 
 ---
 
-## TC-APAPR-030002 — Requestor (ไม่ได้อยู่ในขั้นอนุมัติ) Approve ใบ in_review ผ่าน API: ต้องถูกปฏิเสธ 403
+## TC-APAPR-030002 — Requestor (ไม่ได้อยู่ในขั้นอนุมัติ) Approve ใบ in_review ผ่าน API: ถูกปฏิเสธ 422 WORKFLOW_USER_NOT_STAGE_APPROVER
 
 > **As a** low-privilege user, **I should NOT** see Add/edit controls on Ap Payment Approvals, **so that** role separation is enforced.
 
@@ -170,9 +170,9 @@ Approve ถูกปฏิเสธ 403 และใบยัง in_review ไ�
 
 **Expected**
 
-ถูกปฏิเสธ 403 ใบยัง in_review ไม่มี JV. rule: 403 เมื่อไม่มีสิทธิ์หรือผิด workflow assignment (pay:194, pay:253). pinned: backend ตอบ 200 และ post ใบ (gateway ไม่มี @Permission บน approve; BE ไม่ตรวจรายชื่อผู้ดำเนินการของขั้น)
+ถูกปฏิเสธ 422 รหัส WORKFLOW_USER_NOT_STAGE_APPROVER ใบยัง in_review ไม่มี JV. rule: ผู้ที่ไม่อยู่ในขั้นของ workflow อนุมัติไม่ได้ (pay:194, pay:253; BE #1110 ตรวจผู้ดำเนินการของขั้นแล้ว 2026-11-25). หมายเหตุ: oracle ระบุ 403 แต่ BE ใช้ 422 เหมือนเอกสารอื่นที่ใช้ workflow
 
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-25 · git fe077d4</sub>
