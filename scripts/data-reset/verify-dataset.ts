@@ -120,10 +120,13 @@ async function verifyAccountingSet(
  * Read back the AR read set (BU-GR2VYNKQ only): both customers, the cost center, the two gl_setting
  * account keys and every AR document key in the state the table promises.
  */
-async function verifyArSet(admin: ApiClient, cfg: ResetConfig): Promise<{ lines: string[]; short: string[] }> {
+async function verifyArSet(
+  admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<RowLedger["rows"]>,
+): Promise<{ lines: string[]; short: string[] }> {
   const lines: string[] = [];
   const short: string[] = [];
-  if (cfg.buCode !== BU_CODE) return { lines, short };
+  // Only when the ar-docs step recorded its rows (it runs on BU-GR2VYNKQ only).
+  if (cfg.buCode !== BU_CODE || !AR_READ_SET.some((k) => seeded[`ar.${k.row}`])) return { lines, short };
   const bu = cfg.buCode;
   const check = (row: string, ok: boolean, detail: string) => {
     lines.push(`${row.padEnd(22)}${String(1).padStart(5)}${String(ok ? 1 : 0).padStart(7)}${ok ? "" : "  ✗"}`);
@@ -134,7 +137,8 @@ async function verifyArSet(admin: ApiClient, cfg: ResetConfig): Promise<{ lines:
   const ccs = new Set((await listAll(admin, `/api/config/${bu}/cost-centers`)).map((r) => r.code));
   check(`cost center ${AR_COST_CENTER_CODE}`, ccs.has(AR_COST_CENTER_CODE), "missing");
   const gl = (await admin.get(`/api/config/${bu}/app-config/gl_setting`)).body?.data?.value as Record<string, unknown> | undefined;
-  for (const k of ["ar_control_account_id", "output_vat_account_id"]) check(`gl_setting ${k.slice(0, 10)}`, Boolean(gl?.[k]), `${k} not set`);
+  const glKeys = { "gl_setting ar_control": "ar_control_account_id", "gl_setting output_vat": "output_vat_account_id" };
+  for (const [label, k] of Object.entries(glKeys)) check(label, Boolean(gl?.[k]), `${k} not set`);
   const docs = await listAll(admin, `/api/${bu}/ar-invoice`);
   for (const k of AR_READ_SET) {
     const doc = docs.find((d) => typeof d.description === "string" && d.description.includes(`STD ar.${k.row} ${k.key}`));
@@ -323,7 +327,7 @@ export async function verifyDataset(
   const accounting = await verifyAccountingSet(admin, cfg, seeded);
   lines.push(...accounting.lines);
   short.push(...accounting.short);
-  const ar = await verifyArSet(admin, cfg);
+  const ar = await verifyArSet(admin, cfg, seeded);
   lines.push(...ar.lines);
   short.push(...ar.short);
   const pos = await verifyPos(admin, cfg, seeded);
