@@ -102,7 +102,7 @@ purchaseTest.describe("Step 1 — PO List", () => {
       await po.tabAllDocuments().click();
       const rows = recordRows(page);
       await expect(rows.first(), "PO list has no rows - data:reset seeds POs").toBeVisible({ timeout: 10_000 });
-      const ref = (await rows.first().innerText()).match(/PO\d{6,}/)?.[0];
+      const ref = (await rows.first().innerText()).match(/PO\d{6,}|DRAFT-\d{8}/)?.[0];
       expect(ref, "first row shows no PO number").toBeTruthy();
       await po.searchFor(ref!);
       await expect(rows.first()).toBeVisible({ timeout: 10_000 });
@@ -184,12 +184,12 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
   );
 
   purchaseTest(
-    "TC-PO-060203 Save Draft → redirect to detail with PO number",
+    "TC-PO-060203 Save Draft → redirect to detail with a DRAFT number",
     {
       annotation: [
         { type: "preconditions", description: "กรอก header + ≥1 line item บน form สร้าง" },
         { type: "steps", description: "1. กดบันทึก\n2. รอการ redirect ไปยังหน้า detail" },
-        { type: "expected", description: "URL เปลี่ยนเป็น /procurement/purchase-order/<id> (ไม่ใช่ /new)" },
+        { type: "expected", description: "URL เปลี่ยนเป็น /procurement/purchase-order/<id> (ไม่ใช่ /new) และหน้าใบแสดงเลข draft DRAFT-xxxxxxxx (เลข PO จริงออกตอน Submit ครั้งแรก)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -203,7 +203,7 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       await po.addItemToPO({ product: "Save Item", quantity: 1, uom: "ea", unitPrice: 100 });
       await po.saveButton().click({ timeout: 5_000 });
       await expect(page).toHaveURL(/purchase-order\/(?!new$)[^\/?#]+$/, { timeout: 15_000 });
-      await expect(page.getByText(/^PO\d{6,}$/).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/^DRAFT-\d{8}$/).first(), "a new PO holds a draft number until first submit (BE #1108)").toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -284,7 +284,7 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       annotation: [
         { type: "preconditions", description: "Wizard From Price List step 2 (Review) เปิดอยู่" },
         { type: "steps", description: "1. ไปจนถึง step 3 (Order details / summary)\n2. กด Confirm (ไม่มี dialog ยืนยันเพิ่ม)" },
-        { type: "expected", description: "ยิง POST purchase-orders สำเร็จ แล้ว navigate ไปที่ /procurement/purchase-order/<id> ของ PO ที่สร้าง" },
+        { type: "expected", description: "ยิง POST purchase-orders สำเร็จ แล้ว navigate ไปที่ /procurement/purchase-order/<id> ของ PO ที่สร้าง ซึ่งแสดงเลข draft DRAFT-xxxxxxxx" },
         { type: "priority", description: "High" },
         { type: "testType", description: "CRUD" },
       ],
@@ -304,7 +304,7 @@ purchaseTest.describe("Step 2 — Create PO", () => {  // ─ Blank method (4 TC
       expect((await created).ok()).toBe(true);
       // FE from-price-list-content.tsx onSuccess: navigate(`${PO_LIST_PATH}/${newId}`).
       await expect(page).toHaveURL(/purchase-order\/(?!from-price-list)[^/?#]+$/, { timeout: 20_000 });
-      await expect(page.getByText(/^PO\d{6,}$/).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(/^DRAFT-\d{8}$/).first(), "a new PO holds a draft number until first submit (BE #1108)").toBeVisible({ timeout: 15_000 });
     },
   );
 

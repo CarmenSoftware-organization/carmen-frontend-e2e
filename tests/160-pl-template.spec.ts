@@ -757,8 +757,8 @@ procurementStaffTest.describe("Pricelist Template — Search and View — Permis
     {
       annotation: [
         { type: "preconditions", description: "Login เป็น requestor (ทุก role ใน seed มีสิทธิ์ price_list_template.view จึงทดสอบ 'ไม่มีสิทธิ์ดู' ไม่ได้)" },
-        { type: "steps", description: "1. ไปที่ /vendor-management/price-list-template" },
-        { type: "expected", description: "role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template (แถว STD campaign template)" },
+        { type: "steps", description: "1. ไปที่ /vendor-management/price-list-template\n2. ค้นหา 'STD campaign template' แล้วกด Enter" },
+        { type: "expected", description: "role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template (แถว STD campaign template ในผลค้นหา)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
@@ -766,6 +766,10 @@ procurementStaffTest.describe("Pricelist Template — Search and View — Permis
     async ({ page }) => {
       await page.goto(LIST_PATH);
       await page.waitForLoadState("networkidle");
+      // Search for it: templates left by earlier runs can push the STD row off page 1.
+      const search = new PriceListTemplatePage(page).searchInput();
+      await search.fill("STD campaign template");
+      await search.press("Enter"); // SearchInput fires onSearch on Enter
       await expect(page.getByRole("row").filter({ hasText: /STD campaign template/ }).first()).toBeVisible({ timeout: 10_000 });
     },
   );

@@ -188,7 +188,7 @@ purchaseTest.describe("PO — Create manual", () => {
           description:
             "1. ไปที่ /procurement/purchase-order\n2. กด 'Create Purchase Order' แล้วกดปุ่ม 'Manual PO'\n3. เลือก vendor จาก dropdown\n4. กรอกรายละเอียด purchase order\n5. กด 'Submit'",
         },
-        { type: "expected", description: "Purchase order ถูกสร้างสำเร็จและแสดงในรายการ" },
+        { type: "expected", description: "Purchase order ถูกสร้างสำเร็จ ไปหน้ารายละเอียดของใบ และแสดงเลข draft รูปแบบ DRAFT-xxxxxxxx (เลข PO จริงออกตอน Submit ครั้งแรก)" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -210,7 +210,8 @@ purchaseTest.describe("PO — Create manual", () => {
       await po.expectSavedToast();
       // Saved = redirected off /new onto the record, which shows its document number.
       await expect(page).toHaveURL(/purchase-order\/(?!new$)[^/?#]+$/, { timeout: 15_000 });
-      await expect(page.getByText(/^PO\d{6,}$/).first()).toBeVisible({ timeout: 15_000 });
+      // BE #1108: a manual PO holds a DRAFT-NNNNNNNN placeholder until its first submit.
+      await expect(page.getByText(/^DRAFT-\d{8}$/).first()).toBeVisible({ timeout: 15_000 });
     },
   );
 
@@ -560,7 +561,7 @@ purchaseTest.describe("PO — Dashboard", () => {
           description:
             "1. ไปที่ /procurement/purchase-order?view=all-document\n2. ตรวจตัวนับจำนวนข้างหัวข้อ\n3. ตรวจแถวในตาราง\n4. ตรวจ footer 'Showing'",
         },
-        { type: "expected", description: "ตารางแสดงแถว PO ที่มีเลข PO พร้อม status chip และ footer 'Showing 1–N of T' โดย N ตรงกับจำนวนแถวที่แสดง" },
+        { type: "expected", description: "ตารางแสดงแถว PO ที่มีเลข PO หรือเลข draft DRAFT-xxxxxxxx พร้อม status chip และ footer 'Showing 1–N of T' โดย N ตรงกับจำนวนแถวที่แสดง" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Happy Path" },
       ],
@@ -568,7 +569,7 @@ purchaseTest.describe("PO — Dashboard", () => {
     async ({ page }) => {
       const po = new PurchaseOrderPage(page);
       await po.gotoAllDocuments();
-      const rows = page.locator("tbody tr").filter({ hasText: /PO\d{6,}/ });
+      const rows = page.locator("tbody tr").filter({ hasText: /PO\d{6,}|DRAFT-\d{8}/ });
       await expect(rows.first(), "no PO in TEST BU — run `bun run data:reset --yes`").toBeVisible({ timeout: 10_000 });
       const n = await rows.count();
       await expect(page.locator("tbody [data-slot='status-chip']")).toHaveCount(n);
@@ -596,7 +597,7 @@ purchaseTest.describe("PO — Dashboard", () => {
       await po.gotoAllDocuments();
       await po.searchInput().fill("__NO_SUCH_PO__");
       await page.keyboard.press("Enter");
-      await expect(page.locator("tbody tr").filter({ hasText: /PO\d{6,}/ })).toHaveCount(0, { timeout: 10_000 });
+      await expect(page.locator("tbody tr").filter({ hasText: /PO\d{6,}|DRAFT-\d{8}/ })).toHaveCount(0, { timeout: 10_000 });
       await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 10_000 });
     },
   );
@@ -620,7 +621,7 @@ purchaseTest.describe("PO — Dashboard", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoAllDocuments();
       await expect(page.getByText(/Showing\s+1.\s*\d+\s+of\s+\d+/i).first()).toBeVisible({ timeout: 10_000 });
-      const rows = page.locator("tbody tr").filter({ hasText: /PO\d{6,}/ });
+      const rows = page.locator("tbody tr").filter({ hasText: /PO\d{6,}|DRAFT-\d{8}/ });
       await expect(rows.nth(5), "need at least 6 POs - run data:reset").toBeVisible({ timeout: 10_000 });
       await page.getByRole("combobox", { name: /rows per page/i }).click();
       await page.getByRole("option", { name: "5", exact: true }).click();
@@ -653,7 +654,7 @@ requestorTest.describe("PO — Dashboard — Permission denial", () => {
       const po = new PurchaseOrderPage(page);
       await po.gotoList();
       await expect(page.getByText(/no data found/i).first()).toBeVisible({ timeout: 10_000 });
-      await expect(page.locator("tbody tr").filter({ hasText: /PO\d{6,}/ })).toHaveCount(0);
+      await expect(page.locator("tbody tr").filter({ hasText: /PO\d{6,}|DRAFT-\d{8}/ })).toHaveCount(0);
       await expect(po.newPODropdown()).toBeDisabled();
     },
   );

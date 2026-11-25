@@ -79,7 +79,8 @@ async function createDraftOnPage(
     throw new Error(`${who}: could not extract PO ref from URL: ${url}`);
   }
   // Lists and the approval inbox show the document number, never the uuid in the URL.
-  const poNo = (await page.getByText(/^PO\d{6,}$/).first().textContent({ timeout: 15_000 }))?.trim() ?? "";
+  // BE #1108: a saved draft holds DRAFT-NNNNNNNN; the real PO number is reserved at first submit.
+  const poNo = (await page.getByText(/^DRAFT-\d{8}$/).first().textContent({ timeout: 15_000 }))?.trim() ?? "";
   if (!poNo) throw new Error(`${who}: could not read the PO number for ${ref}`);
   return { ref, url, poNo };
 }
@@ -147,7 +148,12 @@ export async function submitPOAsPurchaser(
       );
     }
 
-    return { ref, url, poNo };
+    // The draft number is replaced at submit; read the real one the inbox will show.
+    // Plain goto, no networkidle wait: callers run inside a 30 s test budget.
+    await page.goto(`${LIST_PATH}/${ref}`);
+    const realNo = (await page.getByText(/^PO\d{6,}$/).first().textContent({ timeout: 15_000 }))?.trim() ?? "";
+    if (!realNo) throw new Error(`submitPOAsPurchaser: PO ${ref} (${poNo}) has no real PO number after submit`);
+    return { ref, url, poNo: realNo };
   });
 }
 

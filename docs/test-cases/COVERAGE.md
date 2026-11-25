@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **123 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **199 routes** across **123 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
@@ -154,7 +154,7 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | --- | --- | --- | --- | --- |
 | `/procurement` | 1 | `002-spa-smoke.spec.ts` | `1204-section-landing.md` | ✅ spec |
 | `/procurement/approval` | 1 _(redirect → `/procurement/my-approval`)_ | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`301-pr.spec.ts`<br>`302-pr-creator-journey.spec.ts`<br>_+4 more_ | — | ✅ spec |
-| `/procurement/credit-note` | 3 | `002-spa-smoke.spec.ts`<br>`601-cn.spec.ts`<br>`603-cn-doc-flow.spec.ts` | — | ✅ spec |
+| `/procurement/credit-note` | 3 | `002-spa-smoke.spec.ts`<br>`601-cn.spec.ts`<br>`603-cn-lifecycle.spec.ts` | — | ✅ spec |
 | `/procurement/goods-receive-note` | 3 | `002-spa-smoke.spec.ts`<br>`501-grn.spec.ts` | — | ✅ spec |
 | `/procurement/goods-receive-note/from-po` | 1 | — | — | ❌ none |
 | `/procurement/my-approval` | 1 | `002-spa-smoke.spec.ts`<br>`201-my-approvals.spec.ts`<br>`301-pr.spec.ts`<br>`302-pr-creator-journey.spec.ts`<br>_+4 more_ | — | ✅ spec |
@@ -215,7 +215,7 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | --- | --- | --- | --- | --- |
 | `/store-operation` | 1 | — | `1204-section-landing.md` | 📄 catalog |
 | `/store-operation/stock-replenishment` | 1 | `711-stock-replenishment.spec.ts` | — | ✅ spec |
-| `/store-operation/store-requisition` | 3 | `701-sr.spec.ts`<br>`702-sr-doc-flow.spec.ts`<br>`720-stock-issue.spec.ts`<br>`721-sr-issue-doc-flow.spec.ts`<br>_+1 more_ | — | ✅ spec |
+| `/store-operation/store-requisition` | 3 | `701-sr.spec.ts`<br>`702-sr-lifecycle.spec.ts`<br>`720-stock-issue.spec.ts`<br>`721-sr-issue.spec.ts` | — | ✅ spec |
 | `/store-operation/wastage-reporting` | 1 | `710-wastage-reporting.spec.ts` | — | ✅ spec |
 
 ## Platform / System Admin
@@ -241,7 +241,7 @@ Parsed from the frontend router (`routes/router.tsx`): **195 routes** across **1
 | `/system-admin/storage` | 1 _(redirect → `/system-admin/document`)_ | — | `1107-document.md` | 📄 catalog |
 | `/system-admin/user` | 2 | `910-period-close-prestep.spec.ts` | `1102-user.md` | ✅ spec |
 | `/system-admin/user-activity` | 1 | — | `1106-user-activity.md` | 📄 catalog |
-| `/system-admin/workflow` | 7 | — | `1103-workflow.md` | 📄 catalog |
+| `/system-admin/workflow` | 11 | — | `1103-workflow.md` | 📄 catalog |
 
 ## terms
 

@@ -771,10 +771,11 @@ Login เป็น requestor (ทุก role ใน seed มีสิทธิ�
 **Steps**
 
 1. ไปที่ /vendor-management/price-list-template
+2. ค้นหา 'STD campaign template' แล้วกด Enter
 
 **Expected**
 
-role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template (แถว STD campaign template)
+role ที่มีสิทธิ์ view อย่างเดียวเห็นรายการ template (แถว STD campaign template ในผลค้นหา)
 
 ---
 
@@ -826,4 +827,4 @@ TC-PT-040050 ผ่านแล้ว → template ADMIN_NAME_UPDATED มีอ�
 ---
 
 
-<sub>Last regenerated: 2026-11-24 · git f462816</sub>
+<sub>Last regenerated: 2026-11-25 · git fe077d4</sub>

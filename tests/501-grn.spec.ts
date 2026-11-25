@@ -390,9 +390,9 @@ purchaseTest.describe("GRN — Create from Multiple POs", () => {
     "TC-GRN-040004 Create GRN from Multiple POs - Edge Case - Partial POs",
     {
       annotation: [
-        { type: "preconditions", description: "มี PO ที่ยังเปิด 2 ใบ รวม PO261100006 ที่รับแล้วบางส่วน (PARTIAL)" },
-        { type: "steps", description: "1. New GRN → Purchase Order → เลือก vendor → Next\n2. ติ๊ก PO261100006 (PARTIAL) และ PO261100007 → Confirm" },
-        { type: "expected", description: "ฟอร์มรวมบรรทัดของทั้งสอง PO (Ground Beef/Chilled Angus จาก 06 และ PORK CHOP จาก 07) และมีปุ่ม 'Add more PO'" },
+        { type: "preconditions", description: "มี PO ที่ยังเปิด 2 ใบ รวม PO261100005 ที่รับแล้วบางส่วน (PARTIAL)" },
+        { type: "steps", description: "1. New GRN → Purchase Order → เลือก vendor → Next\n2. ติ๊ก PO261100005 (PARTIAL) และ PO261100006 → Confirm" },
+        { type: "expected", description: "ฟอร์มรวมบรรทัดของทั้งสอง PO (Ground Beef/Chilled Angus จาก 05 และ PORK CHOP จาก 06) และมีปุ่ม 'Add more PO'" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Edge Case" },
       ],
@@ -401,7 +401,8 @@ purchaseTest.describe("GRN — Create from Multiple POs", () => {
       await page.goto(`${LIST}/from-po`);
       await page.getByRole("radio").first().click();
       await button(page, "Next").click();
-      for (const no of ["PO261100006", "PO261100007"]) await tickPo(page, no);
+      // BE #1108: the STD draft PO holds a DRAFT- number, so the STD numbered POs start one lower than before.
+      for (const no of ["PO261100005", "PO261100006"]) await tickPo(page, no);
       await button(page, "Confirm").click();
       await expect(page).toHaveURL(/new\?doc_type=purchase_order/);
       await expect(rowsOf(page).filter({ hasText: "PORK CHOP" })).toHaveCount(1);
