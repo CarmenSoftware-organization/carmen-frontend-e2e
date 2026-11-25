@@ -5,11 +5,13 @@
 | Date | 2026-11-26 |
 | Branch | `test/e2e-ar-invoice` |
 | Target | local FE `main` (`../carmen-frontend`, app v2.9.1) + local BE `main` (`../carmen-turborepo-backend`, API `v4.0.13-build.20261112.f529576a9`) on the dev database, TEST BU `BU-GR2VYNKQ` |
-| Source of truth | every `.fail(` in `tests/806-ar-invoice.spec.ts`: **8 pin sites** = 4 causes. A `test.fail` reports **passed** while the bug exists and turns **red ("unexpectedly passed")** once it is fixed: drop the marker then. Section 08 (workflow) is added by a later task; its pins, if any, go here too. |
+| Source of truth | every `.fail(` in `tests/806-ar-invoice.spec.ts`: **8 pin sites** = 4 causes. A `test.fail` reports **passed** while the bug exists and turns **red ("unexpectedly passed")** once it is fixed: drop the marker then. Section 08 (workflow) has no pins. |
 
 Verdicts are the implementer's. None is confirmed by a product owner: **every row needs a per-item decision (fix / accept / drop the case)**.
 "Oracle rule" is **assumption** where the repo holds no AR business document (the design says so); the pinned cases carry
 `assumption:` in `expected`. Repro: `E2E_NO_WEBSERVER=1 E2E_BASE_URL=http://localhost:3000 bunx playwright test --project=setup --project=chromium tests/806-ar-invoice.spec.ts -g <TC-ID>`.
+
+> **Watch out:** `test.fail(true)` flips the whole test. A regression in the receivable/revenue legs asserted before the VAT pins (040003, 050002, 050004, 070003) would also read as an expected failure until the VAT bug is fixed. The same legs are asserted unpinned in 040002, 050001, 050003 and 070002.
 
 ## 1. Suspected bugs
 

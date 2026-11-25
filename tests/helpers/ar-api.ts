@@ -204,8 +204,8 @@ export async function referenceCandidates(invoiceId: string): Promise<{ id: stri
 
 async function arWorkflow(): Promise<Row> {
   const list = ok(await buConfigSend(CREATOR, "GET", "/workflows/ar-invoice?perpage=100"), "GET workflows/ar-invoice").body?.data;
-  const w = (Array.isArray(list) ? list : []).find((x: Row) => x.workflow_type === "ar_invoice") ?? (Array.isArray(list) ? list[0] : undefined);
-  if (!w) throw new Error("no ar_invoice workflow on the TEST BU - run `bun run data:reset --yes`");
+  const w = (Array.isArray(list) ? list : []).find((x: Row) => x.workflow_type === "ar_invoice");
+  if (!w) throw new Error("no ar_invoice workflow — run bun run data:reset --yes");
   return ok(await buConfigSend(CREATOR, "GET", `/workflows/${w.id}`), `GET workflow ${w.id}`).body.data;
 }
 
