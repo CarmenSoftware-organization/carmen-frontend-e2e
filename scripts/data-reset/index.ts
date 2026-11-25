@@ -13,6 +13,7 @@ import { parseResetArgs, resetHelpText, type ResetArgs } from "./cli";
 import { resolveResetConfig, type ResetConfig } from "./config";
 import { DEFAULT_CURRENCY_CODE, loadCoaFixture, seedBuCurrency, seedChartOfAccounts } from "./bu-base";
 import { seedAccountingBase } from "./accounting";
+import { seedArBase } from "./ar";
 import { seedMappings } from "./mappings";
 import { countRolesToCopy } from "./roles";
 import { seedAccess, seedAccountingRoles } from "./access";
@@ -114,6 +115,9 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
     log(`bu-currency: would PATCH /api/business-units default_currency_id to the ${DEFAULT_CURRENCY_CODE} row`);
     log(`coa: would POST ${loadCoaFixture().length} accounts unless their codes exist`);
     log("accounting: would PUT gl_setting (AP / AR control / input + output VAT / WHT / deposit / FX accounts, ap_auto_from_grn off), POST a GL fiscal year unless an open period covers today, POST bank account E2E-BANK, map the Vat 7% profile and POST WHT 3%, and PUT the AP control account on every vendor — each skipped when already set");
+    log(cfg.buCode === BU_CODE
+      ? "ar: would POST cost center E2E-CC-1 and customers E2E-CUST-1 (AR account 1130, tax no, register address) / E2E-CUST-2, unless their codes exist; revenue 4100 and the Vat 7% / None 0% profiles resolved by code / name"
+      : "ar: skipped (AR read-set lives on BU-GR2VYNKQ)");
     log("mappings: would PATCH 2 departments (all 9 accounts + hod as HOD; owner in the second) and PUT 9 location sets");
     const toCopy = await countRolesToCopy(sessions, cfg);
     if (cfg.buCode !== BU_CODE) log(`copy-roles: would copy ${toCopy} roles from ${BU_CODE} (name + granted permissions, mapped by resource.action) before assigning them`);
@@ -167,7 +171,12 @@ export async function runDataReset(args: ResetArgs, cfg: ResetConfig, deps: RunD
   results.push(await seedBuCurrency(sessions, cfg));
   results.push(await seedChartOfAccounts(sessions, cfg));
   if (results.slice(-2).every((r) => r.failed.length === 0)) results.push(await seedAccountingBase(sessions, cfg, now));
-  if (results.slice(-3).some((r) => r.failed.length > 0)) {
+  if (cfg.buCode === BU_CODE) {
+    if (results.slice(-1)[0].failed.length === 0) results.push(await seedArBase(sessions, cfg));
+  } else {
+    log("ar: skipped (AR read-set lives on BU-GR2VYNKQ)");
+  }
+  if (results.some((r) => r.failed.length > 0)) {
     // Mappings, workflows and documents on a BU without a currency / COA / posting setup only make a second mess.
     log(summaryTable(results));
     log("✗ BU base (default currency / chart of accounts / accounting setup) failed — stopping before mappings and workflows");
