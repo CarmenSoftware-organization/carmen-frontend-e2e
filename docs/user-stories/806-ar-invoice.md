@@ -5,7 +5,7 @@ _Generated from `tests/806-ar-invoice.spec.ts` annotations. Edit annotations, no
 **Module:** Ar Invoice
 **Spec:** `tests/806-ar-invoice.spec.ts`
 **Default role:** Budget
-**Total test cases:** 48 (32 High / 16 Medium / 0 Low)
+**Total test cases:** 49 (32 High / 17 Medium / 0 Low)
 
 ## Test Cases at a Glance
 
@@ -45,14 +45,15 @@ _Generated from `tests/806-ar-invoice.spec.ts` annotations. Edit annotations, no
 | TC-ARINV-070005 | Void โดยไม่ใส่เหตุผล (API): ถูกปฏิเสธ 400 และใบยัง posted | Medium | Negative |
 | TC-ARINV-070006 | Void ใบ Draft: สถานะ void และไม่มี JV | Medium | Alternate Flow |
 | TC-ARINV-080001 | Submit ตอนมี workflow: สถานะ in_review ได้เลขจริง ARIV และยังไม่มี JV | High | Functional |
-| TC-ARINV-080002 | ผู้สร้างอนุมัติใบของตัวเองไม่ได้: 403 WORKFLOW_CREATOR_CANNOT_APPROVE | High | Negative |
+| TC-ARINV-080002 | ผู้สร้างที่เป็นผู้อนุมัติของขั้นด้วย อนุมัติใบของตัวเองไม่ได้: 403 WORKFLOW_CREATOR_CANNOT_APPROVE | High | Negative |
 | TC-ARINV-080003 | ผู้ไม่ใช่ผู้อนุมัติของขั้น Approve ไม่ได้: 422 WORKFLOW_USER_NOT_STAGE_APPROVER | High | Authorization |
 | TC-ARINV-080004 | Budget อนุมัติผ่านหน้ารายละเอียด: สถานะ posted และมี JV สมดุล | High | Happy Path |
-| TC-ARINV-080005 | Reject โดยไม่ใส่เหตุผล: 422 AR_INVOICE_REJECT_REASON_REQUIRED และใบยัง in_review | Medium | Validation |
+| TC-ARINV-080005 | Reject โดยเหตุผลว่าง (blank): 422 AR_INVOICE_REJECT_REASON_REQUIRED และใบยัง in_review | Medium | Validation |
 | TC-ARINV-080006 | Budget Reject พร้อมเหตุผลผ่านหน้ารายละเอียด: void ยอดค้าง 0.00 ไม่มี JV และไม่มี tax invoice | High | Alternate Flow |
 | TC-ARINV-080007 | Budget ส่งกลับไปขั้น Create Request: ใบกลับเป็น draft และเลขจริงเดิม | High | Alternate Flow |
 | TC-ARINV-080008 | ลบใบ draft ที่ถือเลขจริงแล้ว: 422 AR_INVOICE_NUMBERED_VOID_ONLY | Medium | Negative |
 | TC-ARINV-080009 | ลบใบที่ in_review: 409 AR_INVOICE_IMMUTABLE | Medium | Negative |
+| TC-ARINV-080010 | Admin (อยู่แค่ขั้น Create Request) อนุมัติใบของตัวเองไม่ได้: 422 WORKFLOW_USER_NOT_STAGE_APPROVER | Medium | Authorization |
 | TC-ARINV-100001 | Requestor เห็นรายการและรายละเอียดของใบที่ลงบัญชีแล้ว | High | Authorization |
 | TC-ARINV-100002 | Requestor ไม่เห็นปุ่ม Void บนใบ posted และใบ Draft และไม่เห็น Submit บนใบ posted | High | Authorization |
 | TC-ARINV-100003 | Requestor ไม่เห็นปุ่ม New Invoice ที่กดได้บนรายการ | Medium | Authorization |
@@ -820,7 +821,7 @@ status in_review; เลขเอกสารเป็น ARIV + 8 หลัก;
 
 ---
 
-## TC-ARINV-080002 — ผู้สร้างอนุมัติใบของตัวเองไม่ได้: 403 WORKFLOW_CREATOR_CANNOT_APPROVE
+## TC-ARINV-080002 — ผู้สร้างที่เป็นผู้อนุมัติของขั้นด้วย อนุมัติใบของตัวเองไม่ได้: 403 WORKFLOW_CREATOR_CANNOT_APPROVE
 
 > **As a** Budget user, **I want** this Ar Invoice behavior verified, **so that** the feature works as expected.
 <!-- TODO: refine narrative -->
@@ -829,15 +830,16 @@ status in_review; เลขเอกสารเป็น ARIV + 8 หลัก;
 
 **Preconditions**
 
-workflow active; ใบ in_review ที่ Admin สร้างและ Submit
+workflow active; ใบ in_review ที่ Budget สร้างและ Submit (Budget อยู่ทั้งขั้น Create Request และ Accounting Approval); config ar.invoice.allow-creator-approve ของ TEST BU ต้องปิด
 
 **Steps**
 
-1. Admin Approve ใบของตัวเองผ่าน API
+1. Budget สร้างใบร่างผ่าน API แล้ว Submit
+2. Budget Approve ใบของตัวเองผ่าน API
 
 **Expected**
 
-403 รหัส WORKFLOW_CREATOR_CANNOT_APPROVE; ใบยัง in_review ไม่มี JV. pinned: backend ตอบ 422 WORKFLOW_USER_NOT_STAGE_APPROVER (Admin ไม่ได้อยู่ในขั้น Accounting Approval จึงชนกฎผู้อนุมัติของขั้นก่อนกฎผู้สร้าง; ตรวจ 2026-11-26)
+403 รหัส WORKFLOW_CREATOR_CANNOT_APPROVE; ใบยัง in_review ไม่มี JV. rule: กฎผู้สร้างทำงานหลังผ่านการตรวจผู้อนุมัติของขั้น (accounting-doc-workflow.ts:117-130) จึงต้องใช้ผู้สร้างที่อยู่ในขั้น Approve ด้วย
 
 ---
 
@@ -884,7 +886,7 @@ Budget login; workflow active; ใบ 2 x 100 Vat 7% (net 200.00 + VAT 14.00 = 2
 
 ---
 
-## TC-ARINV-080005 — Reject โดยไม่ใส่เหตุผล: 422 AR_INVOICE_REJECT_REASON_REQUIRED และใบยัง in_review
+## TC-ARINV-080005 — Reject โดยเหตุผลว่าง (blank): 422 AR_INVOICE_REJECT_REASON_REQUIRED และใบยัง in_review
 
 > **As a** Budget user, **I want** the system to block invalid Ar Invoice submissions, **so that** data quality is preserved.
 
@@ -900,7 +902,7 @@ workflow active; ใบ in_review; Budget เป็นผู้อนุมั�
 
 **Expected**
 
-422 รหัส AR_INVOICE_REJECT_REASON_REQUIRED; ใบยัง in_review ไม่มี JV
+reason ว่าง (blank): 422 รหัส AR_INVOICE_REJECT_REASON_REQUIRED; ไม่ส่ง reason เลย: 400 จาก schema; ใบยัง in_review ไม่มี JV
 
 ---
 
@@ -990,6 +992,26 @@ workflow active; ใบ in_review
 **Expected**
 
 409 รหัส AR_INVOICE_IMMUTABLE; ใบยัง in_review
+
+---
+
+## TC-ARINV-080010 — Admin (อยู่แค่ขั้น Create Request) อนุมัติใบของตัวเองไม่ได้: 422 WORKFLOW_USER_NOT_STAGE_APPROVER
+
+> **As a** low-privilege user, **I should NOT** see Add/edit controls on Ar Invoice, **so that** role separation is enforced.
+
+**Priority:** Medium · **Test Type:** Authorization
+
+**Preconditions**
+
+workflow active; ใบ in_review ที่ Admin สร้างและ Submit (Admin ไม่ได้เป็นผู้อนุมัติของขั้น Accounting Approval)
+
+**Steps**
+
+1. Admin Approve ใบของตัวเองผ่าน API
+
+**Expected**
+
+422 รหัส WORKFLOW_USER_NOT_STAGE_APPROVER; ใบยัง in_review ไม่มี JV. note: การตรวจผู้อนุมัติของขั้นมาก่อนกฎผู้สร้าง (accounting-doc-workflow.ts:117-130) จึงไม่ได้ 403 WORKFLOW_CREATOR_CANNOT_APPROVE
 
 ---
 
@@ -1122,4 +1144,4 @@ Requestor login (accounting.ar.view เท่านั้น); E2E-AR-DRAFT เ�
 ---
 
 
-<sub>Last regenerated: 2026-11-25 · git b377f27</sub>
+<sub>Last regenerated: 2026-11-25 · git 3ad5b1e</sub>

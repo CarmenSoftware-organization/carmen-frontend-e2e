@@ -1,7 +1,7 @@
 import { expect } from "@playwright/test";
 import { createAuthTest } from "./fixtures/auth.fixture";
 import { ArInvoicePage } from "./pages/ar-invoice.page";
-import { buSend } from "./helpers/bu-api";
+import { buSend, type Role } from "./helpers/bu-api";
 import {
   approveArDoc,
   arWorkflowActive,
@@ -26,6 +26,7 @@ import { uid } from "./helpers/test-data";
 // AR invoice on the TEST BU (BU-GR2VYNKQ), money path: list, detail, create, edit, post, debit / credit notes,
 // credit-note application, void, the Requestor (view key only). Section 08 is the ar_invoice approval workflow.
 //
+// Assumes workers: 1 (playwright.config): the ar_invoice workflow toggle is BU-wide state that section 08 flips on.
 // Roles: Admin creates / edits / deletes / submits / voids (UI + API, a BU admin bypasses the permission keys);
 // Requestor holds accounting.ar.view only (no void). With no active `ar_invoice` workflow Submit posts, so the
 // beforeAll switches the workflow off if a crashed run left it on.
@@ -1015,9 +1016,9 @@ const budgetTest = createAuthTest("carmensoftware.dev+budget@gmail.com");
 budgetTest.describe.configure({ timeout: 120_000 });
 
 /** Create a document as Admin and submit it into the active workflow: in_review. */
-async function inReview(key: string, taxInvoice = false) {
-  const created = await createArDoc("invoice", { tag: tag(key), lines: [{ qty: 2, price: 100, vat: true }], taxInvoice });
-  const res = await submitArDoc(created.id, CREATOR);
+async function inReview(key: string, taxInvoice = false, role: Role = CREATOR) {
+  const created = await createArDoc("invoice", { tag: tag(key), lines: [{ qty: 2, price: 100, vat: true }], taxInvoice, role });
+  const res = await submitArDoc(created.id, role);
   expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
   return { ...created, doc: await getArDoc(created.id) };
 }
@@ -1051,21 +1052,21 @@ budgetTest.describe.serial("AR invoice workflow (806-08)", () => {
   );
 
   budgetTest(
-    "TC-ARINV-080002 ผู้สร้างอนุมัติใบของตัวเองไม่ได้: 403 WORKFLOW_CREATOR_CANNOT_APPROVE",
+    "TC-ARINV-080002 ผู้สร้างที่เป็นผู้อนุมัติของขั้นด้วย อนุมัติใบของตัวเองไม่ได้: 403 WORKFLOW_CREATOR_CANNOT_APPROVE",
     {
       annotation: [
-        { type: "preconditions", description: "workflow active; ใบ in_review ที่ Admin สร้างและ Submit" },
-        { type: "steps", description: "1. Admin Approve ใบของตัวเองผ่าน API" },
-        { type: "expected", description: "403 รหัส WORKFLOW_CREATOR_CANNOT_APPROVE; ใบยัง in_review ไม่มี JV. pinned: backend ตอบ 422 WORKFLOW_USER_NOT_STAGE_APPROVER (Admin ไม่ได้อยู่ในขั้น Accounting Approval จึงชนกฎผู้อนุมัติของขั้นก่อนกฎผู้สร้าง; ตรวจ 2026-11-26)" },
+        { type: "preconditions", description: "workflow active; ใบ in_review ที่ Budget สร้างและ Submit (Budget อยู่ทั้งขั้น Create Request และ Accounting Approval); config ar.invoice.allow-creator-approve ของ TEST BU ต้องปิด" },
+        { type: "steps", description: "1. Budget สร้างใบร่างผ่าน API แล้ว Submit\n2. Budget Approve ใบของตัวเองผ่าน API" },
+        { type: "expected", description: "403 รหัส WORKFLOW_CREATOR_CANNOT_APPROVE; ใบยัง in_review ไม่มี JV. rule: กฎผู้สร้างทำงานหลังผ่านการตรวจผู้อนุมัติของขั้น (accounting-doc-workflow.ts:117-130) จึงต้องใช้ผู้สร้างที่อยู่ในขั้น Approve ด้วย" },
         { type: "priority", description: "High" },
         { type: "testType", description: "Negative" },
       ],
     },
     async () => {
-      const { id } = await inReview("wfself");
-      const res = await approveArDoc(id, CREATOR);
-      test.fail(true, "suspected bug: Admin approving their own in_review AR invoice gets 422 WORKFLOW_USER_NOT_STAGE_APPROVER (Admin is not an approver of Accounting Approval) instead of 403 WORKFLOW_CREATOR_CANNOT_APPROVE; the stage-approver check runs before the creator check; see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
-      expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(403);
+      const { id } = await inReview("wfself", false, APPROVER);
+      const res = await approveArDoc(id, APPROVER);
+      // a 200 here means ar.invoice.allow-creator-approve is ON for the TEST BU (no read-only endpoint to check it up front)
+      expect(res.status, `approve answered ${res.status}; if 200, ar.invoice.allow-creator-approve is on for the TEST BU. ${JSON.stringify(res.body).slice(0, 200)}`).toBe(403);
       expect(res.body?.error?.code).toBe("WORKFLOW_CREATOR_CANNOT_APPROVE");
       expect((await getArDoc(id)).status).toBe("in_review");
       expect(await jvOfSource("ar_invoice", id)).toHaveLength(0);
@@ -1122,12 +1123,12 @@ budgetTest.describe.serial("AR invoice workflow (806-08)", () => {
   );
 
   budgetTest(
-    "TC-ARINV-080005 Reject โดยไม่ใส่เหตุผล: 422 AR_INVOICE_REJECT_REASON_REQUIRED และใบยัง in_review",
+    "TC-ARINV-080005 Reject โดยเหตุผลว่าง (blank): 422 AR_INVOICE_REJECT_REASON_REQUIRED และใบยัง in_review",
     {
       annotation: [
         { type: "preconditions", description: "workflow active; ใบ in_review; Budget เป็นผู้อนุมัติ" },
         { type: "steps", description: "1. Budget Reject ผ่าน API โดย reason เป็นช่องว่างล้วน (ไม่ส่งหรือส่งสตริงว่าง backend ตอบ 400 จาก schema ก่อนถึงกฎนี้)" },
-        { type: "expected", description: "422 รหัส AR_INVOICE_REJECT_REASON_REQUIRED; ใบยัง in_review ไม่มี JV" },
+        { type: "expected", description: "reason ว่าง (blank): 422 รหัส AR_INVOICE_REJECT_REASON_REQUIRED; ไม่ส่ง reason เลย: 400 จาก schema; ใบยัง in_review ไม่มี JV" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Validation" },
       ],
@@ -1138,6 +1139,7 @@ budgetTest.describe.serial("AR invoice workflow (806-08)", () => {
       const res = await rejectArDoc(id, APPROVER, "   ");
       expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(422);
       expect(res.body?.error?.code).toBe("AR_INVOICE_REJECT_REASON_REQUIRED");
+      expect((await rejectArDoc(id, APPROVER)).status).toBe(400);
       expect((await getArDoc(id)).status).toBe("in_review");
       expect(await jvOfSource("ar_invoice", id)).toHaveLength(0);
     },
@@ -1233,6 +1235,27 @@ budgetTest.describe.serial("AR invoice workflow (806-08)", () => {
       expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(409);
       expect(res.body?.error?.code).toBe("AR_INVOICE_IMMUTABLE");
       expect((await getArDoc(id)).status).toBe("in_review");
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080010 Admin (อยู่แค่ขั้น Create Request) อนุมัติใบของตัวเองไม่ได้: 422 WORKFLOW_USER_NOT_STAGE_APPROVER",
+    {
+      annotation: [
+        { type: "preconditions", description: "workflow active; ใบ in_review ที่ Admin สร้างและ Submit (Admin ไม่ได้เป็นผู้อนุมัติของขั้น Accounting Approval)" },
+        { type: "steps", description: "1. Admin Approve ใบของตัวเองผ่าน API" },
+        { type: "expected", description: "422 รหัส WORKFLOW_USER_NOT_STAGE_APPROVER; ใบยัง in_review ไม่มี JV. note: การตรวจผู้อนุมัติของขั้นมาก่อนกฎผู้สร้าง (accounting-doc-workflow.ts:117-130) จึงไม่ได้ 403 WORKFLOW_CREATOR_CANNOT_APPROVE" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async () => {
+      const { id } = await inReview("wfadminself");
+      const res = await approveArDoc(id, CREATOR);
+      expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(422);
+      expect(res.body?.error?.code).toBe("WORKFLOW_USER_NOT_STAGE_APPROVER");
+      expect((await getArDoc(id)).status).toBe("in_review");
+      expect(await jvOfSource("ar_invoice", id)).toHaveLength(0);
     },
   );
 });

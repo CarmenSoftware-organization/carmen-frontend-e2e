@@ -139,6 +139,8 @@ export async function createArDoc(
     customer?: "E2E-CUST-1" | "E2E-CUST-2";
     taxInvoice?: boolean;
     references?: { id: string; amount: number }[];
+    /** Who creates it (default `CREATOR`, Admin). */
+    role?: Role;
   },
 ): Promise<{ id: string; no: string }> {
   revenueId ??= accountId("4100");
@@ -151,7 +153,7 @@ export async function createArDoc(
     taxProfile("None"),
   ]);
   const r = ok(
-    await buSend(CREATOR, "POST", "/ar-invoice", {
+    await buSend(opts.role ?? CREATOR, "POST", "/ar-invoice", {
       doc_type: docType,
       doc_date: today(),
       customer_id: cust,
