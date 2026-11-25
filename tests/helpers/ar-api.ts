@@ -182,7 +182,7 @@ export async function createArDoc(
 /** Submit; with no `ar_invoice` workflow active this posts, otherwise the document goes into review. */
 export const submitArDoc = (id: string, role: Role = CREATOR) => postAction(role, `/ar-invoice/${id}`, "submit");
 export const approveArDoc = (id: string, role: Role = APPROVER) => postAction(role, `/ar-invoice/${id}`, "approve");
-/** Reject needs a reason (AR_INVOICE_REJECT_REASON_REQUIRED without one); pass `reason` undefined-free by default. */
+/** Reject needs a reason: with none the BE answers AR_INVOICE_REJECT_REASON_REQUIRED (422). */
 export const rejectArDoc = (id: string, role: Role = APPROVER, reason?: string) =>
   postAction(role, `/ar-invoice/${id}`, "reject", reason === undefined ? {} : { reason });
 /** Send back to `stage` (the stage name or id the detail page offers). */

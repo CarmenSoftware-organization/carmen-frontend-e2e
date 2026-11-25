@@ -60,14 +60,19 @@ export class ArInvoicePage extends BasePage {
     return this.page.getByRole("combobox", { name: "Select an AR customer" }).or(this.page.getByRole("button", { name: "Select an AR customer" })).first();
   }
 
-  /** Pick the first customer matching `search` ("E2E-CUST-1") in the lookup popover. */
-  async selectCustomer(search: string) {
-    await this.customerLookup().click();
+  /** Open a lookup popover with `trigger`, search `search` and click the first matching option. */
+  private async pickFrom(trigger: Locator, search: string) {
+    await trigger.click();
     const pop = this.page.locator("[data-slot=popover-content]:visible").last();
     await pop.locator("[data-slot=command-input], input").first().fill(search);
     const option = pop.locator("[data-value], [role=option]").filter({ hasText: new RegExp(esc(search), "i") }).first();
     await expect(option).toBeVisible();
     await option.click();
+  }
+
+  /** Pick the first customer matching `search` ("E2E-CUST-1") in the lookup popover. */
+  async selectCustomer(search: string) {
+    await this.pickFrom(this.customerLookup(), search);
   }
 
   // ── Lines (ar-invoice-lines.tsx, ar-invoice-line-dialog.tsx) ──────────
@@ -96,14 +101,7 @@ export class ArInvoicePage extends BasePage {
       taxProfile: () => dlg.getByRole("combobox", { name: /Tax Profile|Tax 1/ }).or(dlg.getByRole("button", { name: /Select Tax Profile/ })).first(),
       field,
       /** Pick the first lookup option matching `search` in the popover the trigger opens. */
-      pick: async (trigger: Locator, search: string) => {
-        await trigger.click();
-        const pop = this.page.locator("[data-slot=popover-content]:visible").last();
-        await pop.locator("[data-slot=command-input], input").first().fill(search);
-        const option = pop.locator("[data-value], [role=option]").filter({ hasText: new RegExp(esc(search), "i") }).first();
-        await expect(option).toBeVisible();
-        await option.click();
-      },
+      pick: (trigger: Locator, search: string) => this.pickFrom(trigger, search),
     };
   }
 
@@ -150,13 +148,36 @@ export class ArInvoicePage extends BasePage {
     return this.page.getByRole("dialog").filter({ has: this.page.locator("[data-slot=dialog-title]") }).last();
   }
 
-  /** Click the toolbar `action` button, fill the reason and press the dialog's confirm button (named like the action). */
-  async confirmWithReason(action: "Void" | "Reject" | "Send back" | "Approve" | "Submit", reason: string) {
+  /** Void / Reject: open the dialog, fill the required `#ar-action-reason` and confirm. */
+  async confirmWithReason(action: "Void" | "Reject", reason: string) {
     await this.button(action).first().click();
     const dlg = this.confirmDialog();
     await expect(dlg).toBeVisible();
     await dlg.locator("#ar-action-reason").fill(reason);
     await dlg.getByRole("button", { name: action, exact: true }).click();
+  }
+
+  /** Submit / Approve: no reason box, just open the dialog and confirm. */
+  async confirm(action: "Submit" | "Approve") {
+    await this.button(action).first().click();
+    const dlg = this.confirmDialog();
+    await expect(dlg).toBeVisible();
+    await dlg.getByRole("button", { name: action, exact: true }).click();
+  }
+
+  /**
+   * Send back: pick `stage` in the dialog's stage Select (SendBackFields, routes/accounting/shared/send-back-fields.tsx:
+   * trigger aria-label "Send back to stage", options named by stage), optionally fill the note, confirm.
+   * Confirm stays disabled until a stage is chosen (ar-invoice-detail.route.tsx:248).
+   */
+  async sendBack(stage: string, note?: string) {
+    await this.button("Send back").first().click();
+    const dlg = this.confirmDialog();
+    await expect(dlg).toBeVisible();
+    await dlg.getByRole("combobox", { name: "Send back to stage" }).click();
+    await this.page.getByRole("option", { name: stage, exact: true }).click();
+    if (note) await dlg.locator("#ar-action-reason").fill(note);
+    await dlg.getByRole("button", { name: "Send back", exact: true }).click();
   }
 
   /** A toast whose text matches. */
