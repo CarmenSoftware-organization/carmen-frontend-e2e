@@ -8,7 +8,9 @@ import type { StepResult } from "../step-result";
 import type { TestUserInfo } from "../verify-env";
 import { verifyDataset } from "../verify-dataset";
 import { resolveSeedContext, type SeedContext } from "./context";
+import { BU_CODE } from "../../../tests/test-users";
 import { seedAccountingDocs } from "./accounting";
+import { seedArDocs } from "./ar";
 import { seedPricing } from "./pricing";
 import { seedPrTemplate, seedPurchaseRequests } from "./purchase-requests";
 import { seedPurchaseOrders } from "./purchase-orders";
@@ -33,6 +35,7 @@ export interface DocumentSteps {
   storeRequisitions: typeof seedStoreRequisitions;
   pricing: typeof seedPricing;
   accountingDocs: typeof seedAccountingDocs;
+  arDocs: typeof seedArDocs;
   verify: typeof verifyDataset;
 }
 
@@ -49,6 +52,7 @@ const DEFAULT_STEPS: DocumentSteps = {
   storeRequisitions: seedStoreRequisitions,
   pricing: seedPricing,
   accountingDocs: seedAccountingDocs,
+  arDocs: seedArDocs,
   verify: verifyDataset,
 };
 
@@ -98,6 +102,8 @@ export async function seedAllDocuments(
   const accounting = await guard("accounting-docs", () => s.accountingDocs(sessions, cfg, ctx, ledger), { refused: [] as string[] });
   for (const refusal of accounting.refused) log(`accounting-docs: dev refused ${refusal}`);
   results.push(strip(accounting));
+  // The AR read set lives on BU-GR2VYNKQ only (the ar base step runs there).
+  if (cfg.buCode === BU_CODE) results.push(await guard("ar-docs", () => s.arDocs(sessions, cfg, ctx, ledger), {}));
   let verified: { short: string[]; table: string };
   try {
     verified = await s.verify(sessions, cfg, ledger);

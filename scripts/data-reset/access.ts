@@ -141,12 +141,14 @@ export async function seedAccess(
 export const ACCOUNTING_VIEW_KEYS = [
   "accounting.view",
   "accounting.ap.view",
+  "accounting.ar.view",
   "accounting.gl.view",
   "accounting.gl.jv_template.view",
 ] as const;
 export const ACCOUNTING_APPROVER_KEYS = [
   ...ACCOUNTING_VIEW_KEYS,
   "accounting.ap.void",
+  "accounting.ar.void",
   "accounting.gl.void",
   "accounting.gl.post",
   "accounting.gl.reverse",

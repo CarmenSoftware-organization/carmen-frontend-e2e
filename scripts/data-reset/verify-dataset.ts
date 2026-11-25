@@ -4,7 +4,10 @@
 // ขั้น 3: นับเอกสารทั้ง BU เทียบกับตาราง แถวที่ขาดจะบอกชื่อพร้อมเลขเอกสารที่ seed ไว้
 import type { ApiClient } from "../seed-master/api-client";
 import type { ResetConfig } from "./config";
+import { BU_CODE } from "../../tests/test-users";
 import { READ_SET, listAll } from "./docs/accounting";
+import { AR_READ_SET } from "./docs/ar";
+import { AR_COST_CENTER_CODE, AR_CUSTOMER_CODES } from "./ar";
 import { DF_PRODUCTS } from "./docs/doc-flow";
 import { verifyPeriodClose } from "./docs/period-close";
 import { refId } from "./docs/refs";
@@ -109,6 +112,37 @@ async function verifyAccountingSet(
     const found = doc && (!k.state || status === k.state) ? 1 : 0;
     lines.push(`${k.key.padEnd(22)}${String(1).padStart(5)}${String(found).padStart(7)}${found < 1 ? "  ✗" : ""}`);
     if (found < 1) short.push(`${k.key}: expected ${k.state ?? "present"}, found ${doc ? status : "none"}`);
+  }
+  return { lines, short };
+}
+
+/**
+ * Read back the AR read set (BU-GR2VYNKQ only): both customers, the cost center, the two gl_setting
+ * account keys and every AR document key in the state the table promises.
+ */
+async function verifyArSet(
+  admin: ApiClient, cfg: ResetConfig, seeded: ReturnType<RowLedger["rows"]>,
+): Promise<{ lines: string[]; short: string[] }> {
+  const lines: string[] = [];
+  const short: string[] = [];
+  // Only when the ar-docs step recorded its rows (it runs on BU-GR2VYNKQ only).
+  if (cfg.buCode !== BU_CODE || !AR_READ_SET.some((k) => seeded[`ar.${k.row}`])) return { lines, short };
+  const bu = cfg.buCode;
+  const check = (row: string, ok: boolean, detail: string) => {
+    lines.push(`${row.padEnd(22)}${String(1).padStart(5)}${String(ok ? 1 : 0).padStart(7)}${ok ? "" : "  ✗"}`);
+    if (!ok) short.push(`${row}: ${detail}`);
+  };
+  const customers = new Set((await listAll(admin, `/api/config/${bu}/customers`)).map((r) => r.code));
+  for (const code of Object.values(AR_CUSTOMER_CODES)) check(`customer ${code}`, customers.has(code), "missing");
+  const ccs = new Set((await listAll(admin, `/api/config/${bu}/cost-centers`)).map((r) => r.code));
+  check(`cost center ${AR_COST_CENTER_CODE}`, ccs.has(AR_COST_CENTER_CODE), "missing");
+  const gl = (await admin.get(`/api/config/${bu}/app-config/gl_setting`)).body?.data?.value as Record<string, unknown> | undefined;
+  const glKeys = { "gl_setting ar_control": "ar_control_account_id", "gl_setting output_vat": "output_vat_account_id" };
+  for (const [label, k] of Object.entries(glKeys)) check(label, Boolean(gl?.[k]), `${k} not set`);
+  const docs = await listAll(admin, `/api/${bu}/ar-invoice`);
+  for (const k of AR_READ_SET) {
+    const doc = docs.find((d) => typeof d.description === "string" && d.description.includes(`STD ar.${k.row} ${k.key}`));
+    check(k.key, doc?.doc_status === k.state, `expected ${k.state}, found ${doc ? doc.doc_status : "none"}`);
   }
   return { lines, short };
 }
@@ -293,6 +327,9 @@ export async function verifyDataset(
   const accounting = await verifyAccountingSet(admin, cfg, seeded);
   lines.push(...accounting.lines);
   short.push(...accounting.short);
+  const ar = await verifyArSet(admin, cfg, seeded);
+  lines.push(...ar.lines);
+  short.push(...ar.short);
   const pos = await verifyPos(admin, cfg, seeded);
   lines.push(...pos.lines);
   short.push(...pos.short);

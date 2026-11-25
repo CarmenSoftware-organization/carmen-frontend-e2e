@@ -24,7 +24,7 @@ export interface RoutingRule {
 export interface WorkflowTemplate {
   order: number;
   name: string;
-  workflow_type: "purchase_request" | "purchase_order" | "store_requisition" | "ap_payment" | "gl_jv";
+  workflow_type: "purchase_request" | "purchase_order" | "store_requisition" | "ap_payment" | "ar_invoice" | "gl_jv";
   description: string | null;
   is_active: boolean;
   data: {

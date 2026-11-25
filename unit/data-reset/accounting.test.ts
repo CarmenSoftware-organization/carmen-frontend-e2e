@@ -65,6 +65,8 @@ describe("seedAccountingBase", () => {
       advance_deposit_account_id: idOf("1180"),
       realized_fx_gain_account_id: idOf("4300"),
       realized_fx_loss_account_id: idOf("5400"),
+      ar_control_account_id: idOf("1130"),
+      output_vat_account_id: idOf("2160"),
       ap_auto_from_grn: false,
       ap_jv_prefix_id: `px-${JV_PREFIXES.ap.code}`,
       auto_jv_prefix_id: `px-${JV_PREFIXES.ap.code}`,
@@ -96,6 +98,7 @@ describe("seedAccountingBase", () => {
       fiscal_year_start_month: 4, allow_post_to_closed_period: true,
       ap_control_account_id: idOf("2100"), input_vat_account_id: idOf("1170"), wht_payable_account_id: idOf("2150"),
       advance_deposit_account_id: idOf("1180"), realized_fx_gain_account_id: idOf("4300"), realized_fx_loss_account_id: idOf("5400"),
+      ar_control_account_id: idOf("1130"), output_vat_account_id: idOf("2160"),
       ap_auto_from_grn: false,
       ap_jv_prefix_id: "px-APJV", auto_jv_prefix_id: "px-APJV", reversal_prefix_id: "px-APRV",
     };
@@ -187,7 +190,8 @@ describe("seedAccountingBase", () => {
   it("is idempotent: a second pass over a fully set-up BU writes nothing", async () => {
     const full = { [`GET ${base}/app-config/gl_setting`]: { data: { value: {
       fiscal_year_start_month: 1, ap_control_account_id: idOf("2100"), input_vat_account_id: idOf("1170"), wht_payable_account_id: idOf("2150"),
-      advance_deposit_account_id: idOf("1180"), realized_fx_gain_account_id: idOf("4300"), realized_fx_loss_account_id: idOf("5400"), ap_auto_from_grn: false,
+      advance_deposit_account_id: idOf("1180"), realized_fx_gain_account_id: idOf("4300"), realized_fx_loss_account_id: idOf("5400"),
+      ar_control_account_id: idOf("1130"), output_vat_account_id: idOf("2160"), ap_auto_from_grn: false,
       ap_jv_prefix_id: "x1", auto_jv_prefix_id: "x1", reversal_prefix_id: "x2",
     } } },
     [`GET ${base}/gl-jv-prefixes`]: { data: [{ id: "x1", code: "APJV" }, { id: "x2", code: "APRV" }] },

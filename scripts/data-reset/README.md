@@ -79,6 +79,7 @@ bun run data:reset --yes --bu all          # ทั้งสาม BU ตาม�
      `E2E-JV-POSTED` (Dr 5300 / Cr 1110 250.00), `E2E-JVT-1` (template) — ใบจ่ายเงินสร้างโดย admin อนุมัติโดย budget,
      ต้องมี Payment Type (`E2E-PT`) ซึ่ง reset ล้างทิ้ง จึงสร้างให้ · ยอดรวมและยอดค้างเทียบกับที่คำนวณจากบรรทัดของตัวเอง
      ไม่ใช่ค่าที่ backend ตอบ — ถ้า dev ปฏิเสธ deposit / debit note / credit note จะแจ้งสถานะ+body แล้วข้ามแถวนั้น ไม่ปลอม
+   - ชุดเอกสาร AR อ่านอย่างเดียว (`docs/ar.ts`, ขั้น `ar-docs`, เฉพาะ `BU-GR2VYNKQ`) ค้นเจอด้วย `STD ar.<row> <KEY>` ใน `description`: `E2E-AR-POSTED` (1 บรรทัด 3 × 333.33 = 999.99 + VAT 70.00 = 1,069.99, tax invoice), `E2E-AR-DRAFT` (535.00), `E2E-AR-CN` (107.00 posted), `E2E-AR-DN` (200.00 posted), `E2E-AR-VOID` (300.00 posted แล้ว void) — ลูกค้า `E2E-CUST-1/2`, cost center `E2E-CC-1`
 7b. ฐาน POS / Sales Consumption (`docs/pos.ts`, ขั้น `pos` ต่อจาก `stock`):
    - เปิด Simphony: app-config `interface_pos_simphony` = `{ enabled: true }` (อ่านค่าเดิมก่อน คงฟิลด์อื่นไว้)
    - recipe `E2E-POS-A` (P1 × 2, P2 × 1) และ `E2E-POS-B` (P3 × 1, P4 × 3) โดย P1–P4 = สินค้า 4 ตัวสุดท้ายของ context (p7–p10)

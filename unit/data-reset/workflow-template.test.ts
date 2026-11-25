@@ -8,13 +8,14 @@ describe("workflow fixture", () => {
   const fixture = loadWorkflowFixture();
   const [pr, po, sr] = fixture.workflows;
 
-  it("lists the PR workflow first, then General PO, the SR workflow, AP Payment and Journal Voucher", () => {
+  it("lists the PR workflow first, then General PO, the SR workflow, AP Payment, Journal Voucher and AR Invoice", () => {
     expect(fixture.workflows.map((w) => [w.order, w.workflow_type])).toEqual([
       [0, "purchase_request"],
       [1, "purchase_order"],
       [2, "store_requisition"],
       [3, "ap_payment"],
       [4, "gl_jv"],
+      [5, "ar_invoice"],
     ]);
     expect(po.name).toBe("General PO");
   });

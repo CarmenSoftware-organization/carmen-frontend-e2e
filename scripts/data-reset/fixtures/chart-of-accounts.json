@@ -3,6 +3,7 @@
   "accounts": [
     { "code": "1100", "description_1": "Cash and Bank", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "1110", "description_1": "Bank - Current Account", "category": "asset", "nature": "debit", "type": "balance_sheet" },
+    { "code": "1130", "description_1": "Trade Accounts Receivable", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "1140", "description_1": "Inventory - Food", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "1150", "description_1": "Inventory - Beverage", "category": "asset", "nature": "debit", "type": "balance_sheet" },
     { "code": "1160", "description_1": "Inventory - Supplies", "category": "asset", "nature": "debit", "type": "balance_sheet" },
@@ -11,6 +12,7 @@
     { "code": "2100", "description_1": "Accounts Payable", "category": "liability", "nature": "credit", "type": "balance_sheet" },
     { "code": "2110", "description_1": "Accrued Expenses", "category": "liability", "nature": "credit", "type": "balance_sheet" },
     { "code": "2150", "description_1": "Withholding Tax Payable", "category": "liability", "nature": "credit", "type": "balance_sheet" },
+    { "code": "2160", "description_1": "Output VAT", "category": "liability", "nature": "credit", "type": "balance_sheet" },
     { "code": "3100", "description_1": "Retained Earnings", "category": "equity", "nature": "credit", "type": "balance_sheet" },
     { "code": "4100", "description_1": "Food Sales", "category": "revenue", "nature": "credit", "type": "income_statement" },
     { "code": "4200", "description_1": "Beverage Sales", "category": "revenue", "nature": "credit", "type": "income_statement" },

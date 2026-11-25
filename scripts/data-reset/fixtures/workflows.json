@@ -1024,6 +1024,169 @@
           ]
         }
       }
+    },
+    {
+      "order": 5,
+      "name": "AR Invoice",
+      "workflow_type": "ar_invoice",
+      "description": "Standard test dataset AR invoice workflow (inactive; the AR spec activates it for its approval cases and turns it off again)",
+      "is_active": false,
+      "data": {
+        "stages": [
+          {
+            "name": "Create Request",
+            "role": "create",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Accounting creates and submits the AR invoice",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+admin@gmail.com"
+              },
+              {
+                "email": "carmensoftware.dev+budget@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
+          },
+          {
+            "name": "Accounting Approval",
+            "role": "approve",
+            "sla": "24",
+            "sla_unit": "hours",
+            "description": "Budget approves and posts the AR invoice",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [
+              {
+                "email": "carmensoftware.dev+budget@gmail.com"
+              }
+            ],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": true,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": true,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": true,
+                  "current_approve": false
+                }
+              }
+            }
+          },
+          {
+            "name": "Completed",
+            "role": "approve",
+            "sla": "0",
+            "sla_unit": "hours",
+            "description": "Terminal stage — the backend completes the document on the approval that enters it",
+            "hide_fields": {
+              "price_per_unit": false,
+              "total_price": false
+            },
+            "assigned_users": [],
+            "available_actions": {
+              "submit": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "approve": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "reject": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              },
+              "sendback": {
+                "is_active": false,
+                "recipients": {
+                  "next_step": false,
+                  "requestor": false,
+                  "current_approve": false
+                }
+              }
+            },
+            "creator_access": "only_creator"
+          }
+        ],
+        "routing_rules": []
+      }
     }
   ]
 }
