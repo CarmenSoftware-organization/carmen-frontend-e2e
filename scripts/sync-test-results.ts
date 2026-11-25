@@ -108,6 +108,7 @@ const SYNC_TARGETS: SyncTarget[] = [
   { jsonFile: "922-period-close-verify-results.json", sheetTab: "Period_Close_Verify" },
   { jsonFile: "923-period-close-ledger-views-results.json", sheetTab: "Period_Close_Ledger_Views" },
   { jsonFile: "924-period-close-close-results.json", sheetTab: "Period_Close_Close" },
+  { jsonFile: "806-ar-invoice-results.json", sheetTab: "AR_Invoice" },
   { jsonFile: "1001-campaign-results.json", sheetTab: "Campaign" },
 ];
 

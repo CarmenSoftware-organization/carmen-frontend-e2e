@@ -181,7 +181,7 @@ export class ArInvoicePage extends BasePage {
 
   /**
    * The confirmation dialog of Submit / Approve / Reject / Void / Send back (ar-invoice-detail.route.tsx:178-279).
-   * Its title is `<action>Title` ("Void invoice?", "Reject invoice?"), the reason box is `#ar-action-reason`.
+   * Its title is `<action>Title` ("Void invoice?", "Reject invoice?"). Only Void, Reject and Send back have a reason box (`#ar-action-reason`); Submit and Approve do not.
    */
   confirmDialog(): Locator {
     return this.page.getByRole("dialog").filter({ has: this.page.locator("[data-slot=dialog-title]") }).last();

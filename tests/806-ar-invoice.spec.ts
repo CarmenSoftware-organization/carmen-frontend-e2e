@@ -3,24 +3,28 @@ import { createAuthTest } from "./fixtures/auth.fixture";
 import { ArInvoicePage } from "./pages/ar-invoice.page";
 import { buSend } from "./helpers/bu-api";
 import {
+  approveArDoc,
   arWorkflowActive,
   createArDoc,
+  deleteArDoc,
   getArDoc,
   referenceCandidates,
+  rejectArDoc,
+  reviewArDoc,
   seededArDoc,
   setArWorkflowActive,
   submitArDoc,
   voidArDoc,
   type ArLine,
 } from "./helpers/ar-api";
-import { assertAccountingReady, buDecimals, CREATOR, jvOfSource, listAllRows, type JvLine } from "./helpers/gl-api";
+import { APPROVER, assertAccountingReady, buDecimals, CREATOR, jvOfSource, listAllRows, type JvLine } from "./helpers/gl-api";
 import { docAmounts, expectBalanced, round, type MoneyLine } from "./helpers/money";
 import { expectBlocked, expectSaved } from "./helpers/settle";
 import { uid } from "./helpers/test-data";
 
 // ─────────────────────────────────────────────────────────────────────────
 // AR invoice on the TEST BU (BU-GR2VYNKQ), money path: list, detail, create, edit, post, debit / credit notes,
-// credit-note application, void, viewer. Section 08 (the ar_invoice approval workflow) is a later describe.
+// credit-note application, void, the Requestor (view key only). Section 08 is the ar_invoice approval workflow.
 //
 // Roles: Admin creates / edits / deletes / submits / voids (UI + API, a BU admin bypasses the permission keys);
 // Requestor holds accounting.ar.view only (no void). With no active `ar_invoice` workflow Submit posts, so the
@@ -1004,7 +1008,236 @@ test.describe("AR invoice (806)", () => {
   );
 });
 
-// ── 10 viewer ───────────────────────────────────────────────────────────
+// ── 08 workflow (ar_invoice approval) ───────────────────────────────────
+// Workflow fixture "AR Invoice": Create Request (Admin, Budget) -> Accounting Approval (Budget) -> Completed.
+// Every case builds its own document (no state shared between cases, a serial failure restarts the worker).
+const budgetTest = createAuthTest("carmensoftware.dev+budget@gmail.com");
+budgetTest.describe.configure({ timeout: 120_000 });
+
+/** Create a document as Admin and submit it into the active workflow: in_review. */
+async function inReview(key: string, taxInvoice = false) {
+  const created = await createArDoc("invoice", { tag: tag(key), lines: [{ qty: 2, price: 100, vat: true }], taxInvoice });
+  const res = await submitArDoc(created.id, CREATOR);
+  expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(200);
+  return { ...created, doc: await getArDoc(created.id) };
+}
+
+budgetTest.describe.serial("AR invoice workflow (806-08)", () => {
+  budgetTest.beforeAll(async () => {
+    await assertAccountingReady();
+    await setArWorkflowActive(true);
+  });
+  budgetTest.afterAll(async () => {
+    await setArWorkflowActive(false);
+  });
+
+  budgetTest(
+    "TC-ARINV-080001 Submit ตอนมี workflow: สถานะ in_review ได้เลขจริง ARIV และยังไม่มี JV",
+    {
+      annotation: [
+        { type: "preconditions", description: "workflow ar_invoice (AR Invoice) active; Admin เป็นผู้สร้าง; ใบร่าง 2 x 100 Vat 7%" },
+        { type: "steps", description: "1. สร้างใบร่างผ่าน API\n2. Admin Submit ผ่าน API\n3. อ่านใบและ JV ของใบ" },
+        { type: "expected", description: "status in_review; เลขเอกสารเป็น ARIV + 8 หลัก; ไม่มี JV (jvOfSource ว่าง). assumption: Submit เข้า workflow ยังไม่ลงบัญชี" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Functional" },
+      ],
+    },
+    async () => {
+      const { id, doc } = await inReview("wfsubmit");
+      expect(doc.status).toBe("in_review");
+      expect(doc.no).toMatch(/^ARIV\d{8}$/);
+      expect(await jvOfSource("ar_invoice", id)).toHaveLength(0);
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080002 ผู้สร้างอนุมัติใบของตัวเองไม่ได้: 403 WORKFLOW_CREATOR_CANNOT_APPROVE",
+    {
+      annotation: [
+        { type: "preconditions", description: "workflow active; ใบ in_review ที่ Admin สร้างและ Submit" },
+        { type: "steps", description: "1. Admin Approve ใบของตัวเองผ่าน API" },
+        { type: "expected", description: "403 รหัส WORKFLOW_CREATOR_CANNOT_APPROVE; ใบยัง in_review ไม่มี JV. pinned: backend ตอบ 422 WORKFLOW_USER_NOT_STAGE_APPROVER (Admin ไม่ได้อยู่ในขั้น Accounting Approval จึงชนกฎผู้อนุมัติของขั้นก่อนกฎผู้สร้าง; ตรวจ 2026-11-26)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async () => {
+      const { id } = await inReview("wfself");
+      const res = await approveArDoc(id, CREATOR);
+      test.fail(true, "suspected bug: Admin approving their own in_review AR invoice gets 422 WORKFLOW_USER_NOT_STAGE_APPROVER (Admin is not an approver of Accounting Approval) instead of 403 WORKFLOW_CREATOR_CANNOT_APPROVE; the stage-approver check runs before the creator check; see docs/superpowers/specs/2026-11-25-e2e-ar-invoice-bug-list.md");
+      expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(403);
+      expect(res.body?.error?.code).toBe("WORKFLOW_CREATOR_CANNOT_APPROVE");
+      expect((await getArDoc(id)).status).toBe("in_review");
+      expect(await jvOfSource("ar_invoice", id)).toHaveLength(0);
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080003 ผู้ไม่ใช่ผู้อนุมัติของขั้น Approve ไม่ได้: 422 WORKFLOW_USER_NOT_STAGE_APPROVER",
+    {
+      annotation: [
+        { type: "preconditions", description: "workflow active; ใบ in_review (ขั้น Accounting Approval มี Budget เป็นผู้อนุมัติ); Requestor ไม่อยู่ในขั้นนั้น" },
+        { type: "steps", description: "1. Requestor Approve ผ่าน API" },
+        { type: "expected", description: "422 รหัส WORKFLOW_USER_NOT_STAGE_APPROVER; ใบยัง in_review" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Authorization" },
+      ],
+    },
+    async () => {
+      const { id } = await inReview("wfnotapprover");
+      const res = await approveArDoc(id, "Requestor");
+      expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(422);
+      expect(res.body?.error?.code).toBe("WORKFLOW_USER_NOT_STAGE_APPROVER");
+      expect((await getArDoc(id)).status).toBe("in_review");
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080004 Budget อนุมัติผ่านหน้ารายละเอียด: สถานะ posted และมี JV สมดุล",
+    {
+      annotation: [
+        { type: "preconditions", description: "Budget login; workflow active; ใบ 2 x 100 Vat 7% (net 200.00 + VAT 14.00 = 214.00) in_review ที่ Admin Submit" },
+        { type: "steps", description: "1. เปิดหน้ารายละเอียดของใบ\n2. กด Approve\n3. ยืนยันใน dialog" },
+        { type: "expected", description: "สถานะ Posted; API ได้ posted ยอดค้าง 214.00; JV สมดุล และมี Dr 1130 = 214.00, Cr 4100 = 200.00" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Happy Path" },
+      ],
+    },
+    async ({ page }) => {
+      const ar = new ArInvoicePage(page);
+      const e = docAmounts([{ qty: 2, price: 100, vat: true }]);
+      const { id } = await inReview("wfapprove");
+      await ar.gotoDetail(id);
+      await expect(ar.statusChip()).toHaveText(/review/i);
+      await expectSaved(page, /\/ar-invoice\/[0-9a-f-]{36}\/approve$/, () => ar.confirm("Approve"), page.locator("[data-slot=status-chip]").filter({ hasText: /posted/i }));
+      await expect(ar.statusChip()).toHaveText(/posted/i);
+      const doc = await getArDoc(id);
+      expect(doc.status).toBe("posted");
+      expect(doc.outstanding).toBe(e.total);
+      const jv = await jvOfSource("ar_invoice", id);
+      expectBalanced(jv);
+      expect(sum(jv, "1130", "dr")).toBe(e.total);
+      expect(sum(jv, "4100", "cr")).toBe(e.net);
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080005 Reject โดยไม่ใส่เหตุผล: 422 AR_INVOICE_REJECT_REASON_REQUIRED และใบยัง in_review",
+    {
+      annotation: [
+        { type: "preconditions", description: "workflow active; ใบ in_review; Budget เป็นผู้อนุมัติ" },
+        { type: "steps", description: "1. Budget Reject ผ่าน API โดย reason เป็นช่องว่างล้วน (ไม่ส่งหรือส่งสตริงว่าง backend ตอบ 400 จาก schema ก่อนถึงกฎนี้)" },
+        { type: "expected", description: "422 รหัส AR_INVOICE_REJECT_REASON_REQUIRED; ใบยัง in_review ไม่มี JV" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Validation" },
+      ],
+    },
+    async () => {
+      const { id } = await inReview("wfrejnoreason");
+      // an omitted or empty reason is stopped earlier by the request schema (400); a blank one reaches the service rule
+      const res = await rejectArDoc(id, APPROVER, "   ");
+      expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(422);
+      expect(res.body?.error?.code).toBe("AR_INVOICE_REJECT_REASON_REQUIRED");
+      expect((await getArDoc(id)).status).toBe("in_review");
+      expect(await jvOfSource("ar_invoice", id)).toHaveLength(0);
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080006 Budget Reject พร้อมเหตุผลผ่านหน้ารายละเอียด: void ยอดค้าง 0.00 ไม่มี JV และไม่มี tax invoice",
+    {
+      annotation: [
+        { type: "preconditions", description: "Budget login; workflow active; ใบ in_review ที่ติ๊ก tax invoice (สร้างผ่าน API)" },
+        { type: "steps", description: "1. เปิดหน้ารายละเอียด\n2. กด Reject\n3. ใส่เหตุผลแล้วยืนยัน" },
+        { type: "expected", description: "สถานะ Void; API ได้ void, outstanding 0.00, ไม่มี JV, ไม่มีเลข tax invoice. rule: Reject ทำให้ใบ void (เหมือน AP payment ตาม BE #1110)" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Alternate Flow" },
+      ],
+    },
+    async ({ page }) => {
+      const ar = new ArInvoicePage(page);
+      const { id } = await inReview("wfreject", true);
+      await ar.gotoDetail(id);
+      await expectSaved(page, /\/ar-invoice\/[0-9a-f-]{36}\/reject$/, () => ar.confirmWithReason("Reject", "e2e reject"), page.locator("[data-slot=status-chip]").filter({ hasText: /void/i }));
+      await expect(ar.statusChip()).toHaveText(/void/i);
+      const doc = await getArDoc(id);
+      expect(doc.status).toBe("void");
+      expect(doc.outstanding).toBe(0);
+      expect(doc.taxInvoiceNo).toBeFalsy();
+      expect(await jvOfSource("ar_invoice", id)).toHaveLength(0);
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080007 Budget ส่งกลับไปขั้น Create Request: ใบกลับเป็น draft และเลขจริงเดิม",
+    {
+      annotation: [
+        { type: "preconditions", description: "Budget login; workflow active; ใบ in_review ที่มีเลขจริง ARIV" },
+        { type: "steps", description: "1. เปิดหน้ารายละเอียด\n2. กด Send back\n3. เลือกขั้น Create Request ใส่หมายเหตุแล้วยืนยัน" },
+        { type: "expected", description: "สถานะ Draft; เลขเอกสารเท่าเดิม (ยังเป็น ARIV จริง); ไม่มี JV" },
+        { type: "priority", description: "High" },
+        { type: "testType", description: "Alternate Flow" },
+      ],
+    },
+    async ({ page }) => {
+      const ar = new ArInvoicePage(page);
+      const { id, doc: before } = await inReview("wfsendback");
+      await ar.gotoDetail(id);
+      await expectSaved(page, /\/ar-invoice\/[0-9a-f-]{36}\/review$/, () => ar.sendBack("Create Request", "e2e send back"), page.locator("[data-slot=status-chip]").filter({ hasText: /draft/i }));
+      await expect(ar.statusChip()).toHaveText(/draft/i);
+      const doc = await getArDoc(id);
+      expect(doc.status).toBe("draft");
+      expect(doc.no).toBe(before.no);
+      expect(doc.no).toMatch(/^ARIV\d{8}$/);
+      expect(await jvOfSource("ar_invoice", id)).toHaveLength(0);
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080008 ลบใบ draft ที่ถือเลขจริงแล้ว: 422 AR_INVOICE_NUMBERED_VOID_ONLY",
+    {
+      annotation: [
+        { type: "preconditions", description: "workflow active; ใบที่ Submit แล้วถูก Budget ส่งกลับเป็น draft (ถือเลข ARIV จริง)" },
+        { type: "steps", description: "1. Submit ใบ แล้ว Budget ส่งกลับไปขั้น Create Request ผ่าน API\n2. Admin ลบใบ" },
+        { type: "expected", description: "422 รหัส AR_INVOICE_NUMBERED_VOID_ONLY; ใบยังอยู่เป็น draft" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async () => {
+      const { id } = await inReview("wfdelnumbered");
+      const back = await reviewArDoc(id, APPROVER, "Create Request");
+      expect(back.status, JSON.stringify(back.body).slice(0, 300)).toBe(200);
+      expect((await getArDoc(id)).status).toBe("draft");
+      const res = await deleteArDoc(id, CREATOR);
+      expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(422);
+      expect(res.body?.error?.code).toBe("AR_INVOICE_NUMBERED_VOID_ONLY");
+      expect((await getArDoc(id)).status).toBe("draft");
+    },
+  );
+
+  budgetTest(
+    "TC-ARINV-080009 ลบใบที่ in_review: 409 AR_INVOICE_IMMUTABLE",
+    {
+      annotation: [
+        { type: "preconditions", description: "workflow active; ใบ in_review" },
+        { type: "steps", description: "1. Admin ลบใบ in_review ผ่าน API" },
+        { type: "expected", description: "409 รหัส AR_INVOICE_IMMUTABLE; ใบยัง in_review" },
+        { type: "priority", description: "Medium" },
+        { type: "testType", description: "Negative" },
+      ],
+    },
+    async () => {
+      const { id } = await inReview("wfdelreview");
+      const res = await deleteArDoc(id, CREATOR);
+      expect(res.status, JSON.stringify(res.body).slice(0, 300)).toBe(409);
+      expect(res.body?.error?.code).toBe("AR_INVOICE_IMMUTABLE");
+      expect((await getArDoc(id)).status).toBe("in_review");
+    },
+  );
+});
+
+// ── 10 Requestor (view key only) ────────────────────────────────────────
 requestorTest.describe("AR invoice (806) - Requestor (view key only)", () => {
   requestorTest.beforeAll(readyWithoutWorkflow);
 
