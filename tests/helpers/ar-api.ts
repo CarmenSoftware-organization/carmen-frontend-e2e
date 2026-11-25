@@ -47,7 +47,7 @@ type Row = Record<string, any>;
 
 const ok = (r: ApiResult, what: string) => {
   if (r.status < 200 || r.status >= 300) {
-    throw new Error(`${what} -> ${r.status} ${JSON.stringify(r.body?.message ?? r.body).slice(0, 300)}`);
+    throw new Error(`${what} -> ${r.status} ${r.body?.error?.code ?? ""} ${JSON.stringify(r.body?.message ?? r.body).slice(0, 300)}`);
   }
   return r;
 };

@@ -2,7 +2,7 @@ import { expect, type Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
 import { amountOf } from "./ap-invoice.page";
 
-const BASE = "/accounting/accounts-receivable/ar-invoice";
+const BASE = "/accounting/accounts-receivable/invoice";
 
 export type ArTotalField = "net" | "vat" | "total" | "outstanding";
 
@@ -51,21 +51,41 @@ export class ArInvoicePage extends BasePage {
     return (scope ?? this.page).locator("[data-slot=status-chip]").first();
   }
 
+  /** Every body row of the list table. */
+  rows(): Locator {
+    return this.page.locator("table tbody tr");
+  }
+
+  /** Type into the search box and press Enter (the list searches on Enter only). */
+  async search(text: string) {
+    await this.searchInput().fill(text);
+    await this.searchInput().press("Enter");
+  }
+
+  /** Tick one option of a list filter field ("Status" or "Document type") in the Filter menu. */
+  async filterBy(field: "Status" | "Document type", label: string) {
+    await this.page.getByRole("button", { name: /^Filter/ }).click();
+    await this.page.getByText(field, { exact: true }).last().click();
+    const pop = this.page.locator("[data-slot=popover-content]:visible, [role=menu]:visible").last();
+    await pop.getByText(label, { exact: true }).click();
+    await this.page.keyboard.press("Escape");
+  }
+
   newInvoiceButton(): Locator {
     return this.button("New Invoice");
   }
 
   // ── Form header (ar-invoice-draft-form.tsx; ar-customer-lookup.tsx placeholder `selectCustomer`) ──
   customerLookup(): Locator {
-    return this.page.getByRole("combobox", { name: "Select an AR customer" }).or(this.page.getByRole("button", { name: "Select an AR customer" })).first();
+    return this.page.getByRole("button", { name: "Select an AR customer" });
   }
 
   /** Open a lookup popover with `trigger`, search `search` and click the first matching option. */
   private async pickFrom(trigger: Locator, search: string) {
     await trigger.click();
     const pop = this.page.locator("[data-slot=popover-content]:visible").last();
-    await pop.locator("[data-slot=command-input], input").first().fill(search);
-    const option = pop.locator("[data-value], [role=option]").filter({ hasText: new RegExp(esc(search), "i") }).first();
+    await pop.locator("[data-slot=command-input]").fill(search);
+    const option = pop.getByRole("button", { name: new RegExp(esc(search), "i") }).first();
     await expect(option).toBeVisible();
     await option.click();
   }
@@ -94,15 +114,34 @@ export class ArInvoicePage extends BasePage {
       /** `#ar-line-discount_pct` */
       discountPct: () => dlg.locator("#ar-line-discount_pct"),
       /** Lookup trigger under the "Revenue account" label (LookupChartOfAccountById). */
-      revenueAccount: () => dlg.getByRole("combobox", { name: /Revenue account/ }).or(dlg.getByRole("button", { name: /Revenue account/ })).first(),
+      revenueAccount: () => dlg.getByRole("button", { name: "Revenue account", exact: true }),
       /** Lookup trigger in the group labelled "Revenue cost center" (LookupCostCenter). */
-      costCenter: () => dlg.getByRole("group", { name: "Revenue cost center" }).getByRole("combobox").or(dlg.getByRole("group", { name: "Revenue cost center" }).getByRole("button")).first(),
+      costCenter: () => dlg.getByRole("group", { name: /^Revenue cost center/ }).getByRole("button"),
       /** First "Tax 1" profile lookup (LookupTaxProfile); the "No tax" button next to it clears it. */
-      taxProfile: () => dlg.getByRole("combobox", { name: /Tax Profile|Tax 1/ }).or(dlg.getByRole("button", { name: /Select Tax Profile/ })).first(),
+      taxProfile: () => dlg.getByRole("button", { name: "Select Tax Profile" }).first(),
       field,
       /** Pick the first lookup option matching `search` in the popover the trigger opens. */
       pick: (trigger: Locator, search: string) => this.pickFrom(trigger, search),
     };
+  }
+
+  /**
+   * Add one line through the dialog. `revenue: null` / `costCenter: null` leave that lookup empty (to provoke the
+   * dialog's own refusal); `vat` picks the "Vat 7%" profile, else the tax profile stays empty (no tax).
+   * Does not click Add when `submit` is false.
+   */
+  async addLine(l: { description?: string; qty: number; price: number; vat?: boolean; discountPct?: number; revenue?: string | null; costCenter?: string | null; submit?: boolean }) {
+    await this.addLineButton().click();
+    const d = this.lineDialog();
+    await expect(d.root()).toBeVisible();
+    if (l.description) await d.field("Description").fill(l.description);
+    await d.qty().fill(String(l.qty));
+    await d.unitPrice().fill(String(l.price));
+    if (l.discountPct) await d.discountPct().fill(String(l.discountPct));
+    if (l.revenue !== null) await d.pick(d.revenueAccount(), l.revenue ?? "4100");
+    if (l.costCenter !== null) await d.pick(d.costCenter(), l.costCenter ?? "E2E-CC-1");
+    if (l.vat) await d.pick(d.taxProfile(), "Vat 7");
+    if (l.submit !== false) await d.root().getByRole("button", { name: "Add", exact: true }).click();
   }
 
   /** The description cell button of a line (its description, or "Line n" when empty); opens the Edit Line dialog on a draft. */
