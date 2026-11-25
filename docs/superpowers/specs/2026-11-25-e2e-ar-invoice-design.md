@@ -54,7 +54,7 @@ credit-note application) through the API, plus the user-visible state.
 | `accounting.ar.*` permission keys on the roles | submit needs `accounting.ar.view`, void needs `accounting.ar.void` (gateway + FE `arActionsAllowed`) |
 | an `ar_invoice` workflow | needed only by the approval group |
 
-Present already: an open GL period covering today, the `Vat 7%` and `None 0%` tax profiles, revenue accounts 4100 / 4200,
+Present already: an open GL period covering today, the `Vat 7%` and `None` (0%) tax profiles, revenue accounts 4100 / 4200,
 fx gain / loss accounts, BU default currency THB (`data:reset`).
 
 ## Design

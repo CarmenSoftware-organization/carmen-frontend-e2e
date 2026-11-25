@@ -81,7 +81,7 @@ only.
     register address);
   - customer `E2E-CUST-2` (no AR account).
   - Customers go through `POST api/config/:bu/customers`, and a 409 is treated as "exists, re-list" (as seed-master does).
-  - Revenue = account `4100`. Profiles are `Vat 7%` and `None 0%`, resolved by name.
+  - Revenue = account `4100`. Profiles are `Vat 7%` and `None` (0%), resolved by name.
 - Modify: `scripts/data-reset/index.ts`: call `seedArBase` after `seedAccountingBase`, only when the BU is
   `BU-GR2VYNKQ`. On the other BUs, log `ar: skipped (AR read-set lives on BU-GR2VYNKQ)`. Add a dry-run line.
 
@@ -122,8 +122,8 @@ only.
   | `E2E-AR-POSTED` | invoice, `is_tax_invoice: true`, customer 1 | 3 x 333.33, Vat 7% | posted (net 999.99, VAT 70.00, total 1,069.99) |
   | `E2E-AR-DRAFT` | invoice, customer 1 | 1 x 500.00, Vat 7% | draft |
   | `E2E-AR-CN` | credit_note, customer 1 | 1 x 100.00, Vat 7% | posted (total 107.00) |
-  | `E2E-AR-DN` | debit_note, customer 1 | 1 x 200.00, None 0% | posted (total 200.00) |
-  | `E2E-AR-VOID` | invoice, customer 2 | 1 x 300.00, None 0% | posted, then voided (`reason: "STD void"`) |
+  | `E2E-AR-DN` | debit_note, customer 1 | 1 x 200.00, None | posted (total 200.00) |
+  | `E2E-AR-VOID` | invoice, customer 2 | 1 x 300.00, None | posted, then voided (`reason: "STD void"`) |
 
   Re-runs find a key by search and skip it when it exists in the right state.
 - Modify: `scripts/data-reset/docs/seed-all.ts`: add `arDocs: seedArDocs` to the steps map and run it after
