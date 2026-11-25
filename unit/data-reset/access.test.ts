@@ -150,7 +150,7 @@ describe("seedAccountingRoles", () => {
     expect(created[1].permissions.add).toEqual(ACCOUNTING_VIEW_KEYS.map((k) => `perm-${k}`));
     // Approve / create / pay have no key in the catalog: the approver differs from the viewer only by void / post / reverse.
     expect(ACCOUNTING_APPROVER_KEYS.filter((k) => !(ACCOUNTING_VIEW_KEYS as readonly string[]).includes(k))).toEqual([
-      "accounting.ap.void", "accounting.gl.void", "accounting.gl.post", "accounting.gl.reverse",
+      "accounting.ap.void", "accounting.ar.void", "accounting.gl.void", "accounting.gl.post", "accounting.gl.reverse",
     ]);
     const assigned = writes.filter((c) => c.path === `${base}/user-application-roles`).map((c) => c.body);
     expect(assigned).toEqual([

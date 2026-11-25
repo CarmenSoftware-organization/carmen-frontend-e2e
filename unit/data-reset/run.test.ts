@@ -18,7 +18,7 @@ const base = "/api/config/BU-GR2VYNKQ";
 const now = new Date("2026-11-05T03:00:00Z");
 
 // The accounting step resolves account ids from the COA list, so POSTed accounts must come back on GET.
-const accountingCodes = ["2100", "1170", "2150", "1180", "5300", "1140", "1110", "4300", "5400"];
+const accountingCodes = ["2100", "1170", "2150", "1180", "5300", "1140", "1110", "4300", "5400", "1130", "2160", "4100"];
 
 function routes(over: Record<string, unknown> = {}) {
   const coa = accountingCodes.map((code) => ({ id: `coa-${code}`, code }));
@@ -67,6 +67,7 @@ function routes(over: Record<string, unknown> = {}) {
         permissions: [
           "accounting.view", "accounting.ap.view", "accounting.gl.view", "accounting.gl.jv_template.view",
           "accounting.ap.void", "accounting.gl.void", "accounting.gl.post", "accounting.gl.reverse",
+          "accounting.ar.view", "accounting.ar.void",
         ].map((k) => ({ permission_id: `perm-${k}`, resource: k.slice(0, k.lastIndexOf(".")), action: k.slice(k.lastIndexOf(".") + 1), is_granted: false })),
       },
     },
@@ -89,7 +90,12 @@ function routes(over: Record<string, unknown> = {}) {
     [`POST ${base}/gl-periods/years`]: { data: {} },
     [`GET ${base}/bank-accounts`]: { data: [] },
     [`POST ${base}/bank-accounts`]: { data: {} },
-    [`GET ${base}/tax-profiles`]: { data: [{ id: "t-vat", name: "Vat 7%", chart_of_accounts_id: null, doc_version: 0 }] },
+    [`GET ${base}/tax-profiles`]: { data: [{ id: "t-vat", name: "Vat 7%", chart_of_accounts_id: null, doc_version: 0 }, { id: "t-none", name: "None", chart_of_accounts_id: null, doc_version: 0 }] },
+    // The ar step: find-or-create the cost center and the two customers.
+    [`GET ${base}/cost-centers`]: { data: [] },
+    [`POST ${base}/cost-centers`]: { data: { id: "cc1" } },
+    [`GET ${base}/customers`]: { data: [] },
+    [`POST ${base}/customers`]: (b: unknown) => ({ data: { id: `cust-${(b as { code: string }).code}` } }),
     [`PATCH ${base}/tax-profiles/t-vat`]: { data: {} },
     [`POST ${base}/tax-profiles`]: { data: {} },
     [`PUT ${base}/vendors/v1`]: { data: {} },
@@ -140,6 +146,7 @@ describe("runDataReset", () => {
       `POST ${base}/bank-accounts`,
       `PATCH ${base}/tax-profiles/`,
       `PUT ${base}/vendors/`,
+      `POST ${base}/customers`, // the ar step (BU-GR2VYNKQ only), after the accounting base
       `PATCH ${base}/departments/`,
       `PUT ${base}/locations-users/`,
       `POST ${base}/user-application-roles`,
