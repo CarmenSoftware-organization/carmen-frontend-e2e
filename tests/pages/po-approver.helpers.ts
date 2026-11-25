@@ -149,7 +149,8 @@ export async function submitPOAsPurchaser(
     }
 
     // The draft number is replaced at submit; read the real one the inbox will show.
-    await gotoPODetail(page, ref);
+    // Plain goto, no networkidle wait: callers run inside a 30 s test budget.
+    await page.goto(`${LIST_PATH}/${ref}`);
     const realNo = (await page.getByText(/^PO\d{6,}$/).first().textContent({ timeout: 15_000 }))?.trim() ?? "";
     if (!realNo) throw new Error(`submitPOAsPurchaser: PO ${ref} (${poNo}) has no real PO number after submit`);
     return { ref, url, poNo: realNo };
