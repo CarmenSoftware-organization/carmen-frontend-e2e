@@ -2,7 +2,7 @@ import { expect, type Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
 import { field as labelledField, pickDate } from "../helpers/movement/ui";
 
-const BASE = "/accounting/journal-voucher";
+const BASE = "/general-ledger/journal-voucher";
 
 export interface JvLineInput {
   /** COA code, e.g. `5300`. */
@@ -13,7 +13,7 @@ export interface JvLineInput {
 }
 
 /**
- * Journal voucher list + detail/form (`/accounting/journal-voucher`). One component serves `new`, a draft and a
+ * Journal voucher list + detail/form (`/general-ledger/journal-voucher`). One component serves `new`, a draft and a
  * read-only view. A line is two table rows (the second holds the base amounts), so line `n` is row `2n - 2`.
  */
 export class JournalVoucherPage extends BasePage {

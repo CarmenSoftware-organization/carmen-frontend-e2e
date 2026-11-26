@@ -47,7 +47,7 @@ Admin login บน TEST BU; data:reset --yes แล้ว (มีใบ E2E-AP-P
 
 **Steps**
 
-1. เปิด /accounting/accounts-payable/invoice
+1. เปิด /accounts-payable/invoice
 2. ค้น E2E-AP-
 3. ดูแถวของแต่ละใบ
 
@@ -158,7 +158,7 @@ Admin login; บัญชี 5300 และ Vat 7% มีใน TEST BU; vendor 
 
 **Steps**
 
-1. เปิด /accounting/accounts-payable/invoice/new
+1. เปิด /accounts-payable/invoice/new
 2. เลือก vendor และกรอก Vendor Invoice
 3. บรรทัด 1 = 2 x 100.00, บรรทัด 2 = 3 x 333.33 (บัญชี 5300, Vat 7%)
 4. อ่านแถบสรุป

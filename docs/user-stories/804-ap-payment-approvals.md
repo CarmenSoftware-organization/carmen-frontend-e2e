@@ -33,7 +33,7 @@ Budget login (ผู้อนุมัติของ workflow ap_payment); ใ�
 
 **Steps**
 
-1. เปิด /accounting/accounts-payable/payment-approvals ค้นหาเลขที่ PV
+1. เปิด /accounts-payable/payment-approvals ค้นหาเลขที่ PV
 2. ติ๊กเลือกแถว กด Approve selected และยืนยัน
 3. เปิดแท็บ Approved and posted
 4. อ่านใบจ่าย JV และยอดค้างของใบ
@@ -56,7 +56,7 @@ Requestor login (view-only accounting, ไม่ได้อยู่ในข�
 
 **Steps**
 
-1. เปิด /accounting/accounts-payable/payment-approvals
+1. เปิด /accounts-payable/payment-approvals
 2. ค้นหาเลขที่ PV ของใบที่รอ Budget
 3. ดูว่ามีแถวหรือไม่
 

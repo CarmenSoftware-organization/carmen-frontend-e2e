@@ -102,7 +102,7 @@ test.describe("AR invoice (806)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; data:reset --yes แล้ว (มีใบ E2E-AR-POSTED / DRAFT / CN / DN / VOID)" },
-        { type: "steps", description: "1. เปิด /accounting/accounts-receivable/invoice\n2. ค้น E2E-AR-\n3. ดูแถวของแต่ละใบ (หาจากเลขเอกสาร)" },
+        { type: "steps", description: "1. เปิด /accounts-receivable/invoice\n2. ค้น E2E-AR-\n3. ดูแถวของแต่ละใบ (หาจากเลขเอกสาร)" },
         {
           type: "expected",
           description:
@@ -252,7 +252,7 @@ test.describe("AR invoice (806)", () => {
         {
           type: "steps",
           description:
-            "1. เปิด /accounting/accounts-receivable/invoice/new\n2. เลือกลูกค้า E2E-CUST-1 และกรอก Description\n3. บรรทัด 1 = 2 x 100.00 Vat 7%, บรรทัด 2 = 1 x 999.99 ไม่มีภาษี (4100, E2E-CC-1)\n4. อ่านแถบสรุป\n5. กด Save Draft",
+            "1. เปิด /accounts-receivable/invoice/new\n2. เลือกลูกค้า E2E-CUST-1 และกรอก Description\n3. บรรทัด 1 = 2 x 100.00 Vat 7%, บรรทัด 2 = 1 x 999.99 ไม่มีภาษี (4100, E2E-CC-1)\n4. อ่านแถบสรุป\n5. กด Save Draft",
         },
         {
           type: "expected",

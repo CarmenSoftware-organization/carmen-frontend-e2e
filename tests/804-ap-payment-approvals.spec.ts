@@ -72,7 +72,7 @@ test.describe("AP payment approvals (804)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Budget login (ผู้อนุมัติของ workflow ap_payment); ใบจ่ายเต็ม 1,000.00 ที่ Admin Submit แล้ว (in_review) ของเทสต์เอง" },
-        { type: "steps", description: "1. เปิด /accounting/accounts-payable/payment-approvals ค้นหาเลขที่ PV\n2. ติ๊กเลือกแถว กด Approve selected และยืนยัน\n3. เปิดแท็บ Approved and posted\n4. อ่านใบจ่าย JV และยอดค้างของใบ" },
+        { type: "steps", description: "1. เปิด /accounts-payable/payment-approvals ค้นหาเลขที่ PV\n2. ติ๊กเลือกแถว กด Approve selected และยืนยัน\n3. เปิดแท็บ Approved and posted\n4. อ่านใบจ่าย JV และยอดค้างของใบ" },
         {
           type: "expected",
           description:
@@ -113,7 +113,7 @@ test.describe("AP payment approvals (804)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Requestor login (view-only accounting, ไม่ได้อยู่ในขั้นอนุมัติของ workflow ap_payment); ใบจ่ายที่ Admin Submit แล้วรอ Budget (in_review)" },
-        { type: "steps", description: "1. เปิด /accounting/accounts-payable/payment-approvals\n2. ค้นหาเลขที่ PV ของใบที่รอ Budget\n3. ดูว่ามีแถวหรือไม่" },
+        { type: "steps", description: "1. เปิด /accounts-payable/payment-approvals\n2. ค้นหาเลขที่ PV ของใบที่รอ Budget\n3. ดูว่ามีแถวหรือไม่" },
         {
           type: "expected",
           description: "ไม่มีแถวของใบนี้ในคิวของ Requestor (คิวอนุมัติคือใบที่ผู้ใช้ต้องดำเนินการเอง; pay:225 'submitted assigned items'). pinned (needs product decision): backend ส่งใบ in_review ทุกใบให้ทุกผู้ใช้ จึงมีแถวขึ้น; คำถามที่เปิดอยู่คือคิวเป็น worklist ร่วมหรือเฉพาะผู้อนุมัติที่ถูกมอบหมาย (ดู bug list ส่วน 2)",

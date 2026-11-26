@@ -36,7 +36,7 @@ Admin login บน TEST BU; vendor แรกของ BU; บัญชี 1180 A
 
 **Steps**
 
-1. เปิด /accounting/accounts-payable/deposit/new
+1. เปิด /accounts-payable/deposit/new
 2. เลือก vendor กรอก Vendor Invoice
 3. บรรทัด 1 = 3 x 333.33 บัญชี 1180 ไม่ใส่ VAT
 4. อ่านแถบสรุป
@@ -127,7 +127,7 @@ Admin login; vendor แรกของ BU; บัญชี 5300 และ Vat 7%
 
 **Steps**
 
-1. เปิด /accounting/accounts-payable/debit-note/new
+1. เปิด /accounts-payable/debit-note/new
 2. เลือก vendor กรอก Vendor Invoice
 3. บรรทัด 1 = 3 x 333.33 (5300, Vat 7%)
 4. อ่านแถบสรุป
@@ -196,7 +196,7 @@ Admin login; vendor แรกของ BU; บัญชี 5300 และ Vat 7%
 
 **Steps**
 
-1. เปิด /accounting/accounts-payable/credit-note/new
+1. เปิด /accounts-payable/credit-note/new
 2. เลือก vendor กรอก Vendor Invoice
 3. บรรทัด 1 = 3 x 333.33 (5300, Vat 7%)
 4. อ่านแถบสรุป
