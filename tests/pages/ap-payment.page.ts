@@ -1,11 +1,11 @@
 import { expect, type Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
 
-const BASE = "/accounting/accounts-payable";
+const BASE = "/accounts-payable";
 
 /**
- * AP payment detail and the payment-approvals queue (`/accounting/accounts-payable/payment[/<id>]`,
- * `/accounting/accounts-payable/payment-approvals`). Locators are factories so they survive navigations.
+ * AP payment detail and the payment-approvals queue (`/accounts-payable/payment[/<id>]`,
+ * `/accounts-payable/payment-approvals`). Locators are factories so they survive navigations.
  */
 export class ApPaymentPage extends BasePage {
   async gotoDetail(id: string) {

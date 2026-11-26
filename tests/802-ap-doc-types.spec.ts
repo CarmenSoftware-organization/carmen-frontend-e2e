@@ -98,7 +98,7 @@ test.describe("AP deposit, debit note, credit note (802)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; vendor แรกของ BU; บัญชี 1180 Advance Deposit มีใน COA" },
-        { type: "steps", description: "1. เปิด /accounting/accounts-payable/deposit/new\n2. เลือก vendor กรอก Vendor Invoice\n3. บรรทัด 1 = 3 x 333.33 บัญชี 1180 ไม่ใส่ VAT\n4. อ่านแถบสรุป\n5. กด Save Draft" },
+        { type: "steps", description: "1. เปิด /accounts-payable/deposit/new\n2. เลือก vendor กรอก Vendor Invoice\n3. บรรทัด 1 = 3 x 333.33 บัญชี 1180 ไม่ใส่ VAT\n4. อ่านแถบสรุป\n5. กด Save Draft" },
         {
           type: "expected",
           description:
@@ -219,7 +219,7 @@ test.describe("AP deposit, debit note, credit note (802)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login; vendor แรกของ BU; บัญชี 5300 และ Vat 7% มีใน TEST BU" },
-        { type: "steps", description: "1. เปิด /accounting/accounts-payable/debit-note/new\n2. เลือก vendor กรอก Vendor Invoice\n3. บรรทัด 1 = 3 x 333.33 (5300, Vat 7%)\n4. อ่านแถบสรุป\n5. กด Save Draft" },
+        { type: "steps", description: "1. เปิด /accounts-payable/debit-note/new\n2. เลือก vendor กรอก Vendor Invoice\n3. บรรทัด 1 = 3 x 333.33 (5300, Vat 7%)\n4. อ่านแถบสรุป\n5. กด Save Draft" },
         {
           type: "expected",
           description:
@@ -318,7 +318,7 @@ test.describe("AP deposit, debit note, credit note (802)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login; vendor แรกของ BU; บัญชี 5300 และ Vat 7% มีใน TEST BU" },
-        { type: "steps", description: "1. เปิด /accounting/accounts-payable/credit-note/new\n2. เลือก vendor กรอก Vendor Invoice\n3. บรรทัด 1 = 3 x 333.33 (5300, Vat 7%)\n4. อ่านแถบสรุป\n5. กด Save Draft" },
+        { type: "steps", description: "1. เปิด /accounts-payable/credit-note/new\n2. เลือก vendor กรอก Vendor Invoice\n3. บรรทัด 1 = 3 x 333.33 (5300, Vat 7%)\n4. อ่านแถบสรุป\n5. กด Save Draft" },
         {
           type: "expected",
           description:

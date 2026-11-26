@@ -2,7 +2,7 @@ import { expect, type Locator } from "@playwright/test";
 import { BasePage } from "./base.page";
 import { amountOf } from "./ap-invoice.page";
 
-const BASE = "/accounting/accounts-receivable/invoice";
+const BASE = "/accounts-receivable/invoice";
 
 export type ArTotalField = "net" | "vat" | "total" | "outstanding";
 
@@ -15,7 +15,7 @@ const TOTAL_LABEL: Record<ArTotalField, string> = { net: "Net", vat: "Tax 1", to
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * AR invoice list, detail and form (`/accounting/accounts-receivable/ar-invoice`). Locators are factories so they
+ * AR invoice list, detail and form (`/accounts-receivable/ar-invoice`). Locators are factories so they
  * survive navigations. Sources in carmen-frontend `routes/accounting/accounts-receivable/`:
  * ar-invoice-list.route.tsx, ar-invoice-detail.route.tsx, ar-invoice-draft-form.tsx, ar-invoice-lines.tsx,
  * ar-invoice-line-dialog.tsx, ar-customer-lookup.tsx. The FE creates `doc_type: invoice` only.

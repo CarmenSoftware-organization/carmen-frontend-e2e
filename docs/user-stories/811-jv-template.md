@@ -33,7 +33,7 @@ Admin login; read-set E2E-JVT-1 (recurring, active) บน TEST BU
 
 **Steps**
 
-1. เปิดหน้า Template Voucher (/accounting/template-voucher)
+1. เปิดหน้า Template Voucher (/general-ledger/template-voucher)
 2. ค้นหา E2E-JVT-1
 3. อ่านแถว
 

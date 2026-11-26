@@ -1,7 +1,7 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 import { BasePage } from "./base.page";
 
-const BASE = "/accounting/accounts-payable";
+const BASE = "/accounts-payable";
 
 /** URL segment of each AP document type (`invoice` is the default list). */
 export type ApPageType = "invoice" | "deposit" | "debit-note" | "credit-note";
@@ -31,7 +31,7 @@ export interface LineInput {
 }
 
 /**
- * AP invoice list + detail (`/accounting/accounts-payable/<type>`). Locators are factories so they survive navigations.
+ * AP invoice list + detail (`/accounts-payable/<type>`). Locators are factories so they survive navigations.
  * The form is the same component for `new` and an existing draft; the line account and VAT profile live in the
  * per-line "Invoice Item Detail" dialog, everything else is inline in the lines table.
  */

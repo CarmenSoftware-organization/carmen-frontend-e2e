@@ -75,7 +75,7 @@ Admin login บน TEST BU; data:reset --yes แล้ว (มีใบ E2E-AR-P
 
 **Steps**
 
-1. เปิด /accounting/accounts-receivable/invoice
+1. เปิด /accounts-receivable/invoice
 2. ค้น E2E-AR-
 3. ดูแถวของแต่ละใบ (หาจากเลขเอกสาร)
 
@@ -186,7 +186,7 @@ Admin login; ลูกค้า E2E-CUST-1, บัญชี 4100, cost center E2
 
 **Steps**
 
-1. เปิด /accounting/accounts-receivable/invoice/new
+1. เปิด /accounts-receivable/invoice/new
 2. เลือกลูกค้า E2E-CUST-1 และกรอก Description
 3. บรรทัด 1 = 2 x 100.00 Vat 7%, บรรทัด 2 = 1 x 999.99 ไม่มีภาษี (4100, E2E-CC-1)
 4. อ่านแถบสรุป

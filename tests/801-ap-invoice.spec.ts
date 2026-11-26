@@ -77,7 +77,7 @@ test.describe("AP invoice (801)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; data:reset --yes แล้ว (มีใบ E2E-AP-POSTED / INCVAT / PARTIAL / PAID / DRAFT)" },
-        { type: "steps", description: "1. เปิด /accounting/accounts-payable/invoice\n2. ค้น E2E-AP-\n3. ดูแถวของแต่ละใบ" },
+        { type: "steps", description: "1. เปิด /accounts-payable/invoice\n2. ค้น E2E-AP-\n3. ดูแถวของแต่ละใบ" },
         {
           type: "expected",
           description:
@@ -227,7 +227,7 @@ test.describe("AP invoice (801)", () => {
         {
           type: "steps",
           description:
-            "1. เปิด /accounting/accounts-payable/invoice/new\n2. เลือก vendor และกรอก Vendor Invoice\n3. บรรทัด 1 = 2 x 100.00, บรรทัด 2 = 3 x 333.33 (บัญชี 5300, Vat 7%)\n4. อ่านแถบสรุป\n5. กด Save Draft",
+            "1. เปิด /accounts-payable/invoice/new\n2. เลือก vendor และกรอก Vendor Invoice\n3. บรรทัด 1 = 2 x 100.00, บรรทัด 2 = 3 x 333.33 (บัญชี 5300, Vat 7%)\n4. อ่านแถบสรุป\n5. กด Save Draft",
         },
         {
           type: "expected",

@@ -8,10 +8,10 @@ import { field } from "./helpers/movement/ui";
 // Accounting settings + dashboards smoke on the TEST BU (BU-GR2VYNKQ). Read-only: nothing here writes (the one write is
 // the Requestor's refused PUT of the value it just read, so even a bug would leave the value as it was).
 //
-// /accounting/settings edits the BU's `gl_setting` app-config row; the AP / JV specs depend on its accounts, so the
+// /general-ledger/settings edits the BU's `gl_setting` app-config row; the AP / JV specs depend on its accounts, so the
 // settings page must show the seeded accounts by code. The page is writable only with `configuration.app_config.update`
 // (FE `writable`, gateway PUT permission); the Requestor is the view-only role.
-// Both dashboards (/accounting, /accounting/accounts-payable) render the FE mock snapshot today (`mock` flag, "AP dashboard
+// Both dashboards (/general-ledger, /accounts-payable) render the FE mock snapshot today (`mock` flag, "AP dashboard
 // ยังเป็น mock" in ap-dashboard.tsx), so the figures asserted are the mock ones: this is a smoke check that the page
 // renders a figure, not a check of ledger numbers (out of scope).
 // ─────────────────────────────────────────────────────────────────────────
@@ -20,7 +20,7 @@ const requestorTest = createAuthTest("carmensoftware.dev+requestor@gmail.com");
 test.describe.configure({ timeout: 90_000 });
 requestorTest.describe.configure({ timeout: 90_000 });
 
-const SETTINGS = "/accounting/settings";
+const SETTINGS = "/general-ledger/settings";
 
 /** Account fields of the settings page: label on screen -> `gl_setting` key. */
 const ACCOUNT_FIELDS: [label: string, key: string][] = [
@@ -40,7 +40,7 @@ test.describe("Accounting settings (820)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; gl_setting มีบัญชี AP control / Input VAT / WHT payable / Advance deposit (data:reset)" },
-        { type: "steps", description: "1. อ่าน gl_setting ผ่าน API และแปลง id บัญชีเป็นรหัส\n2. เปิด /accounting/settings\n3. อ่านช่องบัญชีทั้ง 4 ช่อง" },
+        { type: "steps", description: "1. อ่าน gl_setting ผ่าน API และแปลง id บัญชีเป็นรหัส\n2. เปิด /general-ledger/settings\n3. อ่านช่องบัญชีทั้ง 4 ช่อง" },
         {
           type: "expected",
           description:
@@ -66,11 +66,11 @@ test.describe("Accounting settings (820)", () => {
   );
 
   test(
-    "TC-ACCT-030001 (mock) แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0",
+    "TC-ACCT-030001 (mock) แดชบอร์ด AP (/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0",
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; license accounting.ap" },
-        { type: "steps", description: "1. เปิด /accounting/accounts-payable\n2. อ่านแผง Key metrics" },
+        { type: "steps", description: "1. เปิด /accounts-payable\n2. อ่านแผง Key metrics" },
         {
           type: "expected",
           description:
@@ -81,7 +81,7 @@ test.describe("Accounting settings (820)", () => {
       ],
     },
     async ({ page }) => {
-      await page.goto("/accounting/accounts-payable");
+      await page.goto("/accounts-payable");
       await expect(page.getByRole("heading", { name: "Accounts Payable Dashboard" })).toBeVisible({ timeout: 20_000 });
       const card = page.getByRole("region", { name: "Key metrics" }).getByRole("button", { name: /AP outstanding/ });
       await expect(card).toBeVisible();
@@ -90,11 +90,11 @@ test.describe("Accounting settings (820)", () => {
   );
 
   test(
-    "TC-ACCT-030002 (mock) แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0",
+    "TC-ACCT-030002 (mock) แดชบอร์ด GL (/general-ledger) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0",
     {
       annotation: [
         { type: "preconditions", description: "Admin login บน TEST BU; license accounting.gl" },
-        { type: "steps", description: "1. เปิด /accounting\n2. อ่านแผง Key metrics" },
+        { type: "steps", description: "1. เปิด /general-ledger\n2. อ่านแผง Key metrics" },
         {
           type: "expected",
           description:
@@ -105,7 +105,7 @@ test.describe("Accounting settings (820)", () => {
       ],
     },
     async ({ page }) => {
-      await page.goto("/accounting");
+      await page.goto("/general-ledger");
       await expect(page.getByRole("heading", { name: "General Ledger Dashboard" })).toBeVisible({ timeout: 20_000 });
       const card = page.getByRole("region", { name: "Key metrics" }).getByRole("button", { name: /Unposted JV/ });
       await expect(card).toBeVisible();
@@ -120,7 +120,7 @@ requestorTest.describe("Accounting settings (820) - Requestor (view-only)", () =
     {
       annotation: [
         { type: "preconditions", description: "Requestor login (ไม่มี configuration.app_config.update); gl_setting มีค่าอยู่แล้ว" },
-        { type: "steps", description: "1. เปิด /accounting/settings\n2. หาปุ่ม Edit\n3. Requestor เรียก PUT app-config/gl_setting ด้วยค่าเดิมผ่าน API\n4. อ่านค่า gl_setting อีกครั้ง" },
+        { type: "steps", description: "1. เปิด /general-ledger/settings\n2. หาปุ่ม Edit\n3. Requestor เรียก PUT app-config/gl_setting ด้วยค่าเดิมผ่าน API\n4. อ่านค่า gl_setting อีกครั้ง" },
         {
           type: "expected",
           description:

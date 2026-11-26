@@ -122,14 +122,14 @@ test.describe("JV templates (811)", () => {
     {
       annotation: [
         { type: "preconditions", description: "Admin login; read-set E2E-JVT-1 (recurring, active) บน TEST BU" },
-        { type: "steps", description: "1. เปิดหน้า Template Voucher (/accounting/template-voucher)\n2. ค้นหา E2E-JVT-1\n3. อ่านแถว" },
+        { type: "steps", description: "1. เปิดหน้า Template Voucher (/general-ledger/template-voucher)\n2. ค้นหา E2E-JVT-1\n3. อ่านแถว" },
         { type: "expected", description: "พบแถว E2E-JVT-1 เพียงแถวเดียว ชนิด Recurring สถานะ Active" },
         { type: "priority", description: "Medium" },
         { type: "testType", description: "Functional" },
       ],
     },
     async ({ page }) => {
-      await page.goto("/accounting/template-voucher");
+      await page.goto("/general-ledger/template-voucher");
       await expect(page.getByRole("heading", { name: "JV Templates", level: 1 })).toBeVisible();
       await page.getByPlaceholder("Search...").fill(SEED);
       await page.getByPlaceholder("Search...").press("Enter");
@@ -161,7 +161,7 @@ test.describe("JV templates (811)", () => {
       const lines = (t.tb_gl_jv_template_detail as Row[]).map((l) => ({ dr: Number(l.debit ?? 0), cr: Number(l.credit ?? 0) }));
       expect(lines).toEqual([{ dr: 250, cr: 0 }, { dr: 0, cr: 250 }]);
       expectBalanced(lines);
-      await page.goto("/accounting/recurring-voucher");
+      await page.goto("/general-ledger/recurring-voucher");
       await page.getByPlaceholder("Search...").fill(SEED);
       await page.getByPlaceholder("Search...").press("Enter");
       const row = page.getByRole("row").filter({ hasText: SEED });
@@ -190,7 +190,7 @@ test.describe("JV templates (811)", () => {
         { chart_of_accounts_id: await accountId("1110"), side: "credit", allocation_ratio: 1, description: "c" },
       ];
       await withTemplate("allocation", "list", lines, { allocate_amount: 100 }, async (t) => {
-        await page.goto("/accounting/allocation-voucher");
+        await page.goto("/general-ledger/allocation-voucher");
         await expect(page.getByRole("heading", { name: "Allocation Vouchers", level: 1 })).toBeVisible();
         const search = page.getByPlaceholder("Search...");
         await search.fill(t.code);
@@ -231,7 +231,7 @@ test.describe("JV templates (811)", () => {
       }));
       expect(seedLines).toHaveLength(2);
       await withTemplate("recurring", "gen", seedLines, {}, async (t) => {
-        await page.goto(`/accounting/recurring-voucher/${t.id}`);
+        await page.goto(`/general-ledger/recurring-voucher/${t.id}`);
         await page.getByRole("button", { name: "Generate JV" }).click();
         const dlg = page.getByRole("dialog", { name: "Generate JV" });
         await expect(dlg).toBeVisible();

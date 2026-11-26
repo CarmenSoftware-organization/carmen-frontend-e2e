@@ -13,8 +13,8 @@ _Generated from `tests/820-accounting-settings.spec.ts` annotations. Edit annota
 | --- | --- | --- | --- |
 | TC-ACCT-010001 | หน้าตั้งค่า Accounting แสดงบัญชี gl_setting ที่ seed ไว้ด้วยรหัสบัญชี | High | Smoke |
 | TC-ACCT-020001 | Requestor (view-only) เปิดหน้าตั้งค่า Accounting: ไม่มีปุ่ม Edit และ PUT gl_setting ผ่าน API ถูกปฏิเสธ | High | Authorization |
-| TC-ACCT-030001 | (mock) แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0 | Medium | Smoke |
-| TC-ACCT-030002 | (mock) แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0 | Medium | Smoke |
+| TC-ACCT-030001 | (mock) แดชบอร์ด AP (/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0 | Medium | Smoke |
+| TC-ACCT-030002 | (mock) แดชบอร์ด GL (/general-ledger) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0 | Medium | Smoke |
 
 ---
 
@@ -31,7 +31,7 @@ Admin login บน TEST BU; gl_setting มีบัญชี AP control / Input 
 **Steps**
 
 1. อ่าน gl_setting ผ่าน API และแปลง id บัญชีเป็นรหัส
-2. เปิด /accounting/settings
+2. เปิด /general-ledger/settings
 3. อ่านช่องบัญชีทั้ง 4 ช่อง
 
 **Expected**
@@ -52,7 +52,7 @@ Requestor login (ไม่มี configuration.app_config.update); gl_setting �
 
 **Steps**
 
-1. เปิด /accounting/settings
+1. เปิด /general-ledger/settings
 2. หาปุ่ม Edit
 3. Requestor เรียก PUT app-config/gl_setting ด้วยค่าเดิมผ่าน API
 4. อ่านค่า gl_setting อีกครั้ง
@@ -63,7 +63,7 @@ Requestor login (ไม่มี configuration.app_config.update); gl_setting �
 
 ---
 
-## TC-ACCT-030001 — (mock) แดชบอร์ด AP (/accounting/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0
+## TC-ACCT-030001 — (mock) แดชบอร์ด AP (/accounts-payable) โหลดและแสดงตัวเลข AP outstanding ไม่ใช่ 0
 
 > **As a** Requestor user, **I want** core Accounting Settings interactions to work, **so that** day-to-day usage stays smooth.
 
@@ -75,7 +75,7 @@ Admin login บน TEST BU; license accounting.ap
 
 **Steps**
 
-1. เปิด /accounting/accounts-payable
+1. เปิด /accounts-payable
 2. อ่านแผง Key metrics
 
 **Expected**
@@ -84,7 +84,7 @@ Admin login บน TEST BU; license accounting.ap
 
 ---
 
-## TC-ACCT-030002 — (mock) แดชบอร์ด GL (/accounting) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0
+## TC-ACCT-030002 — (mock) แดชบอร์ด GL (/general-ledger) โหลดและแสดงตัวเลข Unposted JV ไม่ใช่ 0
 
 > **As a** Requestor user, **I want** core Accounting Settings interactions to work, **so that** day-to-day usage stays smooth.
 
@@ -96,7 +96,7 @@ Admin login บน TEST BU; license accounting.gl
 
 **Steps**
 
-1. เปิด /accounting
+1. เปิด /general-ledger
 2. อ่านแผง Key metrics
 
 **Expected**

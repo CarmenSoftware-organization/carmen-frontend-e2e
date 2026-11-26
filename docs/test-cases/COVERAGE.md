@@ -2,7 +2,7 @@
 
 **Generated file — do not edit.** Run `bun audit:coverage` to refresh.
 
-Parsed from the frontend router (`routes/router.tsx`): **199 routes** across **123 modules**.
+Parsed from the frontend router (`routes/router.tsx`): **206 routes** across **127 modules**.
 
 > **What `spec` means here:** a spec names the module's URL, in its own file or in a page object it imports. A spec that reaches a route only by *clicking* — never by `goto()` — is invisible to this matcher, so the route reads as uncovered. `/procurement/purchase-request/from-template` is the known case: `302-pr-creator-journey` drives it through `selectFirstTemplate()`, which clicks a card. Check the spec before concluding a gap is real.
 
@@ -10,7 +10,7 @@ Parsed from the frontend router (`routes/router.tsx`): **199 routes** across **1
 | --- | --- | --- |
 | ✅ spec | an automated Playwright spec drives this module | 57 |
 | 📄 catalog | a hand-authored test-case catalog documents it, no spec yet | 39 |
-| ❌ none | neither — this is the coverage gap | 27 |
+| ❌ none | neither — this is the coverage gap | 31 |
 
 ## *
 
@@ -18,21 +18,31 @@ Parsed from the frontend router (`routes/router.tsx`): **199 routes** across **1
 | --- | --- | --- | --- | --- |
 | `/*` | 1 | — | `1204-section-landing.md` | 📄 catalog |
 
-## Accounting
+## accounts-payable
 
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
-| `/accounting` | 6 | `820-accounting-settings.spec.ts` | — | ✅ spec |
-| `/accounting/accounts-payable` | 3 | `801-ap-invoice.spec.ts`<br>`802-ap-doc-types.spec.ts`<br>`803-ap-payment.spec.ts`<br>`804-ap-payment-approvals.spec.ts`<br>_+1 more_ | — | ✅ spec |
-| `/accounting/accounts-receivable` | 2 | — | — | ❌ none |
-| `/accounting/accounts-receivable/contract` | 1 _(redirect → `/accounting/accounts-receivable/profile`)_ | — | — | ❌ none |
-| `/accounting/accounts-receivable/preview` | 1 _(redirect → `/accounting/accounts-receivable`)_ | — | — | ❌ none |
-| `/accounting/accounts-receivable/preview/contracts` | 1 _(redirect → `/accounting/accounts-receivable/contract`)_ | — | — | ❌ none |
-| `/accounting/accounts-receivable/preview/folio` | 1 _(redirect → `/accounting/accounts-receivable/folio`)_ | — | — | ❌ none |
-| `/accounting/accounts-receivable/preview/invoice` | 2 _(redirect → `/accounting/accounts-receivable/invoice`)_ | — | — | ❌ none |
-| `/accounting/accounts-receivable/preview/profiles` | 1 _(redirect → `/accounting/accounts-receivable/profile`)_ | — | — | ❌ none |
-| `/accounting/journal-voucher` | 2 | `810-journal-voucher.spec.ts` | — | ✅ spec |
-| `/accounting/settings` | 1 | `820-accounting-settings.spec.ts` | — | ✅ spec |
+| `/accounts-payable` | 3 | `801-ap-invoice.spec.ts`<br>`802-ap-doc-types.spec.ts`<br>`803-ap-payment.spec.ts`<br>`804-ap-payment-approvals.spec.ts`<br>_+1 more_ | — | ✅ spec |
+
+## accounts-receivable
+
+| Module | Routes | Spec | Catalog | Status |
+| --- | --- | --- | --- | --- |
+| `/accounts-receivable` | 2 | — | — | ❌ none |
+| `/accounts-receivable/contract` | 1 _(redirect → `/accounts-receivable/profile`)_ | — | — | ❌ none |
+| `/accounts-receivable/preview` | 1 _(redirect → `/accounts-receivable`)_ | — | — | ❌ none |
+| `/accounts-receivable/preview/contracts` | 1 _(redirect → `/accounts-receivable/contract`)_ | — | — | ❌ none |
+| `/accounts-receivable/preview/folio` | 1 _(redirect → `/accounts-receivable/folio`)_ | — | — | ❌ none |
+| `/accounts-receivable/preview/invoice` | 2 _(redirect → `/accounts-receivable/invoice`)_ | — | — | ❌ none |
+| `/accounts-receivable/preview/profiles` | 1 _(redirect → `/accounts-receivable/profile`)_ | — | — | ❌ none |
+
+## asset
+
+| Module | Routes | Spec | Catalog | Status |
+| --- | --- | --- | --- | --- |
+| `/asset` | 1 | — | — | ❌ none |
+| `/asset/disposal` | 2 | — | — | ❌ none |
+| `/asset/register` | 2 | — | — | ❌ none |
 
 ## Config (master data)
 
@@ -91,6 +101,15 @@ Parsed from the frontend router (`routes/router.tsx`): **199 routes** across **1
 | Module | Routes | Spec | Catalog | Status |
 | --- | --- | --- | --- | --- |
 | `/forgot-password` | 1 | — | `005-password-recovery.md` | 📄 catalog |
+
+## general-ledger
+
+| Module | Routes | Spec | Catalog | Status |
+| --- | --- | --- | --- | --- |
+| `/general-ledger` | 6 | `820-accounting-settings.spec.ts` | — | ✅ spec |
+| `/general-ledger/financial-reports` | 2 | — | — | ❌ none |
+| `/general-ledger/journal-voucher` | 2 | `810-journal-voucher.spec.ts` | — | ✅ spec |
+| `/general-ledger/settings` | 1 | `820-accounting-settings.spec.ts` | — | ✅ spec |
 
 ## Inventory Management
 
