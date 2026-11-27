@@ -306,6 +306,15 @@ export class PurchaseRequestPage extends BasePage {
   }
 
   async selectFirstWorkflow(): Promise<boolean> {
+    // Wait for the create form itself before taking "the first combobox". The /new
+    // route is lazy: the URL flips to /new while the list page is still rendered for
+    // a moment, and `.first()` then hit the list's rows-per-page Select (5/10/25/50/
+    // 100 — only present once the list paginates, i.e. after data:reset). It opened,
+    // the form mounted over it, the option count read 0, and fillHeader reported "no
+    // workflow" although the Requestor had one. #pr-description exists only on the form.
+    await expect(this.descriptionInput(), "PR create form (#pr-description) did not render").toBeVisible({
+      timeout: 15_000,
+    });
     const trigger = this.page.getByRole("combobox").first();
     return await this.pickFirstInCombobox(trigger);
   }
